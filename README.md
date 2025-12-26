@@ -1,91 +1,147 @@
-# ProCertify Studio 🎓
+<div align="center">
 
-**ProCertify Studio**, kurumlar, eğitimciler ve organizatörler için geliştirilmiş; profesyonel, açık kaynak kodlu bir sertifika tasarım ve toplu üretim aracıdır.
+  <h1>🎓 ProCertify Studio</h1>
+  
+  <p>
+    <strong>Profesyonel Sertifika Tasarım ve Toplu Üretim Fabrikası</strong>
+  </p>
 
-Modern web teknolojileri ile geliştirilen bu uygulama, sürükle-bırak (drag & drop) mantığıyla çalışan gelişmiş bir editöre, imza yönetimine ve toplu PDF oluşturma yeteneklerine sahiptir. Masaüstü uygulaması (Electron vb. ile paketlendiğinde) hissi verecek şekilde optimize edilmiştir.
+  <p>
+    <a href="#-son-kullanıcılar-için"> kullanıcı Kılavuzu</a> •
+    <a href="#-geliştiriciler-için">💻 Geliştirici Dokümantasyonu</a> •
+    <a href="#-kurulum">📦 İndir</a>
+  </p>
 
-![ProCertify Studio Screenshot](https://via.placeholder.com/1200x600?text=ProCertify+Studio+Preview)
-*(Ekran görüntüleri eklenebilir)*
+  ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+  ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+  ![Electron](https://img.shields.io/badge/Electron-191970?style=for-the-badge&logo=Electron&logoColor=white)
+  ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
-## 🌟 Temel Özellikler
+  <br />
+  <img src="https://via.placeholder.com/1000x500?text=ProCertify+Studio+Dashboard" alt="ProCertify Studio Ekran Görüntüsü" width="100%">
+</div>
 
-### 🎨 Gelişmiş Tasarım Editörü
-*   **Sürükle & Bırak:** Metin, görsel, QR kod ve imza alanlarını tuval üzerinde özgürce taşıyın ve boyutlandırın.
-*   **Çift Yüzlü Tasarım:** Sertifikalarınızın hem ön hem de arka yüzünü tasarlayabilirsiniz.
-*   **Zengin Yazı Tipi Kütüphanesi:** Google Fonts entegrasyonu ile (Inter, Playfair Display, Great Vibes vb.) tipografi kontrolü.
-*   **Özelleştirilebilir Arkaplan:** Kendi şablon görsellerinizi yükleyebilir veya hazır şablonları kullanabilirsiniz.
+---
 
-### ⚡ Akıllı ve Toplu Üretim
-*   **Dinamik Doldurma (Fill Mode):** Birden fazla projeyi seçerek, ortak alanları (örneğin "Ad Soyad", "Tarih") tek seferde doldurun.
-*   **Otomatik QR Kod:** Verilen bağlantı veya metne göre anlık yüksek çözünürlüklü QR kod üretimi.
-*   **Özelleştirilebilir Dosya İsimleri:** Çıktı alınacak PDF dosyaları için dinamik şablonlar oluşturun (Örn: `Sertifika-{Ad Soyad}-{Tarih}.pdf`).
+## 🚀 Proje Hakkında
 
-### ✒️ Varlık ve İmza Yönetimi
-*   **İmza Deposu:** Yetkili imzaları sisteme bir kez yükleyin ve dilediğiniz projede kullanın.
-*   **İmza İzinleri:** Hangi imza alanına hangi yetkililerin imzasının eklenebileceğini kısıtlayın.
-*   **Logo ve Görsel Desteği:** Kurum logolarını veya sponsor görsellerini kolayca ekleyin.
+**ProCertify Studio**, etkinlikler, eğitimler ve kurumlar için geliştirilmiş; internet bağlantısına ihtiyaç duymayan, tamamen güvenli ve yerel çalışan bir sertifika üretim motorudur.
 
-### 💾 Veri Güvenliği ve Yedekleme
-*   **Yerel Çalışma:** Tüm veriler tarayıcınızın yerel depolama alanında (LocalStorage) tutulur. Sunucuya veri gönderilmez.
-*   **Tam Yedekleme (Backup & Restore):** Projelerinizi, ayarlarınızı ve görsellerinizi tek bir `.json` dosyası olarak dışa aktarın ve başka bir cihaza taşıyın.
+Modern sürükle-bırak arayüzü ile dakikalar içinde şablonunuzu hazırlayabilir, Excel/Liste mantığıyla yüzlerce kişiye özel PDF sertifikayı saniyeler içinde üretebilirsiniz.
 
-## 🛠️ Kullanılan Teknolojiler
+---
 
-Bu proje aşağıdaki modern teknolojiler kullanılarak geliştirilmiştir:
+# 👥 Son Kullanıcılar İçin
 
-*   **React 19:** Kullanıcı arayüzü ve bileşen yönetimi.
-*   **TypeScript:** Tip güvenliği ve ölçeklenebilir kod yapısı.
-*   **Tailwind CSS:** Modern ve hızlı stil işlemleri.
-*   **jsPDF:** Yüksek kaliteli, vektörel PDF çıktıları oluşturmak için.
-*   **Lucide React:** Tutarlı ve şık ikon seti.
-*   **QRCode:** İstemci tarafında QR kod üretimi.
+Eğer bu uygulamayı sertifika üretmek için kullanacaksanız, ihtiyacınız olan bilgiler burada.
 
-## 🚀 Kurulum ve Çalıştırma
+### ✨ Neden ProCertify Studio?
 
-Projeyi yerel makinenizde çalıştırmak için aşağıdaki adımları izleyin:
+*   **🔒 %100 Güvenli ve Çevrimdışı:** Verileriniz asla bir sunucuya gitmez. Bilgisayarınızda (EXE) çalışır. KVKK/GDPR uyumludur.
+*   **🎨 Özgür Tasarım:** Hazır kalıplara sıkışmayın. Yazı, resim, imza ve QR kodları tuval üzerinde istediğiniz yere sürükleyin.
+*   **⚡ Toplu Üretim Gücü:** Tek bir şablon yapın, 1000 farklı isim için tek tuşla PDF alın.
+*   **📂 Akıllı Dosya İsimlendirme:** Çıktılarınızı `Sertifika-Ahmet-Yilmaz-2024.pdf` gibi otomatik isimlendirin.
+
+### 🔥 Temel Özellikler
+
+| Özellik | Açıklama |
+| :--- | :--- |
+| **Sürükle & Bırak Editör** | Metinleri, logoları ve şekilleri mouse ile kolayca yerleştirin. Klavye ok tuşları ile hassas ayar yapın. |
+| **Akıllı Alanlar** | `{Ad Soyad}`, `{Tarih}` gibi etiketler koyun, "Doldur" ekranında bu alanları otomatik değiştirin. |
+| **İmza Yönetimi** | Yetkili imzalarını sisteme bir kez yükleyin. Hangi imzanın hangi alanda kullanılabileceğini kısıtlayın. |
+| **Firma & Kısaltma** | Uzun firma isimlerini sertifikaya, kısa kodlarını (Örn: `ACME A.Ş.` -> `ACME`) dosya ismine otomatik yazdırın. |
+| **Dinamik QR Kod** | Her sertifika için kişiye özel, doğrulanabilir QR kodlar üretin. |
+| **Yedekleme Sistemi** | Tüm projelerinizi, ayarlarınızı ve görsellerinizi tek bir `.json` dosyası olarak yedekleyin/taşıyın. |
+
+### ⌨️ Klavye Kısayolları (Editör Modu)
+*   **Yön Tuşları:** Seçili öğeyi 1px hareket ettirir.
+*   **Shift + Yön Tuşları:** Seçili öğeyi 10px hareket ettirir.
+*   **Delete / Backspace:** Seçili öğeyi siler.
+
+---
+
+# 💻 Geliştiriciler İçin
+
+Eğer bu projeyi geliştirmek, katkıda bulunmak veya kendi EXE dosyanızı derlemek istiyorsanız teknik detaylar burada.
+
+### 🛠️ Teknoloji Yığını
+
+Bu proje, modern web teknolojilerinin gücünü masaüstü deneyimiyle birleştirir.
+
+*   **Core:** React 18, TypeScript, Vite
+*   **Desktop Wrapper:** Electron.js (IPC, Native File System)
+*   **Styling:** Tailwind CSS (Utility-first)
+*   **PDF Engine:** jsPDF (Client-side generation)
+*   **Icons:** Lucide React
+
+### 📂 Proje Yapısı
+
+```
+src/
+├── components/      # UI Bileşenleri (CanvasEditor, SignaturePad vb.)
+├── services/        # Yardımcı servisler (Gemini AI vb.)
+├── types.ts         # TypeScript arayüzleri (Project, Element, Company vb.)
+├── constants.ts     # Sabitler (Fontlar, Şablonlar)
+├── App.tsx          # Ana Uygulama Mantığı ve State Yönetimi
+└── main.js          # Electron Ana Süreci (Main Process)
+```
+
+### ⚙️ Kurulum ve Çalıştırma
+
+Projeyi yerel ortamınızda ayağa kaldırmak için:
 
 1.  **Depoyu Klonlayın:**
     ```bash
-    git clone https://github.com/kullaniciadiniz/procertify-studio.git
+    git clone https://github.com/yourusername/procertify-studio.git
     cd procertify-studio
     ```
 
 2.  **Bağımlılıkları Yükleyin:**
     ```bash
     npm install
-    # veya
-    yarn install
     ```
 
-3.  **Uygulamayı Başlatın:**
+3.  **Geliştirme Modunda Çalıştırın (HMR Destekli):**
     ```bash
     npm run dev
     ```
-    Tarayıcınızda `http://localhost:5173` (veya benzeri bir port) adresine gidin.
+    *Not: Bu komut sadece tarayıcıda çalıştırır. Electron özellikleri (Dosya sistemi vb.) simüle edilir.*
 
-## 📦 Masaüstü Uygulaması (EXE) Olarak Paketleme
+4.  **Electron Geliştirme Modu:**
+    ```bash
+    npm run electron:start
+    ```
+    *Uygulamayı Electron penceresi içinde başlatır.*
 
-Bu proje, masaüstü hissi (native feel) verecek şekilde tasarlanmıştır (yazı seçiminin engellenmesi, özel scrollbarlar vb.). **Electron.js** veya **Tauri** kullanarak projeyi `.exe` veya `.dmg` formatına dönüştürebilirsiniz.
+### 📦 EXE Olarak Paketleme (Build)
 
-*Electron ile basit paketleme örneği:*
+Uygulamayı dağıtılabilir bir `.exe` (Windows) dosyasına dönüştürmek için:
 
-1.  `electron` ve `electron-builder` paketlerini projeye ekleyin.
-2.  `main.js` dosyası oluşturarak React uygulamasını bir pencerede açın.
-3.  `package.json` dosyasındaki build komutlarını yapılandırın.
+```bash
+npm run dist
+```
+
+Bu işlem tamamlandığında `release/` klasörü altında kurulum dosyasını (`ProCertify Studio Setup 1.2.4.exe`) bulabilirsiniz.
+
+> **Önemli Not:** `electron-builder` konfigürasyonu `package.json` dosyasındaki `build` alanında yapılmıştır. İkon değiştirmek için `public/favicon.ico` dosyasını güncelleyin.
+
+---
 
 ## 🤝 Katkıda Bulunma
 
-Katkılarınızı bekliyoruz! Lütfen bir "Issue" açarak veya "Pull Request" göndererek projeye destek olun.
+Açık kaynak dünyasını seviyoruz! Katkıda bulunmak isterseniz:
 
-1.  Bu depoyu Fork'layın.
-2.  Yeni bir özellik dalı (branch) oluşturun (`git checkout -b feature/YeniOzellik`).
-3.  Değişikliklerinizi Commit'leyin (`git commit -m 'Yeni özellik eklendi'`).
-4.  Dalınızı Push'layın (`git push origin feature/YeniOzellik`).
-5.  Bir Pull Request oluşturun.
+1.  Bu depoyu **Fork** edin.
+2.  Yeni bir **Branch** oluşturun (`git checkout -b feature/HarikaOzellik`).
+3.  Değişikliklerinizi **Commit**leyin (`git commit -m 'Harika özellik eklendi'`).
+4.  Branch'inizi **Push**layın (`git push origin feature/HarikaOzellik`).
+5.  Bir **Pull Request** oluşturun.
 
 ## 📄 Lisans
 
-Bu proje MIT Lisansı ile lisanslanmıştır. Detaylar için `LICENSE` dosyasına bakınız.
+Bu proje [MIT Lisansı](LICENSE) altında sunulmuştur. Ticari ve kişisel kullanım için tamamen ücretsizdir.
 
----
-*Geliştirici: [Adınız/Github Profiliniz]*
+<div align="center">
+  <br />
+  <sub>Designed & Developed with ❤️ by ProCertify Team</sub>
+</div>

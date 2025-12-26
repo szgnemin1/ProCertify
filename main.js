@@ -1,26 +1,34 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const path = require('path');
 
 function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 1280,
+    width: 1366,
     height: 900,
+    minWidth: 1024,
+    minHeight: 768,
     title: "ProCertify Studio",
-    icon: path.join(__dirname, 'public/favicon.ico'), // Optional: Add an icon if you have one
+    icon: path.join(__dirname, 'public/favicon.ico'), 
+    backgroundColor: '#0f172a', // Matches slate-900 to prevent white flash
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false, // For simple apps, this allows easier communication
+      contextIsolation: false, 
+      webSecurity: false // Sometimes needed for local file loading issues in some environments
     },
-    autoHideMenuBar: true // Hides the top menu bar for a cleaner app look
+    autoHideMenuBar: true, // Hides the top menu bar for a cleaner app look
+    frame: true // Keep native frame for standard window controls
   });
 
-  // Load the index.html of the app.
-  // In production (EXE), we load the built React files.
+  // Load the app
+  // In dev, usually you'd load localhost, but the script provided builds first.
+  // We will prioritize loading the built file.
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
 
-  // Open the DevTools. (Optional - comment out for production)
-  // mainWindow.webContents.openDevTools();
+  // Open the DevTools only in development mode if needed
+  // if (!app.isPackaged) {
+  //   mainWindow.webContents.openDevTools();
+  // }
 }
 
 // This method will be called when Electron has finished initialization
