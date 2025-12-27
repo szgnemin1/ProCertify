@@ -215,6 +215,13 @@ const App = () => {
 
 
   // --- Helper Functions ---
+  
+  // ROBUST KEY NORMALIZATION
+  // Removes extra spaces, trims, ensures consistency between input and replace logic
+  const normalizeKey = (key: string) => {
+      return key.trim().replace(/\s+/g, ' ');
+  };
+
   const updateProjectSide = (side: Side, updates: Partial<CertificateSide>) => {
     setProjects(prev => prev.map(p => {
       if (p.id === activeProjectId) {
@@ -642,8 +649,33 @@ const App = () => {
     targetProjects.forEach(proj => {
         [proj.front, proj.back].forEach(side => {
             side.elements.forEach(el => {
-                // Included COMPANY here
-                if (el.type === ElementType.TEXT || el.type === ElementType.SIGNATURE || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY) {
+                
+                // --- LOGIC FOR TEXT AND QRCODE: Scan content for placeholders ---
+                // This ensures that if user types "Sayın {AD SOYAD}, {TARİH} tarihinde...",
+                // we generate inputs for "AD SOYAD" and "TARİH", not the element label.
+                if (el.type === ElementType.TEXT || el.type === ElementType.QRCODE) {
+                    const regex = /{([^{}]+)}/g;
+                    let match;
+                    while ((match = regex.exec(el.content)) !== null) {
+                        const rawKey = match[1];
+                        const key = normalizeKey(rawKey); // Use robust key normalization
+                        
+                        // Skip if it's a "Short Name" request, we base field on root
+                        if (key.endsWith('_Kisa')) continue; 
+
+                        if (!fields[key]) {
+                            fields[key] = {
+                                type: ElementType.TEXT, // Always text input for placeholders
+                                label: key,
+                                // No specific options/sigs for text placeholders
+                            };
+                        }
+                    }
+                }
+
+                // --- LOGIC FOR STRUCTURED INPUTS ---
+                // Dropdown, Company, and Signature still rely on the Element Label acting as the key.
+                if (el.type === ElementType.SIGNATURE || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY) {
                     const key = el.label || el.id;
                     if (!fields[key]) {
                         fields[key] = {
@@ -678,14 +710,29 @@ const App = () => {
   // Handles text replacement, finding signature/image names from Data URLs, and Company Short Codes
   const formatContent = (pattern: string, values: Record<string, string>) => {
       if (!pattern) return '';
-      return pattern.replace(/{([^{}]+)}/g, (match, label) => {
+      return pattern.replace(/{([^{}]+)}/g, (match, rawLabel) => {
          
+         const label = normalizeKey(rawLabel); // Use same normalization as key generation
+
          // CHECK FOR SHORT NAME SUFFIX (For Companies)
          const isShortRequest = label.endsWith('_Kisa');
-         const actualLabel = isShortRequest ? label.replace('_Kisa', '') : label;
+         const cleanLabel = isShortRequest ? label.replace('_Kisa', '') : label;
          
-         const val = values[actualLabel];
-         if (!val) return match;
+         // 1. Try Exact Match (Normalized)
+         let val = values[cleanLabel];
+         
+         // 2. Try Case-Insensitive Match (Turkish aware) - Fallback
+         if (val === undefined) {
+             const foundKey = Object.keys(values).find(k => 
+                 k.toLocaleLowerCase('tr-TR') === cleanLabel.toLocaleLowerCase('tr-TR')
+             );
+             if (foundKey) val = values[foundKey];
+         }
+         
+         // Fix for "Yazmama rağmen yerine yazmıyor": 
+         // Only return placeholder if value is strictly undefined (not yet typed).
+         // If value is "" (empty string), it should return "" (blank), NOT placeholder.
+         if (val === undefined) return match;
          
          // If it's a signature (URL), try to find its name
          if (val.startsWith('data:')) {
@@ -787,11 +834,12 @@ const App = () => {
                 let content = '';
 
                 // Determine content based on element type
-                if (el.type === ElementType.QRCODE) {
-                   // QR Codes use their template pattern and interpolate values
+                if (el.type === ElementType.QRCODE || el.type === ElementType.TEXT) {
+                   // Text and QR Codes now use interpolation
+                   // "Sadece {} arasındaki metini değiştirsin" logic applied here.
                    content = formatContent(el.content, fillValues);
                 } else {
-                   // Text/Image use the direct fill value if available, else template content
+                   // Image/Signature/Dropdown/Company use the direct fill value if available, else template content
                    content = fillValues[el.label || ''] || el.content;
                 }
 
@@ -875,11 +923,12 @@ const App = () => {
   const getPreviewElements = (proj: CertificateProject, side: Side) => {
     return proj[side].elements.map(el => {
       // Dynamic content for QR Codes based on other fields
-      if (el.type === ElementType.QRCODE) {
+      // ALSO apply interpolation for TEXT fields now
+      if (el.type === ElementType.QRCODE || el.type === ElementType.TEXT) {
          return { ...el, content: formatContent(el.content, fillValues) };
       }
 
-      // Standard replacement for Text/Signatures/Dropdowns
+      // Standard replacement for Signatures/Dropdowns
       const val = fillValues[el.label || ''];
       if (val) return { ...el, content: val };
       return el; 
