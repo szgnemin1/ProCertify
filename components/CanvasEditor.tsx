@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { CanvasElement, ElementType } from '../types';
-import { Trash2, Maximize2, List } from 'lucide-react';
+import { Trash2, Maximize2, List, Check, Move } from 'lucide-react';
 import QRCode from 'qrcode';
 
 interface CanvasEditorProps {
@@ -32,6 +32,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
   
   // Dragging State
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragMode, setDragMode] = useState<'main' | 'secondary'>('main');
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   // Resizing State
@@ -74,7 +75,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
 
   // --- DRAG HANDLERS ---
-  const handleMouseDown = (e: React.MouseEvent, id: string) => {
+  const handleMouseDown = (e: React.MouseEvent, id: string, mode: 'main' | 'secondary' = 'main') => {
     if (readOnly) return;
     e.stopPropagation(); // Prevent canvas deselect
     const element = elements.find(el => el.id === id);
@@ -82,15 +83,24 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     onSelect(id);
     setDraggingId(id);
+    setDragMode(mode);
 
     const rect = canvasRef.current.getBoundingClientRect();
     const mouseX = (e.clientX - rect.left) / scale;
     const mouseY = (e.clientY - rect.top) / scale;
 
-    setDragOffset({
-      x: mouseX - element.x,
-      y: mouseY - element.y
-    });
+    if (mode === 'main') {
+        setDragOffset({
+            x: mouseX - element.x,
+            y: mouseY - element.y
+        });
+    } else {
+        // Dragging the secondary box
+        setDragOffset({
+            x: mouseX - (element.secondaryX || (element.x + 100)),
+            y: mouseY - (element.secondaryY || element.y)
+        });
+    }
   };
 
   // --- RESIZE HANDLERS ---
@@ -122,10 +132,27 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
        const mouseX = (e.clientX - rect.left) / scale;
        const mouseY = (e.clientY - rect.top) / scale;
 
-       onUpdateElement(draggingId, { 
-           x: mouseX - dragOffset.x, 
-           y: mouseY - dragOffset.y 
-       });
+       if (dragMode === 'main') {
+           const element = elements.find(el => el.id === draggingId);
+           if (element) {
+               // Calculate delta to move secondary box together with main
+               const dx = (mouseX - dragOffset.x) - element.x;
+               const dy = (mouseY - dragOffset.y) - element.y;
+               
+               onUpdateElement(draggingId, { 
+                   x: mouseX - dragOffset.x, 
+                   y: mouseY - dragOffset.y,
+                   secondaryX: (element.secondaryX || (element.x + 100)) + dx,
+                   secondaryY: (element.secondaryY || element.y) + dy
+               });
+           }
+       } else {
+           // Dragging secondary independently
+           onUpdateElement(draggingId, {
+               secondaryX: mouseX - dragOffset.x,
+               secondaryY: mouseY - dragOffset.y
+           });
+       }
        return;
     }
 
@@ -146,8 +173,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
         height: newHeight
       };
 
-      // For text and dropdown, we scale font size based on width change ratio
-      if (element.type === ElementType.TEXT || element.type === ElementType.DROPDOWN || element.type === ElementType.COMPANY) {
+      // For text types, scale font size
+      if (element.type === ElementType.TEXT || element.type === ElementType.DROPDOWN || element.type === ElementType.COMPANY || element.type === ElementType.TCKN) {
          const ratio = newWidth / resizeStart.w;
          updates.fontSize = Math.max(10, resizeStart.fontSize * ratio);
       }
@@ -194,7 +221,103 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
             }}
             onMouseDown={() => !readOnly && onSelect(null)}
         >
-        {elements.map((el) => (
+        {elements.map((el) => {
+            // SPECIAL RENDER FOR CHOICE BOX
+            if (el.type === ElementType.CHOICE_BOX) {
+                const opt1Label = el.options?.[0] || 'Evet';
+                const opt2Label = el.options?.[1] || 'Hayır';
+                const isOpt1Selected = el.content === opt1Label;
+                const secX = el.secondaryX ?? (el.x + 100);
+                const secY = el.secondaryY ?? el.y;
+
+                return (
+                    <React.Fragment key={el.id}>
+                        {/* Option 1 Box (Main) */}
+                        <div
+                            className={`absolute flex items-center justify-center
+                                ${!readOnly ? 'cursor-move group' : ''}
+                                ${selectedId === el.id ? 'z-50' : 'z-10'}
+                            `}
+                            style={{
+                                left: el.x,
+                                top: el.y,
+                                width: el.width,
+                                height: el.height,
+                                border: (!readOnly || isOpt1Selected) ? `2px solid ${el.color || '#000'}` : 'none',
+                                backgroundColor: (!readOnly) ? 'rgba(255,255,255,0.2)' : 'transparent'
+                            }}
+                            onMouseDown={(e) => handleMouseDown(e, el.id, 'main')}
+                        >
+                            {/* Visual Feedback for Selected Option */}
+                            {isOpt1Selected && <Check size={el.width * 0.8} color={el.color || '#000'} strokeWidth={3} />}
+                            
+                            {!readOnly && (
+                                <div className="absolute -top-6 left-0 bg-amber-500 text-white text-[10px] px-2 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+                                    {opt1Label}
+                                </div>
+                            )}
+                            
+                            {/* Selection Controls for Main Box */}
+                            {!readOnly && selectedId === el.id && (
+                                <>
+                                    <div className="absolute -inset-2 border-2 border-blue-500 rounded-sm pointer-events-none opacity-50"></div>
+                                    <div className="absolute -top-8 right-0 flex gap-2">
+                                        <button onClick={(e) => { e.stopPropagation(); onDeleteElement(el.id); }} className="bg-red-500 text-white p-1 rounded hover:bg-red-600 transition shadow-sm"><Trash2 size={14} /></button>
+                                    </div>
+                                    {/* Connection Line to Secondary */}
+                                    <svg className="absolute top-1/2 left-1/2 overflow-visible pointer-events-none" style={{ width: 0, height: 0 }}>
+                                        <line 
+                                            x1={0} 
+                                            y1={0} 
+                                            x2={secX - el.x} 
+                                            y2={secY - el.y} 
+                                            stroke="blue" 
+                                            strokeWidth="1" 
+                                            strokeDasharray="4"
+                                            opacity="0.5"
+                                        />
+                                    </svg>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Option 2 Box (Secondary) */}
+                        <div
+                            className={`absolute flex items-center justify-center
+                                ${!readOnly ? 'cursor-move group' : ''}
+                                ${selectedId === el.id ? 'z-50' : 'z-10'}
+                            `}
+                            style={{
+                                left: secX,
+                                top: secY,
+                                width: el.width,
+                                height: el.height,
+                                border: (!readOnly || !isOpt1Selected) ? `2px solid ${el.color || '#000'}` : 'none',
+                                backgroundColor: (!readOnly) ? 'rgba(255,255,255,0.2)' : 'transparent'
+                            }}
+                            onMouseDown={(e) => handleMouseDown(e, el.id, 'secondary')}
+                        >
+                             {!isOpt1Selected && <Check size={el.width * 0.8} color={el.color || '#000'} strokeWidth={3} />}
+                             
+                             {!readOnly && (
+                                <div className="absolute -top-6 left-0 bg-slate-500 text-white text-[10px] px-2 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+                                    {opt2Label}
+                                </div>
+                            )}
+
+                             {/* Visual Handle for Secondary when selected */}
+                             {!readOnly && selectedId === el.id && (
+                                 <div className="absolute -inset-1 border border-blue-400 border-dashed rounded-sm pointer-events-none flex items-center justify-center">
+                                     <Move size={12} className="text-blue-500 opacity-50" />
+                                 </div>
+                             )}
+                        </div>
+                    </React.Fragment>
+                );
+            }
+
+            // STANDARD RENDER FOR OTHER ELEMENTS
+            return (
             <div
             key={el.id}
             className={`absolute flex flex-col justify-center
@@ -205,8 +328,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 left: el.x,
                 top: el.y,
                 width: el.width,
-                height: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY) ? 'auto' : el.height,
-                minHeight: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY) ? undefined : el.height,
+                height: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) ? 'auto' : el.height,
+                minHeight: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) ? undefined : el.height,
                 transform: 'translate(0, 0)', 
                 alignItems: el.textAlign === 'left' ? 'flex-start' : (el.textAlign === 'right' ? 'flex-end' : 'center')
             }}
@@ -238,8 +361,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 </>
             )}
 
-            {/* Content Rendering: TEXT, DROPDOWN, and COMPANY use similar text rendering */}
-            {(el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY) && (
+            {/* Content Rendering: TEXT, DROPDOWN, COMPANY, and TCKN */}
+            {(el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) && (
                 <div
                 style={{
                     fontSize: `${el.fontSize}px`,
@@ -269,8 +392,15 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                         Firma Alanı
                     </div>
                 )}
+
+                {/* Visual cue for TCKN in Edit Mode */}
+                {!readOnly && el.type === ElementType.TCKN && (
+                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] bg-red-600 text-white px-2 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition">
+                        TC Kimlik No (Sansürlü)
+                    </div>
+                )}
                 
-                {el.content ? el.content : (readOnly ? '' : (el.type === ElementType.DROPDOWN ? '{Seçenek}' : (el.type === ElementType.COMPANY ? '{Firma}' : '{Metin}')))}
+                {el.content ? el.content : (readOnly ? '' : (el.type === ElementType.DROPDOWN ? '{Seçenek}' : (el.type === ElementType.COMPANY ? '{Firma}' : (el.type === ElementType.TCKN ? '12*******01' : '{Metin}'))))}
                 </div>
             )}
 
@@ -327,7 +457,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 />
             )}
             </div>
-        ))}
+            )
+        })}
         </div>
     </div>
   );

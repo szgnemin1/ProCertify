@@ -37,7 +37,14 @@ import {
   RectangleHorizontal,
   RectangleVertical,
   RotateCcw,
-  Copy // Added Copy Icon
+  Copy,
+  FileCode,
+  Import,
+  ShieldCheck,
+  CheckCircle2, // Icon for Choice
+  ChevronDown,
+  ChevronRight,
+  SlidersHorizontal
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
@@ -52,14 +59,14 @@ import {
 } from './types';
 import { TEMPLATES, FONTS, FONT_WEIGHTS } from './constants';
 import CanvasEditor from './components/CanvasEditor';
-import SignaturePad from './components/SignaturePad'; // Ensure this component exists in components folder
+import SignaturePad from './components/SignaturePad'; 
 
 type ViewMode = 'template' | 'settings' | 'fill' | 'projects';
 type Side = 'front' | 'back';
 
 const DEFAULT_WIDTH = 2000;
 const DEFAULT_HEIGHT = 1414;
-const APP_VERSION = "v1.2.5";
+const APP_VERSION = "v1.3.2"; 
 const GITHUB_URL = "https://github.com/szgnemin1/ProCertify";
 
 const createNewProject = (name: string): CertificateProject => ({
@@ -68,7 +75,7 @@ const createNewProject = (name: string): CertificateProject => ({
   width: DEFAULT_WIDTH,
   height: DEFAULT_HEIGHT,
   createdAt: Date.now(),
-  filenamePattern: 'Sertifika-{Ad Soyad}', // Default pattern
+  filenamePattern: 'Sertifika-{Ad Soyad}', 
   front: {
     bgUrl: TEMPLATES[0].bgUrl,
     elements: [
@@ -76,7 +83,7 @@ const createNewProject = (name: string): CertificateProject => ({
     ]
   },
   back: {
-    bgUrl: '', // Empty by default
+    bgUrl: '', 
     elements: []
   }
 });
@@ -100,12 +107,9 @@ const App = () => {
      return '';
   });
 
-  // State for Fill Mode: Multiple selected projects
   const [selectedFillProjectIds, setSelectedFillProjectIds] = useState<string[]>([]);
-  // State for Fill Mode: Individual project flip state (front/back)
   const [previewSides, setPreviewSides] = useState<Record<string, Side>>({});
 
-  // Initialize selectedFillProjectIds with activeProjectId on mount
   useEffect(() => {
     if (activeProjectId && selectedFillProjectIds.length === 0) {
         setSelectedFillProjectIds([activeProjectId]);
@@ -117,11 +121,12 @@ const App = () => {
   // UI State
   const [activeSide, setActiveSide] = useState<Side>('front');
   const [currentView, setCurrentView] = useState<ViewMode>('template');
-  const [showSigPermissions, setShowSigPermissions] = useState(false); // Toggle for signature permission modal
-  const [showOptionManager, setShowOptionManager] = useState(false); // Toggle for dropdown options modal
-  const [showSignaturePad, setShowSignaturePad] = useState(false); // Toggle for drawing pad
-  const [tempOptionInput, setTempOptionInput] = useState(''); // For adding new option
-  const [isEditingName, setIsEditingName] = useState(false); // For inline project renaming
+  const [showSigPermissions, setShowSigPermissions] = useState(false); 
+  const [showOptionManager, setShowOptionManager] = useState(false); 
+  const [showSignaturePad, setShowSignaturePad] = useState(false); 
+  const [tempOptionInput, setTempOptionInput] = useState(''); 
+  const [isEditingName, setIsEditingName] = useState(false); 
+  const [showChoiceFields, setShowChoiceFields] = useState(false); // Toggle for Choice Fields in Fill view
   
   // Signatures State
   const [signatures, setSignatures] = useState<SavedSignature[]>(() => {
@@ -133,18 +138,17 @@ const App = () => {
     }
   });
 
-  // Company List State (Now structured objects)
+  // Company List State
   const [companies, setCompanies] = useState<Company[]>(() => {
     try {
         const saved = localStorage.getItem('procertify_companies');
         if (saved) {
             const parsed = JSON.parse(saved);
-            // MIGRATION: Check if it's the old string array format
             if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string') {
                 return parsed.map((name: string) => ({
                     id: Date.now() + Math.random().toString(),
                     name: name,
-                    shortName: name // Default short name to full name
+                    shortName: name 
                 }));
             }
             return parsed;
@@ -163,10 +167,9 @@ const App = () => {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const projectNameInputRef = useRef<HTMLInputElement>(null);
+  const htmlTemplateInputRef = useRef<HTMLInputElement>(null);
 
   // --- Fill State ---
-  // Store values by LABEL instead of ID to share across projects
-  // Format: { "ad soyad": "John Doe" } -> Keys are normalized lowercase
   const [fillValues, setFillValues] = useState<Record<string, string>>({});
 
   // --- Persistence Effects ---
@@ -188,14 +191,12 @@ const App = () => {
      }
   }, [projects, activeProjectId]);
 
-  // Focus rename input when editing starts
   useEffect(() => {
     if (isEditingName && projectNameInputRef.current) {
         projectNameInputRef.current.focus();
     }
   }, [isEditingName]);
 
-  // Auto-resize for Template Editor ONLY
   useEffect(() => {
     if (currentView !== 'template') return;
 
@@ -215,11 +216,18 @@ const App = () => {
 
 
   // --- Helper Functions ---
-  
-  // ROBUST KEY NORMALIZATION
-  // Removes extra spaces, trims, and forces LOWERCASE to merge {AD SOYAD} and {Ad Soyad}
   const normalizeKey = (key: string) => {
       return key.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
+  };
+
+  // Masking Helper for TC Identity Number
+  const maskTCKN = (tckn: string) => {
+      if (!tckn || tckn.length < 5) return tckn;
+      // Show first 2 and last 2, mask the rest
+      const first2 = tckn.substring(0, 2);
+      const last2 = tckn.substring(tckn.length - 2);
+      const mask = '*'.repeat(tckn.length - 4);
+      return `${first2}${mask}${last2}`;
   };
 
   const updateProjectSide = (side: Side, updates: Partial<CertificateSide>) => {
@@ -255,14 +263,12 @@ const App = () => {
           return;
       }
 
-      // Swap width and height
       updateProjectMeta({
           width: activeProject.height,
           height: activeProject.width
       });
   };
 
-  // Helper to toggle side in Preview Mode
   const togglePreviewSide = (projectId: string) => {
       setPreviewSides(prev => ({
           ...prev,
@@ -270,17 +276,15 @@ const App = () => {
       }));
   };
 
-  // Helper to get available labels for the current project for filename config
-  // Now returns case-insensitive unique list
   const getProjectLabels = () => {
-    const labelMap = new Map<string, string>(); // normalizedKey -> displayLabel
+    const labelMap = new Map<string, string>(); 
     
     [activeProject.front, activeProject.back].forEach(side => {
         side.elements.forEach(el => {
             if (el.label) {
                 const norm = normalizeKey(el.label);
                 
-                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.SIGNATURE) {
+                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.SIGNATURE || el.type === ElementType.TCKN) {
                     if (!labelMap.has(norm)) {
                         labelMap.set(norm, el.label);
                     }
@@ -293,6 +297,12 @@ const App = () => {
                     const shortKey = normalizeKey(`${el.label}_Kisa`);
                     if (!labelMap.has(shortKey)) {
                         labelMap.set(shortKey, `${el.label}_Kisa`);
+                    }
+                }
+                
+                if (el.type === ElementType.CHOICE_BOX) {
+                    if (!labelMap.has(norm)) {
+                        labelMap.set(norm, el.label);
                     }
                 }
             }
@@ -315,7 +325,6 @@ const App = () => {
       const projectToClone = projects.find(p => p.id === id);
       if (!projectToClone) return;
 
-      // Deep clone using JSON parse/stringify to avoid reference issues
       const newProject: CertificateProject = {
           ...JSON.parse(JSON.stringify(projectToClone)),
           id: Date.now().toString(),
@@ -324,9 +333,6 @@ const App = () => {
       };
 
       setProjects(prev => [...prev, newProject]);
-      // Optional: Switch to the new project immediately
-      // setActiveProjectId(newProject.id);
-      // setCurrentView('template');
   };
 
   const handleDeleteProject = (id: string, e?: React.MouseEvent) => {
@@ -340,7 +346,6 @@ const App = () => {
     if (confirm("Bu projeyi kalıcı olarak silmek istediğinize emin misiniz?")) {
       setProjects(prev => prev.filter(p => p.id !== id));
       setSelectedFillProjectIds(prev => prev.filter(pid => pid !== id));
-      // If we deleted the active project, logic in useEffect will switch to the first available one
     }
   };
 
@@ -365,10 +370,12 @@ const App = () => {
     const content = type === ElementType.TEXT ? '{METİN}' 
                     : (type === ElementType.DROPDOWN ? '{SEÇENEK}' 
                     : (type === ElementType.COMPANY ? '{FİRMA}' 
-                    : (type === ElementType.QRCODE ? '{Ad Soyad}' : '')));
+                    : (type === ElementType.TCKN ? '{TCKN}' 
+                    : (type === ElementType.CHOICE_BOX ? 'Evet' 
+                    : (type === ElementType.QRCODE ? '{Ad Soyad}' : '')))));
     
-    const width = (type === ElementType.SIGNATURE || type === ElementType.QRCODE) ? 200 : 400;
-    const height = (type === ElementType.SIGNATURE) ? 100 : (type === ElementType.QRCODE ? 200 : 100);
+    const width = (type === ElementType.SIGNATURE || type === ElementType.QRCODE) ? 200 : (type === ElementType.CHOICE_BOX ? 40 : 400);
+    const height = (type === ElementType.SIGNATURE) ? 100 : (type === ElementType.QRCODE ? 200 : (type === ElementType.CHOICE_BOX ? 40 : 100));
     
     const newEl: CanvasElement = {
       id: Date.now().toString(),
@@ -381,16 +388,19 @@ const App = () => {
       fontSize: 60,
       fontFamily: FontStyle.SANS,
       color: '#000000',
-      // Simplified labels to match potential placeholders automatically
       label: type === ElementType.TEXT ? 'Metin' 
               : (type === ElementType.SIGNATURE ? 'İmza' 
               : (type === ElementType.DROPDOWN ? 'Seçenek' 
               : (type === ElementType.COMPANY ? 'Firma'
-              : (type === ElementType.QRCODE ? 'QR' : 'Görsel')))),
-      options: type === ElementType.DROPDOWN ? [] : undefined,
+              : (type === ElementType.TCKN ? 'TC Kimlik No'
+              : (type === ElementType.CHOICE_BOX ? 'Seçim Kutusu'
+              : (type === ElementType.QRCODE ? 'QR' : 'Görsel')))))),
+      options: type === ElementType.DROPDOWN ? [] : (type === ElementType.CHOICE_BOX ? ['Evet', 'Hayır'] : undefined),
       fontWeight: 400,
       fontStyle: 'normal',
-      textAlign: 'center' // Default alignment
+      textAlign: 'center',
+      secondaryX: type === ElementType.CHOICE_BOX ? (activeProject.width / 2 - (width/2)) + 150 : undefined,
+      secondaryY: type === ElementType.CHOICE_BOX ? (activeProject.height / 2 - (height/2)) : undefined,
     };
 
     const currentElements = activeProject[activeSide].elements;
@@ -440,13 +450,10 @@ const App = () => {
     if (selectedId === id) setSelectedId(null);
   };
 
-  // --- Keyboard Movement Effect ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only active in template view and when an element is selected
       if (!selectedId || currentView !== 'template') return;
 
-      // Ignore if user is typing in an input field
       const activeEl = document.activeElement as HTMLElement;
       if (activeEl && (
           activeEl.tagName === 'INPUT' || 
@@ -456,7 +463,7 @@ const App = () => {
           return;
       }
 
-      const step = e.shiftKey ? 10 : 1; // Shift + Arrow = 10px, Arrow = 1px
+      const step = e.shiftKey ? 10 : 1; 
 
       let dx = 0;
       let dy = 0;
@@ -465,17 +472,22 @@ const App = () => {
       else if (e.key === 'ArrowDown') dy = step;
       else if (e.key === 'ArrowLeft') dx = -step;
       else if (e.key === 'ArrowRight') dx = step;
-      else return; // Ignore other keys
+      else return; 
 
-      e.preventDefault(); // Prevent page scrolling
+      e.preventDefault();
 
       const currentElement = activeProject[activeSide].elements.find(el => el.id === selectedId);
       
       if (currentElement) {
-          updateElement(selectedId, {
+          const updates: Partial<CanvasElement> = {
               x: currentElement.x + dx,
               y: currentElement.y + dy
-          });
+          };
+          if (currentElement.type === ElementType.CHOICE_BOX) {
+              updates.secondaryX = (currentElement.secondaryX || currentElement.x) + dx;
+              updates.secondaryY = (currentElement.secondaryY || currentElement.y) + dy;
+          }
+          updateElement(selectedId, updates);
       }
     };
 
@@ -521,13 +533,11 @@ const App = () => {
   const addCompany = (input: string) => {
       if (!input.trim()) return;
       
-      // Split by newline to get potential list
       const lines = input.split('\n').map(n => n.trim()).filter(n => n.length > 0);
       
       const newCompanies: Company[] = [];
       
       lines.forEach(line => {
-          // Check for separator "|" for short name
           let name = line;
           let short = line;
           
@@ -545,7 +555,6 @@ const App = () => {
       });
 
       setCompanies(prev => {
-          // Simple duplication check based on name
           const existingNames = new Set(prev.map(p => p.name));
           const uniqueNew = newCompanies.filter(c => !existingNames.has(c.name));
           return [...prev, ...uniqueNew]; 
@@ -594,11 +603,11 @@ const App = () => {
   // --- Backup & Restore ---
   const handleExportBackup = () => {
     const backupData = {
-      version: '1.2.4',
+      version: '1.2.6',
       timestamp: Date.now(),
       projects,
       signatures,
-      companies, // Added companies to backup
+      companies, 
       activeProjectId
     };
     
@@ -606,7 +615,7 @@ const App = () => {
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
     downloadAnchorNode.setAttribute("download", `procertify_yedek_${new Date().toLocaleDateString('tr-TR').replace(/\./g, '_')}.json`);
-    document.body.appendChild(downloadAnchorNode); // required for firefox
+    document.body.appendChild(downloadAnchorNode); 
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
   };
@@ -620,13 +629,12 @@ const App = () => {
         try {
             const json = JSON.parse(event.target?.result as string);
             
-            // Basic validation
             if (json.projects && Array.isArray(json.projects)) {
                 if(confirm(`Yedek dosyasında ${json.projects.length} proje ve ${json.signatures?.length || 0} imza bulundu.\n\nDİKKAT: Bu işlem mevcut tüm verilerinizi SİLECEK ve yedekteki verileri yükleyecektir.\n\nDevam etmek istiyor musunuz?`)) {
                     setProjects(json.projects);
                     if (json.signatures) setSignatures(json.signatures);
                     if (json.companies) setCompanies(json.companies);
-                    // Ensure active project ID exists in new data, otherwise pick first
+                    
                     if (json.activeProjectId && json.projects.some((p: any) => p.id === json.activeProjectId)) {
                        setActiveProjectId(json.activeProjectId);
                     } else if (json.projects.length > 0) {
@@ -642,7 +650,6 @@ const App = () => {
         }
     };
     reader.readAsText(file);
-    // Reset input so same file can be selected again if needed
     if (backupInputRef.current) backupInputRef.current.value = '';
   };
 
@@ -651,10 +658,11 @@ const App = () => {
   const getUnifiedFillFields = () => {
     const fields: Record<string, { 
         type: ElementType, 
-        label: string, // Normalized Key (lowercase)
-        displayLabel: string, // Human readable label (e.g. "Ad Soyad")
+        label: string, 
+        displayLabel: string, 
         allowedSignatureIds?: string[],
-        options?: string[]
+        options?: string[],
+        defaultValue?: string
     }> = {};
 
     const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
@@ -663,38 +671,37 @@ const App = () => {
         [proj.front, proj.back].forEach(side => {
             side.elements.forEach(el => {
                 
-                // 1. STRUCTURED ELEMENTS (High Priority)
-                if (el.type === ElementType.SIGNATURE || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY) {
+                // --- FIX: Added ElementType.TCKN to the inclusion list ---
+                if (el.type === ElementType.SIGNATURE || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.CHOICE_BOX || el.type === ElementType.TCKN) {
                     const rawLabel = el.label || el.id;
-                    const key = normalizeKey(rawLabel); // Lowercase key for merging
+                    const key = normalizeKey(rawLabel); 
                     
                     const structuredField = {
                         type: el.type,
                         label: key,
-                        displayLabel: rawLabel, // Preserve original casing for UI
+                        displayLabel: rawLabel, 
                         allowedSignatureIds: el.allowedSignatureIds,
-                        options: el.options
+                        options: el.options,
+                        defaultValue: el.content // For choice box defaults
                     };
 
                     if (!fields[key]) {
                         fields[key] = structuredField;
                     } else if (fields[key].type === ElementType.TEXT) {
-                        // Upgrade Text placeholder to Structured
                         fields[key] = structuredField;
                     } else if (fields[key].type === el.type) {
-                        // Merge logic
                         if (el.allowedSignatureIds) {
                             const current = fields[key].allowedSignatureIds || [];
                             fields[key].allowedSignatureIds = Array.from(new Set([...current, ...el.allowedSignatureIds]));
                         }
                         if (el.options) {
+                            // If distinct options found for same label, merge unique
                             const current = fields[key].options || [];
                             fields[key].options = Array.from(new Set([...current, ...el.options]));
                         }
                     }
                 }
 
-                // 2. PLACEHOLDERS (Low Priority)
                 if (el.type === ElementType.TEXT || el.type === ElementType.QRCODE) {
                     const regex = /{([^{}]+)}/g;
                     let match;
@@ -708,7 +715,7 @@ const App = () => {
                             fields[key] = {
                                 type: ElementType.TEXT,
                                 label: key,
-                                displayLabel: rawKey.trim() // Keep the first found version as display
+                                displayLabel: rawKey.trim() 
                             };
                         }
                     }
@@ -720,30 +727,24 @@ const App = () => {
     return Object.values(fields);
   };
 
-  // Helper function to resolve placeholders in any text string
   const formatContent = (pattern: string, values: Record<string, string>) => {
       if (!pattern) return '';
       return pattern.replace(/{([^{}]+)}/g, (match, rawLabel) => {
          
          const label = normalizeKey(rawLabel); 
 
-         // CHECK FOR SHORT NAME SUFFIX (For Companies)
          const isShortRequest = label.endsWith('_kisa');
          const cleanLabel = isShortRequest ? label.replace('_kisa', '') : label;
          
-         // Direct lookup (keys are always lowercase now)
          let val = values[cleanLabel];
          
-         // Fix: Only return placeholder if value is strictly undefined (not yet typed)
          if (val === undefined) return match;
          
-         // Signature Handling
          if (val.startsWith('data:')) {
              const sig = signatures.find(s => s.url === val);
              return sig ? sig.name : 'Gorsel'; 
          }
 
-         // Company Short Name Handling
          if (isShortRequest) {
              const company = companies.find(c => c.name === val);
              if (company) return company.shortName;
@@ -754,15 +755,12 @@ const App = () => {
       });
   };
 
-  // Helper for filename generation
   const generateFilename = (pattern: string, values: Record<string, string>) => {
       const name = formatContent(pattern, values);
       return name.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\- ]/gi, '_') + '.pdf';
   };
 
-  // Helper to wrap text on canvas for better WYSIWYG
   const getWrappedLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number) => {
-      // Handle explicit newlines first
       const rawLines = text.split('\n');
       const finalLines: string[] = [];
 
@@ -785,12 +783,183 @@ const App = () => {
       return finalLines;
   };
 
+  // --- HTML TEMPLATE SYSTEM ---
+  
+  // 1. SAVE AS HTML (WITH EMBEDDED STATE)
+  const handleSaveTemplateAsHTML = async () => {
+    const proj = activeProject;
+    const sideData = proj.front;
+    
+    const cleanName = proj.name.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\- ]/gi, '_');
+    const filename = `${cleanName}_Sablon.html`;
+
+    const elementsHtml = await Promise.all(sideData.elements.map(async (el) => {
+         const content = el.content; 
+         // Serialize complete element state for perfect restoration
+         const stateJson = JSON.stringify(el).replace(/"/g, '&quot;');
+
+         if (el.type === ElementType.SIGNATURE && !content) return '';
+
+         let innerHtml = '';
+         if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY) {
+             innerHtml = content;
+         } else if (el.type === ElementType.TCKN) {
+             innerHtml = '12*******01';
+         } else if (el.type === ElementType.CHOICE_BOX) {
+             // For static export, just show a tick in the first box as preview
+             innerHtml = '✓';
+         } else if (el.type === ElementType.QRCODE) {
+             try {
+                const qrDataUrl = await QRCode.toDataURL(content || ' ', {
+                    width: 400, margin: 1, color: { dark: el.color || '#000000', light: '#00000000' }
+                });
+                innerHtml = `<img src="${qrDataUrl}" style="width:100%;height:100%;object-fit:contain;" />`;
+             } catch(e) {}
+         } else {
+             innerHtml = `<img src="${content}" style="width:100%;height:100%;object-fit:contain;" />`;
+         }
+
+         return `<div class="procertify-element" data-json="${stateJson}" style="
+            position: absolute;
+            left: ${el.x}px;
+            top: ${el.y}px;
+            width: ${el.width}px;
+            min-height: ${el.height}px;
+            font-size: ${el.fontSize}px;
+            font-family: ${el.fontFamily};
+            color: ${el.color};
+            font-weight: ${el.fontWeight};
+            font-style: ${el.fontStyle || 'normal'};
+            text-align: ${el.textAlign || 'center'};
+            white-space: pre-wrap;
+            line-height: 1.2;
+            z-index: 10;
+            user-select: none;
+         ">${innerHtml}</div>`;
+    }));
+
+    const fullHtml = `
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8">
+    <title>${proj.name}</title>
+    <!-- Embedded Font Links -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Bebas+Neue&family=Cinzel:wght@400..900&family=Dancing+Script:wght@400..700&family=Great+Vibes&family=Inter:ital,wght@0,100..900;1,100..900&family=Lato:ital,wght@0,100..900;1,100..900&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Merriweather:ital,wght@0,300..900;1,300..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Oswald:wght@200..700&family=Pinyon+Script&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; background: #1e293b; display: flex; justify-content: center; min-height: 100vh; padding: 20px; }
+        .certificate-container {
+            position: relative;
+            background-color: white;
+            background-repeat: no-repeat;
+            background-size: 100% 100%;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <!-- 
+      PROCERTIFY TEMPLATE DATA
+      Width: ${proj.width}
+      Height: ${proj.height}
+    -->
+    <div class="certificate-container" style="width: ${proj.width}px; height: ${proj.height}px; background-image: url('${sideData.bgUrl}');">
+        ${elementsHtml.join('\n')}
+    </div>
+</body>
+</html>`;
+
+    const blob = new Blob([fullHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // 2. IMPORT FROM HTML
+  const handleImportHTMLTemplate = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+        const htmlContent = evt.target?.result as string;
+        if (!htmlContent) return;
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlContent, 'text/html');
+        
+        const container = doc.querySelector('.certificate-container') as HTMLElement;
+        if (!container) {
+            alert("Geçersiz şablon dosyası: Kaplayıcı bulunamadı.");
+            return;
+        }
+
+        // Extract Dimensions
+        const width = parseInt(container.style.width) || DEFAULT_WIDTH;
+        const height = parseInt(container.style.height) || DEFAULT_HEIGHT;
+        
+        // Extract Background
+        let bgUrl = container.style.backgroundImage;
+        if (bgUrl && bgUrl.startsWith('url("')) {
+            bgUrl = bgUrl.slice(5, -2); // Remove url(" and ")
+        } else if (bgUrl && bgUrl.startsWith('url(')) {
+             bgUrl = bgUrl.slice(4, -1);
+        }
+
+        // Extract Elements
+        const newElements: CanvasElement[] = [];
+        const domElements = container.querySelectorAll('.procertify-element');
+        
+        domElements.forEach((domEl) => {
+            const el = domEl as HTMLElement;
+            const jsonData = el.getAttribute('data-json');
+            if (jsonData) {
+                try {
+                    const parsedEl = JSON.parse(jsonData);
+                    // Ensure ID is unique collision-free
+                    parsedEl.id = Date.now().toString() + Math.random().toString().slice(2,6);
+                    newElements.push(parsedEl);
+                } catch(e) { console.error("Failed to parse element data", e); }
+            }
+        });
+
+        // Create New Project
+        const newProject: CertificateProject = {
+            id: Date.now().toString(),
+            name: file.name.replace('.html', '').replace('_Sablon', ''),
+            width,
+            height,
+            createdAt: Date.now(),
+            filenamePattern: 'Sertifika-{Ad Soyad}',
+            front: {
+                bgUrl: bgUrl || '',
+                elements: newElements
+            },
+            back: { bgUrl: '', elements: [] }
+        };
+
+        setProjects(prev => [...prev, newProject]);
+        setActiveProjectId(newProject.id);
+        alert("Şablon başarıyla içe aktarıldı!");
+    };
+    reader.readAsText(file);
+    if(htmlTemplateInputRef.current) htmlTemplateInputRef.current.value = '';
+  };
+
+
   // --- Export PDF (Multi-Project) ---
   const exportPDF = async () => {
     const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
     if (targetProjects.length === 0) return;
 
-    // Determine filename from the FIRST project's pattern if downloading single
     const firstProj = targetProjects[0];
     const filename = generateFilename(firstProj.filenamePattern || 'Sertifika', fillValues);
 
@@ -839,34 +1008,52 @@ const App = () => {
             for (const el of sideData.elements) {
                 let content = '';
 
-                // Determine content based on element type
                 if (el.type === ElementType.QRCODE || el.type === ElementType.TEXT) {
-                   // Text and QR Codes now use interpolation
-                   // "Sadece {} arasındaki metini değiştirsin" logic applied here.
                    content = formatContent(el.content, fillValues);
                 } else {
-                   // Image/Signature/Dropdown/Company use the direct fill value if available, else template content
-                   // Use normalized key lookup
                    const key = normalizeKey(el.label || '');
                    content = fillValues[key] || el.content;
                 }
 
                 if (el.type === ElementType.SIGNATURE && !content) continue;
 
-                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY) {
+                // HANDLE CHOICE BOX PDF RENDER
+                if (el.type === ElementType.CHOICE_BOX) {
+                    ctx.font = `${el.fontWeight || 400} ${el.fontSize}px ${el.fontFamily?.split(',')[0]}`;
+                    ctx.fillStyle = el.color || '#000';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+
+                    const opt1 = el.options?.[0] || 'Evet';
+                    // Check if value matches Option 1 or Default
+                    const isOpt1 = content === opt1;
+                    
+                    // Determine position based on choice
+                    const tickX = isOpt1 ? el.x : (el.secondaryX || el.x + 100);
+                    const tickY = isOpt1 ? el.y : (el.secondaryY || el.y);
+                    
+                    // Draw Tick
+                    ctx.fillText("✓", tickX + (el.width/2), tickY + (el.height/2));
+                    continue; 
+                }
+
+                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) {
                     ctx.font = `${el.fontStyle === 'italic' ? 'italic ' : ''}${el.fontWeight || 400} ${el.fontSize}px ${el.fontFamily?.split(',')[0]}`;
                     ctx.fillStyle = el.color || '#000';
-                    // Text align logic
                     const align = el.textAlign || 'center';
                     ctx.textAlign = align as CanvasTextAlign;
                     ctx.textBaseline = 'top'; 
                     
-                    const textToRender = content || '';
-                    // Wrapped lines now handles \n inside it
+                    let textToRender = content || '';
+                    
+                    // CRITICAL: Apply Masking specifically for TCKN visual rendering on PDF
+                    if (el.type === ElementType.TCKN) {
+                        textToRender = maskTCKN(textToRender);
+                    }
+
                     const allLines = getWrappedLines(ctx, textToRender, el.width);
 
-                    // Calculate X based on alignment
-                    let startX = el.x; // Default left
+                    let startX = el.x; 
                     if (align === 'center') startX = el.x + (el.width / 2);
                     if (align === 'right') startX = el.x + el.width;
 
@@ -877,7 +1064,6 @@ const App = () => {
                         ctx.fillText(line, startX, startY + (idx * lineHeight));
                     });
                 } else if (el.type === ElementType.QRCODE) {
-                    // Generate QR on the fly for export
                     try {
                         const qrDataUrl = await QRCode.toDataURL(content || ' ', {
                              width: el.width,
@@ -894,7 +1080,7 @@ const App = () => {
                                 ctx.drawImage(img, el.x, el.y, el.width, el.height);
                                 resolve();
                             };
-                            img.onerror = () => resolve(); // proceed even if fail
+                            img.onerror = () => resolve(); 
                         });
                     } catch (e) { console.error("QR Export Error", e); }
 
@@ -918,22 +1104,25 @@ const App = () => {
     pdf.save(filename);
   };
 
-  // --- Render Helpers ---
   const currentSideElements = activeProject[activeSide].elements;
   const currentSideBg = activeProject[activeSide].bgUrl;
   const selectedElement = currentSideElements.find(el => el.id === selectedId);
 
   const getPreviewElements = (proj: CertificateProject, side: Side) => {
     return proj[side].elements.map(el => {
-      // Dynamic content for QR Codes based on other fields
-      // ALSO apply interpolation for TEXT fields now
       if (el.type === ElementType.QRCODE || el.type === ElementType.TEXT) {
          return { ...el, content: formatContent(el.content, fillValues) };
       }
 
-      // Standard replacement for Signatures/Dropdowns
       const key = normalizeKey(el.label || '');
       const val = fillValues[key];
+      
+      // CRITICAL: Apply Masking specifically for TCKN visual preview
+      if (el.type === ElementType.TCKN) {
+          if (val) return { ...el, content: maskTCKN(val) };
+          return el;
+      }
+
       if (val) return { ...el, content: val };
       return el; 
     });
@@ -1143,6 +1332,12 @@ const App = () => {
                     <button onClick={() => addElement(ElementType.COMPANY)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200">
                       <Building size={18} /> Firma Ekle
                     </button>
+                    <button onClick={() => addElement(ElementType.TCKN)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200">
+                      <ShieldCheck size={18} /> TC Kimlik No
+                    </button>
+                    <button onClick={() => addElement(ElementType.CHOICE_BOX)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200">
+                      <CheckCircle2 size={18} /> Seçim Kutusu
+                    </button>
                     <button onClick={() => addElement(ElementType.QRCODE)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200">
                       <QrCode size={18} /> QR Kod
                     </button>
@@ -1208,6 +1403,27 @@ const App = () => {
                               ))}
                           </div>
                       </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="file" ref={htmlTemplateInputRef} onChange={handleImportHTMLTemplate} accept=".html" className="hidden" />
+                        <button 
+                            onClick={() => htmlTemplateInputRef.current?.click()}
+                            className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-bold shadow-sm border border-slate-600 flex items-center justify-center gap-1 transition"
+                            title="HTML formatındaki şablon dosyasını geri yükle"
+                        >
+                            <Import size={12} />
+                            HTML ŞABLON YÜKLE
+                        </button>
+
+                        <button 
+                            onClick={handleSaveTemplateAsHTML}
+                            className="w-full py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-[10px] font-bold shadow-sm border border-purple-600 flex items-center justify-center gap-1 transition"
+                            title="Tasarımı tek bir HTML dosyası olarak indirir"
+                        >
+                            <FileCode size={12} />
+                            HTML OLARAK KAYDET
+                        </button>
+                      </div>
                  </div>
                </div>
             </div>
@@ -1221,15 +1437,15 @@ const App = () => {
                  <div className="flex items-center gap-3 overflow-x-auto flex-1 no-scrollbar pr-4">
                      {selectedElement ? (
                     <>
-                        <span className="text-xs font-bold text-amber-500 uppercase whitespace-nowrap">{selectedElement.type === ElementType.COMPANY ? 'FİRMA' : selectedElement.type}</span>
+                        <span className="text-xs font-bold text-amber-500 uppercase whitespace-nowrap">{selectedElement.type === ElementType.COMPANY ? 'FİRMA' : (selectedElement.type === ElementType.CHOICE_BOX ? 'SEÇİM' : selectedElement.type)}</span>
                         <input 
                         value={selectedElement.label || ''} 
                         onChange={(e) => updateElement(selectedElement.id, { label: e.target.value })}
                         className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-32 focus:border-amber-500 outline-none shrink-0"
-                        placeholder="Etiket"
-                        title="Doldurma ekranında aynı etikete sahip alanlar birleşir (Örn: QR içindeki {Etiket} ile burası aynıysa tek kutu çıkar)"
+                        placeholder="Etiket / Soru"
+                        title={selectedElement.type === ElementType.CHOICE_BOX ? "Bu soruyu doldur ekranında göreceksiniz" : "Etiket"}
                         />
-                        {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DROPDOWN || selectedElement.type === ElementType.QRCODE || selectedElement.type === ElementType.COMPANY) && (
+                        {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DROPDOWN || selectedElement.type === ElementType.QRCODE || selectedElement.type === ElementType.COMPANY || selectedElement.type === ElementType.TCKN || selectedElement.type === ElementType.CHOICE_BOX) && (
                         <>
                             <div className="w-[1px] h-6 bg-slate-600 mx-2 shrink-0"></div>
                             
@@ -1262,6 +1478,7 @@ const App = () => {
                                 </select>
 
                                 {/* Alignment Controls */}
+                                {selectedElement.type !== ElementType.CHOICE_BOX && (
                                 <div className="flex items-center bg-slate-900 rounded border border-slate-600 shrink-0">
                                     <button 
                                         onClick={() => updateElement(selectedElement.id, { textAlign: 'left' })}
@@ -1287,6 +1504,7 @@ const App = () => {
                                         <AlignRight size={16} />
                                     </button>
                                 </div>
+                                )}
 
                                 {/* Italic Toggle */}
                                 <button 
@@ -1313,6 +1531,21 @@ const App = () => {
                                     Seçenekleri Düzenle ({selectedElement.options?.length || 0})
                                 </button>
                             )}
+                            
+                            {/* Choice Box: Default Value Switcher */}
+                            {selectedElement.type === ElementType.CHOICE_BOX && selectedElement.options && (
+                                <div className="flex items-center gap-2 ml-2 bg-slate-900 p-1 rounded border border-slate-600">
+                                    <span className="text-[10px] text-slate-400">Varsayılan:</span>
+                                    <select 
+                                        value={selectedElement.content} 
+                                        onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })}
+                                        className="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-xs text-white outline-none"
+                                    >
+                                        {selectedElement.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    </select>
+                                </div>
+                            )}
+
                             {/* Text specific content input */}
                             {selectedElement.type === ElementType.TEXT && (
                                 <input value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-32 shrink-0" placeholder="Örn metin" />
@@ -1752,25 +1985,27 @@ const App = () => {
                         Seçili projelerde doldurulacak ortak alan bulunamadı veya seçim yapmadınız.
                       </div>
                     ) : (
-                        getUnifiedFillFields().map((field, idx) => (
+                        <>
+                        {/* STANDARD FIELDS (Text, Dropdown, Company, TCKN) */}
+                        {getUnifiedFillFields().filter(f => f.type !== ElementType.CHOICE_BOX).map((field, idx) => (
                        <div key={idx} className="space-y-2">
                           <label className="text-sm font-medium text-amber-500 flex justify-between select-none">
                             <span className="truncate pr-2">{field.displayLabel}</span>
                             <span className="text-slate-500 text-[10px] bg-slate-900 px-2 rounded uppercase shrink-0">
-                                {field.type === ElementType.DROPDOWN ? 'SEÇENEK' : (field.type === ElementType.COMPANY ? 'FİRMA' : (field.type === ElementType.QRCODE ? 'QR VERİSİ' : field.type))}
+                                {field.type === ElementType.DROPDOWN ? 'SEÇENEK' : (field.type === ElementType.COMPANY ? 'FİRMA' : (field.type === ElementType.TCKN ? 'TC NO' : (field.type === ElementType.QRCODE ? 'QR VERİSİ' : field.type)))}
                             </span>
                           </label>
                           
-                          {(field.type === ElementType.TEXT || field.type === ElementType.QRCODE) && (
+                          {(field.type === ElementType.TEXT || field.type === ElementType.QRCODE || field.type === ElementType.TCKN) && (
                             <textarea 
                               rows={field.label.toLowerCase().includes('adres') ? 3 : 1}
                               value={fillValues[field.label] || ''}
                               onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))}
                               className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-600 transition resize-y min-h-[46px]"
-                              placeholder={field.type === ElementType.QRCODE ? "https://site.com" : "Metin değeri girin"}
+                              placeholder={field.type === ElementType.QRCODE ? "https://site.com" : (field.type === ElementType.TCKN ? "TC Kimlik No Girin (11 Hane)" : "Metin değeri girin")}
                               style={{ overflow: 'hidden' }}
+                              maxLength={field.type === ElementType.TCKN ? 11 : undefined}
                               onInput={(e) => {
-                                  // Auto-grow
                                   const target = e.target as HTMLTextAreaElement;
                                   target.style.height = 'auto';
                                   target.style.height = target.scrollHeight + 'px';
@@ -1839,11 +2074,70 @@ const App = () => {
                             </div>
                           )}
                        </div>
-                      ))
+                      ))}
+
+                      {/* CHOICE FIELDS SECTION (Initially Hidden) */}
+                      {getUnifiedFillFields().some(f => f.type === ElementType.CHOICE_BOX) && (
+                          <div className="border-t border-slate-700 pt-4 mt-4">
+                              <button 
+                                onClick={() => setShowChoiceFields(!showChoiceFields)}
+                                className="flex items-center justify-between w-full p-3 bg-slate-800 hover:bg-slate-700 rounded-lg transition text-sm text-slate-300 font-medium"
+                              >
+                                  <div className="flex items-center gap-2">
+                                      <SlidersHorizontal size={16} />
+                                      <span>Seçim Kutuları / Onaylar</span>
+                                      <span className="bg-slate-600 text-white text-[10px] px-1.5 rounded-full">
+                                          {getUnifiedFillFields().filter(f => f.type === ElementType.CHOICE_BOX).length}
+                                      </span>
+                                  </div>
+                                  {showChoiceFields ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              </button>
+                              
+                              {showChoiceFields && (
+                                  <div className="mt-3 space-y-4 pl-2 border-l-2 border-slate-700 animate-in fade-in slide-in-from-top-2">
+                                      {getUnifiedFillFields().filter(f => f.type === ElementType.CHOICE_BOX).map((field, idx) => (
+                                          <div key={`choice-${idx}`} className="space-y-2">
+                                              <label className="text-xs font-medium text-slate-400 flex justify-between select-none">
+                                                  <span>{field.displayLabel}</span>
+                                              </label>
+                                              <div className="flex flex-col gap-2 bg-slate-900 p-2 rounded border border-slate-700">
+                                                  {field.options && field.options.map((opt, i) => {
+                                                      const currentVal = fillValues[field.label] || field.defaultValue || field.options?.[0];
+                                                      const isChecked = currentVal === opt;
+                                                      return (
+                                                          <label key={i} className="flex items-center gap-3 cursor-pointer group p-1 rounded hover:bg-slate-800 transition">
+                                                              <input 
+                                                                  type="radio" 
+                                                                  name={field.label} 
+                                                                  value={opt} 
+                                                                  checked={isChecked}
+                                                                  onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))}
+                                                                  className="hidden" 
+                                                              />
+                                                              <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition ${isChecked ? 'border-amber-500' : 'border-slate-500 group-hover:border-slate-400'}`}>
+                                                                  {isChecked && <div className="w-2 h-2 bg-amber-500 rounded-full" />}
+                                                              </div>
+                                                              <span className={`text-xs ${isChecked ? 'text-white' : 'text-slate-500'}`}>{opt}</span>
+                                                          </label>
+                                                      )
+                                                  })}
+                                              </div>
+                                          </div>
+                                      ))}
+                                  </div>
+                              )}
+                              {!showChoiceFields && (
+                                  <p className="text-[10px] text-slate-500 mt-2 text-center">
+                                      Varsayılan seçenekler (Örn: Evet) kullanılacak. Değiştirmek için tıklayın.
+                                  </p>
+                              )}
+                          </div>
+                      )}
+                      </>
                     )}
                  </div>
 
-                 <div className="p-6 border-t border-slate-700 bg-slate-900 shrink-0 select-none">
+                 <div className="p-6 border-t border-slate-700 bg-slate-900 shrink-0 select-none space-y-3">
                     <button 
                       onClick={exportPDF}
                       className="w-full py-4 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 transition active:scale-95 transform"
@@ -1868,7 +2162,6 @@ const App = () => {
                     const side = previewSides[p.id] || 'front';
                     const hasBack = p.back.bgUrl || p.back.elements.length > 0;
                     
-                    // Standard visual width for preview list
                     const previewWidth = 700; 
                     const calcScale = previewWidth / p.width;
 
@@ -1882,7 +2175,6 @@ const App = () => {
                         }}
                         className={`relative group transition-all duration-300 ${hasBack ? 'cursor-pointer' : 'cursor-default'}`}
                         >
-                            {/* Header/Badge */}
                             <div className="absolute -top-3 left-4 z-10 flex gap-2 select-none">
                                 <span className="bg-slate-800 text-white text-xs px-3 py-1 rounded-full border border-slate-700 shadow-lg font-bold">
                                     {p.name}
@@ -1897,7 +2189,6 @@ const App = () => {
                                 )}
                             </div>
 
-                            {/* Canvas Wrapper */}
                             <div className={`rounded-lg overflow-hidden border-4 shadow-2xl transition-colors ${activeProjectId === p.id ? 'border-amber-500/50' : 'border-slate-800'} ${hasBack ? 'hover:border-slate-600' : ''}`}>
                                 <CanvasEditor 
                                     elements={getPreviewElements(p, side)} 
@@ -1928,7 +2219,6 @@ const App = () => {
 
       </div>
       
-      {/* Signature Pad Modal */}
       {showSignaturePad && (
         <SignaturePad 
           onSave={handleSignatureDrawSave}

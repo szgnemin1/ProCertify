@@ -4,7 +4,9 @@ export enum ElementType {
   SIGNATURE = 'SIGNATURE', // Used for Signature Placeholders
   DROPDOWN = 'DROPDOWN', // Dropdown selection component
   QRCODE = 'QRCODE', // New: QR Code generator
-  COMPANY = 'COMPANY' // New: Company selection component linked to global settings
+  COMPANY = 'COMPANY', // New: Company selection component linked to global settings
+  TCKN = 'TCKN', // New: Masked Identity Number
+  CHOICE_BOX = 'CHOICE_BOX' // New: Boolean selection with two distinct positions (Yes/No check)
 }
 
 // Extended FontStyle map is now handled in constants.ts via generic strings to allow more flexibility
@@ -23,7 +25,7 @@ export interface Position {
 export interface CanvasElement {
   id: string;
   type: ElementType;
-  content: string; // Default text or Placeholder ID or QR Data
+  content: string; // Default text or Placeholder ID or QR Data or Default Value for Choice
   x: number;
   y: number;
   width: number; // Width is now mandatory for resizing
@@ -36,7 +38,9 @@ export interface CanvasElement {
   textAlign?: 'left' | 'center' | 'right'; // New: Text alignment
   label?: string; // For UI identification (e.g. "Ad Soyad Alanı")
   allowedSignatureIds?: string[]; // IDs of signatures allowed for this specific slot
-  options?: string[]; // List of options for Dropdown elements
+  options?: string[]; // List of options for Dropdown elements OR Labels for Choice Box [TrueLabel, FalseLabel]
+  secondaryX?: number; // X position for the "False/Option 2" box
+  secondaryY?: number; // Y position for the "False/Option 2" box
 }
 
 export interface CertificateSide {
