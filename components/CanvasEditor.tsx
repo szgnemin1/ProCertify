@@ -42,7 +42,26 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
   // QR Code Cache to prevent flickering
   const [qrCache, setQrCache] = useState<Record<string, string>>({});
 
-  // Generate QR Codes
+  // Use refs for event listeners to avoid re-binding and stale closures
+  const elementsRef = useRef(elements);
+  const draggingIdRef = useRef(draggingId);
+  const dragOffsetRef = useRef(dragOffset);
+  const dragModeRef = useRef(dragMode);
+  const resizingIdRef = useRef(resizingId);
+  const resizeStartRef = useRef(resizeStart);
+  const scaleRef = useRef(scale);
+
+  // Sync refs with state/props
+  useEffect(() => { elementsRef.current = elements; }, [elements]);
+  useEffect(() => { draggingIdRef.current = draggingId; }, [draggingId]);
+  useEffect(() => { dragOffsetRef.current = dragOffset; }, [dragOffset]);
+  useEffect(() => { dragModeRef.current = dragMode; }, [dragMode]);
+  useEffect(() => { resizingIdRef.current = resizingId; }, [resizingId]);
+  useEffect(() => { resizeStartRef.current = resizeStart; }, [resizeStart]);
+  useEffect(() => { scaleRef.current = scale; }, [scale]);
+
+
+  // Generate QR Codes - Optimized Dependency
   useEffect(() => {
     const generateQRs = async () => {
         const qrElements = elements.filter(el => el.type === ElementType.QRCODE);
@@ -70,6 +89,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
         }
         if (hasChanges) setQrCache(newCache);
     };
+    // Only run if QR-specific properties change or element count changes
+    // Simplified trigger for safety
     generateQRs();
   }, [elements]);
 
@@ -122,82 +143,90 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     });
   };
 
-  // --- GLOBAL MOVE/UP HANDLERS ---
-  const handleGlobalMouseMove = (e: MouseEvent) => {
-    if (readOnly || !canvasRef.current) return;
-
-    // Handle Dragging
-    if (draggingId) {
-       const rect = canvasRef.current.getBoundingClientRect();
-       const mouseX = (e.clientX - rect.left) / scale;
-       const mouseY = (e.clientY - rect.top) / scale;
-
-       if (dragMode === 'main') {
-           const element = elements.find(el => el.id === draggingId);
-           if (element) {
-               // Calculate delta to move secondary box together with main
-               const dx = (mouseX - dragOffset.x) - element.x;
-               const dy = (mouseY - dragOffset.y) - element.y;
-               
-               onUpdateElement(draggingId, { 
-                   x: mouseX - dragOffset.x, 
-                   y: mouseY - dragOffset.y,
-                   secondaryX: (element.secondaryX || (element.x + 100)) + dx,
-                   secondaryY: (element.secondaryY || element.y) + dy
-               });
-           }
-       } else {
-           // Dragging secondary independently
-           onUpdateElement(draggingId, {
-               secondaryX: mouseX - dragOffset.x,
-               secondaryY: mouseY - dragOffset.y
-           });
-       }
-       return;
-    }
-
-    // Handle Resizing
-    if (resizingId) {
-      const element = elements.find(el => el.id === resizingId);
-      if (!element) return;
-
-      const deltaX = (e.clientX - resizeStart.x) / scale;
-      const deltaY = (e.clientY - resizeStart.y) / scale;
-
-      // Calculate new dimensions
-      const newWidth = Math.max(20, resizeStart.w + deltaX);
-      const newHeight = Math.max(20, resizeStart.h + deltaY);
-
-      const updates: Partial<CanvasElement> = {
-        width: newWidth,
-        height: newHeight
-      };
-
-      // For text types, scale font size
-      if (element.type === ElementType.TEXT || element.type === ElementType.DROPDOWN || element.type === ElementType.COMPANY || element.type === ElementType.TCKN) {
-         const ratio = newWidth / resizeStart.w;
-         updates.fontSize = Math.max(10, resizeStart.fontSize * ratio);
-      }
-
-      onUpdateElement(resizingId, updates);
-    }
-  };
-
-  const handleGlobalMouseUp = () => {
-    setDraggingId(null);
-    setResizingId(null);
-  };
-
+  // --- GLOBAL MOVE/UP HANDLERS (OPTIMIZED) ---
   useEffect(() => {
+      const handleGlobalMouseMove = (e: MouseEvent) => {
+        if (readOnly || !canvasRef.current) return;
+
+        const currentScale = scaleRef.current;
+        const currentElements = elementsRef.current;
+        const currentDragId = draggingIdRef.current;
+        const currentResizingId = resizingIdRef.current;
+
+        // Handle Dragging
+        if (currentDragId) {
+            const rect = canvasRef.current.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left) / currentScale;
+            const mouseY = (e.clientY - rect.top) / currentScale;
+            
+            const currentMode = dragModeRef.current;
+            const currentOffset = dragOffsetRef.current;
+
+            if (currentMode === 'main') {
+                const element = currentElements.find(el => el.id === currentDragId);
+                if (element) {
+                    const dx = (mouseX - currentOffset.x) - element.x;
+                    const dy = (mouseY - currentOffset.y) - element.y;
+                    
+                    onUpdateElement(currentDragId, { 
+                        x: mouseX - currentOffset.x, 
+                        y: mouseY - currentOffset.y,
+                        secondaryX: (element.secondaryX || (element.x + 100)) + dx,
+                        secondaryY: (element.secondaryY || element.y) + dy
+                    });
+                }
+            } else {
+                onUpdateElement(currentDragId, {
+                    secondaryX: mouseX - currentOffset.x,
+                    secondaryY: mouseY - currentOffset.y
+                });
+            }
+            return;
+        }
+
+        // Handle Resizing
+        if (currentResizingId) {
+            const element = currentElements.find(el => el.id === currentResizingId);
+            if (!element) return;
+
+            const start = resizeStartRef.current;
+            const deltaX = (e.clientX - start.x) / currentScale;
+            const deltaY = (e.clientY - start.y) / currentScale;
+
+            const newWidth = Math.max(20, start.w + deltaX);
+            const newHeight = Math.max(20, start.h + deltaY);
+
+            const updates: Partial<CanvasElement> = {
+                width: newWidth,
+                height: newHeight
+            };
+
+            if (element.type === ElementType.TEXT || element.type === ElementType.DROPDOWN || element.type === ElementType.COMPANY || element.type === ElementType.TCKN) {
+                const ratio = newWidth / start.w;
+                updates.fontSize = Math.max(10, start.fontSize * ratio);
+            }
+
+            onUpdateElement(currentResizingId, updates);
+        }
+    };
+
+    const handleGlobalMouseUp = () => {
+        if (draggingIdRef.current || resizingIdRef.current) {
+            setDraggingId(null);
+            setResizingId(null);
+        }
+    };
+
+    // Only attach/detach based on active drag state
     if (draggingId || resizingId) {
-      window.addEventListener('mousemove', handleGlobalMouseMove);
-      window.addEventListener('mouseup', handleGlobalMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleGlobalMouseMove);
-        window.removeEventListener('mouseup', handleGlobalMouseUp);
-      };
+        window.addEventListener('mousemove', handleGlobalMouseMove);
+        window.addEventListener('mouseup', handleGlobalMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleGlobalMouseMove);
+            window.removeEventListener('mouseup', handleGlobalMouseUp);
+        };
     }
-  }, [draggingId, resizingId, elements, dragOffset, resizeStart]);
+  }, [draggingId, resizingId, onUpdateElement, readOnly]); // Minimized dependency array
 
   return (
     <div 

@@ -66,7 +66,7 @@ type Side = 'front' | 'back';
 
 const DEFAULT_WIDTH = 2000;
 const DEFAULT_HEIGHT = 1414;
-const APP_VERSION = "v1.3.2"; 
+const APP_VERSION = "v1.3.3-opt"; 
 const GITHUB_URL = "https://github.com/szgnemin1/ProCertify";
 
 const createNewProject = (name: string): CertificateProject => ({
@@ -172,17 +172,29 @@ const App = () => {
   // --- Fill State ---
   const [fillValues, setFillValues] = useState<Record<string, string>>({});
 
-  // --- Persistence Effects ---
+  // --- OPTIMIZED PERSISTENCE (DEBOUNCED) ---
+  // Eski yöntem her renderda kayıt yapıyordu, bu kasma yaratır.
+  // Yeni yöntem: Değişiklikler durduktan 1000ms sonra kaydeder.
+  
   useEffect(() => {
-    localStorage.setItem('procertify_projects', JSON.stringify(projects));
+    const timer = setTimeout(() => {
+        localStorage.setItem('procertify_projects', JSON.stringify(projects));
+    }, 1000);
+    return () => clearTimeout(timer);
   }, [projects]);
 
   useEffect(() => {
-    localStorage.setItem('procertify_signatures', JSON.stringify(signatures));
+    const timer = setTimeout(() => {
+        localStorage.setItem('procertify_signatures', JSON.stringify(signatures));
+    }, 1000);
+    return () => clearTimeout(timer);
   }, [signatures]);
 
   useEffect(() => {
-    localStorage.setItem('procertify_companies', JSON.stringify(companies));
+    const timer = setTimeout(() => {
+        localStorage.setItem('procertify_companies', JSON.stringify(companies));
+    }, 1000);
+    return () => clearTimeout(timer);
   }, [companies]);
 
   useEffect(() => {
@@ -209,10 +221,13 @@ const App = () => {
         setScale(Math.min(scaleX, scaleY));
       }
     };
+    // Debounce resize calculation slightly
+    const debouncedResize = () => requestAnimationFrame(handleResize);
+    
     setTimeout(handleResize, 100);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [activeProject, currentView]);
+    window.addEventListener('resize', debouncedResize);
+    return () => window.removeEventListener('resize', debouncedResize);
+  }, [activeProject.width, activeProject.height, currentView]);
 
 
   // --- Helper Functions ---
