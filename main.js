@@ -1,5 +1,6 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 function createWindow() {
   // Create the browser window.
@@ -21,15 +22,32 @@ function createWindow() {
   });
 
   // Load the app
-  // In dev, usually you'd load localhost, but the script provided builds first.
-  // We will prioritize loading the built file.
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
-
-  // Open the DevTools only in development mode if needed
-  // if (!app.isPackaged) {
-  //   mainWindow.webContents.openDevTools();
-  // }
 }
+
+// --- IPC HANDLERS FOR FILE SYSTEM ACCESS ---
+
+// 1. Let user select a folder
+ipcMain.handle('select-directory', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory'],
+    buttonLabel: 'Klasörü Seç ve Kaydet'
+  });
+  if (result.canceled) return null;
+  return result.filePaths[0];
+});
+
+// 2. Save a specific file to disk
+ipcMain.handle('save-file', async (event, { folderPath, fileName, dataBuffer }) => {
+  try {
+    const fullPath = path.join(folderPath, fileName);
+    fs.writeFileSync(fullPath, Buffer.from(dataBuffer));
+    return { success: true, path: fullPath };
+  } catch (error) {
+    console.error("File save error:", error);
+    return { success: false, error: error.message };
+  }
+});
 
 // This method will be called when Electron has finished initialization
 app.whenReady().then(() => {

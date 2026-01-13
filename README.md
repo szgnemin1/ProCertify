@@ -12,15 +12,13 @@
     <a href="#-kurulum">📦 İndir</a>
   </p>
 
-  ![Version](https://img.shields.io/badge/Versiyon-v1.3.3-blue?style=for-the-badge)
+  ![Version](https://img.shields.io/badge/Versiyon-v1.3.5-blue?style=for-the-badge)
   ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
   ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
   ![Electron](https://img.shields.io/badge/Electron-191970?style=for-the-badge&logo=Electron&logoColor=white)
   ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
   <br />
-  <!-- Ekran görüntüsü buraya eklenebilir -->
-  <!-- <img src="screenshot.png" alt="ProCertify Studio Ekran Görüntüsü" width="100%"> -->
 </div>
 
 ---
@@ -37,12 +35,14 @@ Modern sürükle-bırak arayüzü ile dakikalar içinde şablonunuzu hazırlayab
 
 ### ✨ Neden ProCertify Studio?
 
-*   **🔒 %100 Güvenli ve Çevrimdışı:** Verileriniz asla bir sunucuya gitmez. Bilgisayarınızda (EXE) çalışır. KVKK/GDPR uyumludur.
-*   **🧠 Akıllı Veri Birleştirme (YENİ):** Şablonda `{AD SOYAD}` ve `{Ad Soyad}` gibi farklı yazımlar olsa bile, sistem bunları **tek bir kutuda** birleştirir.
+*   **🔒 %100 Güvenli ve Çevrimdışı:** Verileriniz asla bir sunucuya gitmez. Bilgisayarınızda (EXE) çalışır.
+*   **📂 Esnek Çıktı Modları (YENİ):** Sertifikalarınızı ister **tek bir PDF** dosyasında birleştirin, isterseniz bilgisayarınızda seçeceğiniz bir **klasöre ayrı ayrı dosyalar** (örn: `Ahmet-Yilmaz.pdf`, `Ayse-Demir.pdf`) olarak otomatik kaydedin.
+*   **✍️ Gelişmiş İmza Yönetimi:** İmzalarınızı sisteme yükleyin veya doğrudan uygulama içinde **mouse/tablet ile çizin**.
+*   **🧠 Akıllı Veri Birleştirme:** Şablonda `{AD SOYAD}` ve `{Ad Soyad}` gibi farklı yazımlar olsa bile, sistem bunları **tek bir kutuda** birleştirir.
 *   **✅ Seçim Kutuları (Checkbox):** Sertifika üzerinde "Evet/Hayır" veya onay kutucukları oluşturabilirsiniz.
 *   **🔗 QR ve Metin Senkronizasyonu:** Bir metin alanına ve QR koda aynı etiketi (Örn: `{Firma}`) verirseniz, doldurma ekranında tek seçim yaparak ikisini de aynı anda güncelleyebilirsiniz.
-*   **⚡ Toplu Üretim Gücü:** Tek bir şablon yapın, 1000 farklı isim için tek tuşla PDF alın.
-*   **🚀 Performans Modu:** Binlerce imza veya görsel yükleseniz bile uygulama donmaz (Debounce & Cache teknolojisi).
+*   **⚡ Toplu Üretim Gücü:** Tek bir şablon yapın, 1000 farklı isim için tek tuşla üretim yapın.
+*   **🚀 Performans Modu:** Binlerce imza veya görsel yükleseniz bile uygulama donmaz.
 
 ### 🔥 Temel Özellikler
 
@@ -50,8 +50,8 @@ Modern sürükle-bırak arayüzü ile dakikalar içinde şablonunuzu hazırlayab
 | :--- | :--- |
 | **Sürükle & Bırak Editör** | Metinleri, logoları, imzaları ve QR kodları mouse ile kolayca yerleştirin. |
 | **Dinamik Yer Tutucular** | `{Ad Soyad}`, `{Tarih}` gibi etiketler koyun, "Doldur" ekranında bu alanları otomatik değiştirin. |
-| **İmza Yönetimi** | İmzalarınızı sisteme yükleyin veya doğrudan uygulama içinde çizin. |
-| **Firma & Kısaltma** | Uzun firma isimlerini sertifikaya, kısa kodlarını (Örn: `ACME A.Ş.` -> `ACME`) dosya ismine otomatik yazdırın. |
+| **İmza Çizimi ve Yükleme** | Tablet veya mouse ile imza atın, veya şeffaf PNG imzalarınızı yükleyin. |
+| **Firma & Kısaltma** | Uzun firma isimlerini sertifikaya, kısa kodlarını dosya ismine otomatik yazdırın. |
 | **Yedekleme Sistemi** | Tüm projelerinizi tek bir `.json` dosyası olarak yedekleyin/taşıyın. |
 
 ---
@@ -93,7 +93,7 @@ Uygulamayı dağıtılabilir bir `.exe` (Windows) dosyasına dönüştürmek iç
 npm run dist
 ```
 
-Bu işlem tamamlandığında `release/` klasörü altında kurulum dosyasını (`ProCertify Studio Setup 1.3.3.exe`) bulabilirsiniz.
+Bu işlem tamamlandığında `release/` klasörü altında kurulum dosyasını (`ProCertify Studio Setup 1.3.5.exe`) bulabilirsiniz.
 
 ## 📄 Lisans
 
