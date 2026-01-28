@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Download, 
@@ -41,16 +42,15 @@ import {
   FileCode,
   Import,
   ShieldCheck,
-  CheckCircle2, // Icon for Choice
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   SlidersHorizontal,
-  FileStack, // New icon for single file
-  Files // New icon for multiple files
+  FileStack,
+  Files
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
-// JSZip removed - using Native File System
 import { 
   CanvasElement, 
   ElementType, 
@@ -66,14 +66,13 @@ import SignaturePad from './components/SignaturePad';
 
 type ViewMode = 'template' | 'settings' | 'fill' | 'projects';
 type Side = 'front' | 'back';
-type ExportMode = 'single' | 'separate'; // New Export Mode Type
+type ExportMode = 'single' | 'separate';
 
 const DEFAULT_WIDTH = 2000;
 const DEFAULT_HEIGHT = 1414;
 const APP_VERSION = "v1.3.5-exe"; 
 const GITHUB_URL = "https://github.com/szgnemin1/ProCertify";
 
-// Helper to access Electron in Renderer
 const getElectron = () => {
     // @ts-ignore
     if (window.require) {
@@ -123,10 +122,11 @@ const App = () => {
 
   const [selectedFillProjectIds, setSelectedFillProjectIds] = useState<string[]>([]);
   const [previewSides, setPreviewSides] = useState<Record<string, Side>>({});
-  const [exportMode, setExportMode] = useState<ExportMode>('single'); // New state for export mode
+  const [exportMode, setExportMode] = useState<ExportMode>('single');
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
 
+  // Initialize selectedFillProjectIds if empty and active project exists
   useEffect(() => {
     if (activeProjectId && selectedFillProjectIds.length === 0) {
         setSelectedFillProjectIds([activeProjectId]);
@@ -143,7 +143,7 @@ const App = () => {
   const [showSignaturePad, setShowSignaturePad] = useState(false); 
   const [tempOptionInput, setTempOptionInput] = useState(''); 
   const [isEditingName, setIsEditingName] = useState(false); 
-  const [showChoiceFields, setShowChoiceFields] = useState(false); // Toggle for Choice Fields in Fill view
+  const [showChoiceFields, setShowChoiceFields] = useState(false);
   
   // Signatures State
   const [signatures, setSignatures] = useState<SavedSignature[]>(() => {
@@ -161,12 +161,15 @@ const App = () => {
         const saved = localStorage.getItem('procertify_companies');
         if (saved) {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string') {
-                return parsed.map((name: string) => ({
-                    id: Date.now() + Math.random().toString(),
-                    name: name,
-                    shortName: name 
-                }));
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                if (typeof parsed[0] === 'string') {
+                    return parsed.map((name: string) => ({
+                        id: Date.now() + Math.random().toString(),
+                        name: name,
+                        shortName: name 
+                    }));
+                }
+                return parsed;
             }
             return parsed;
         }
@@ -189,24 +192,30 @@ const App = () => {
   // --- Fill State ---
   const [fillValues, setFillValues] = useState<Record<string, string>>({});
 
-  // --- OPTIMIZED PERSISTENCE (DEBOUNCED) ---
+  // --- PERSISTENCE ---
   useEffect(() => {
     const timer = setTimeout(() => {
-        localStorage.setItem('procertify_projects', JSON.stringify(projects));
+        try {
+            localStorage.setItem('procertify_projects', JSON.stringify(projects));
+        } catch (e) { console.error("Storage limit reached"); }
     }, 1000);
     return () => clearTimeout(timer);
   }, [projects]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-        localStorage.setItem('procertify_signatures', JSON.stringify(signatures));
+        try {
+            localStorage.setItem('procertify_signatures', JSON.stringify(signatures));
+        } catch (e) { console.error("Storage limit reached"); }
     }, 1000);
     return () => clearTimeout(timer);
   }, [signatures]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-        localStorage.setItem('procertify_companies', JSON.stringify(companies));
+        try {
+            localStorage.setItem('procertify_companies', JSON.stringify(companies));
+        } catch (e) { console.error("Storage limit reached"); }
     }, 1000);
     return () => clearTimeout(timer);
   }, [companies]);
@@ -242,8 +251,7 @@ const App = () => {
     return () => window.removeEventListener('resize', debouncedResize);
   }, [activeProject.width, activeProject.height, currentView]);
 
-
-  // --- Helper Functions ---
+  // --- Functions ---
   const normalizeKey = (key: string) => {
       return key.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
   };
@@ -288,7 +296,6 @@ const App = () => {
           (orientation === 'portrait' && !currentIsLandscape)) {
           return;
       }
-
       updateProjectMeta({
           width: activeProject.height,
           height: activeProject.width
@@ -304,7 +311,6 @@ const App = () => {
 
   const getProjectLabels = () => {
     const labelMap = new Map<string, string>(); 
-    
     [activeProject.front, activeProject.back].forEach(side => {
         side.elements.forEach(el => {
             if (el.label) {
@@ -322,7 +328,7 @@ const App = () => {
     return Array.from(labelMap.values());
   };
 
-  // --- Actions ---
+  // --- CRUD Actions ---
   const handleCreateProject = () => {
     const newP = createNewProject(`Sertifika - ${new Date().toLocaleTimeString()}`);
     setProjects(prev => [...prev, newP]);
@@ -355,6 +361,7 @@ const App = () => {
     }
   };
 
+  // --- Element Management ---
   const handleTemplateUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -456,6 +463,7 @@ const App = () => {
     if (selectedId === id) setSelectedId(null);
   };
 
+  // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!selectedId || currentView !== 'template') return;
@@ -484,6 +492,7 @@ const App = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedId, activeProjectId, activeSide, projects, currentView]); 
 
+  // --- Modals & Options ---
   const toggleAllowedSignature = (elementId: string, sigId: string) => {
       const element = activeProject[activeSide].elements.find(el => el.id === elementId);
       if (!element) return;
@@ -567,11 +576,118 @@ const App = () => {
       setSignatures(prev => prev.filter(s => s.id !== id));
   };
 
-  // --- HTML SAVE/IMPORT OMITTED FOR BREVITY but still in logic ---
-  const handleSaveTemplateAsHTML = async () => { /* ... existing logic ... */ };
-  const handleImportHTMLTemplate = (e: React.ChangeEvent<HTMLInputElement>) => { /* ... existing logic ... */ };
-  const handleExportBackup = () => { /* ... existing logic ... */ };
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => { /* ... existing logic ... */ };
+  // --- IMPORT/EXPORT LOGIC ---
+  
+  const handleSaveTemplateAsHTML = async () => {
+     const json = JSON.stringify(activeProject, null, 2);
+     const blob = new Blob([json], { type: 'application/json' });
+     const url = URL.createObjectURL(blob);
+     const a = document.createElement('a');
+     a.href = url;
+     a.download = `Sertifika_Sablon_${activeProject.name.replace(/\s+/g, '_')}.json`;
+     document.body.appendChild(a);
+     a.click();
+     document.body.removeChild(a);
+     URL.revokeObjectURL(url);
+  };
+
+  const handleImportHTMLTemplate = (e: React.ChangeEvent<HTMLInputElement>) => {
+     const file = e.target.files?.[0];
+     if (!file) return;
+     const reader = new FileReader();
+     reader.onload = (evt) => {
+         try {
+             const parsed = JSON.parse(evt.target?.result as string);
+             if (parsed.id && parsed.front) {
+                 const newProject = { ...parsed, id: Date.now().toString(), name: parsed.name + ' (İçe Aktarılan)' };
+                 setProjects(prev => [...prev, newProject]);
+                 setActiveProjectId(newProject.id);
+                 alert('Şablon başarıyla yüklendi!');
+             } else {
+                 alert('Geçersiz şablon dosyası.');
+             }
+         } catch(e) { console.error(e); alert('Dosya okunamadı.'); }
+     };
+     reader.readAsText(file);
+     e.target.value = '';
+  };
+
+  // FULL SYSTEM BACKUP EXPORT
+  const handleExportBackup = () => {
+    try {
+        const backupData = {
+            version: APP_VERSION,
+            timestamp: Date.now(),
+            projects,
+            signatures,
+            companies
+        };
+        const dataStr = JSON.stringify(backupData, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        // Fix filename to be safe for Windows filesystems (no colons)
+        const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
+        a.download = `ProCertify_Yedek_${dateStr}.json`;
+        
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error("Yedekleme hatası:", error);
+        alert("Yedek dosyası oluşturulurken bir hata oluştu.");
+    }
+  };
+
+  // FIXED: FULL SYSTEM BACKUP IMPORT
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Explicit confirm
+    if(!confirm("DİKKAT: Bu işlem mevcut tüm projelerinizi ve ayarlarınızı SİLECEK ve yedek dosyasındakileri yükleyecektir.\n\nDevam etmek istiyor musunuz?")) {
+        if(e.target) e.target.value = ''; // Reset input so same file can be selected again
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+        try {
+            const jsonString = evt.target?.result as string;
+            const data = JSON.parse(jsonString);
+
+            // Basic Validation
+            if(!data.projects || !Array.isArray(data.projects)) {
+                throw new Error("Geçersiz yedek dosyası formatı.");
+            }
+
+            // 1. Force Update LocalStorage immediately to avoid state race conditions
+            // This bypasses the React state cycle for the persistence layer
+            localStorage.setItem('procertify_projects', JSON.stringify(data.projects));
+            if(data.signatures) localStorage.setItem('procertify_signatures', JSON.stringify(data.signatures));
+            if(data.companies) localStorage.setItem('procertify_companies', JSON.stringify(data.companies));
+            
+            // 2. Alert and Reload
+            // Reloading is the safest way to ensure the app initializes with the new data from LocalStorage
+            // without complex state management bugs.
+            alert("Yedek başarıyla yüklendi! Uygulama, verilerin geçerli olması için yeniden başlatılıyor.");
+            window.location.reload();
+
+        } catch(e) {
+            console.error("Backup Import Error:", e);
+            alert("Hata: Yedek dosyası okunamadı veya bozuk. Lütfen geçerli bir .json dosyası seçin.");
+        } finally {
+             // Reset input value to allow selecting the same file again
+             if (backupInputRef.current) {
+                 backupInputRef.current.value = '';
+             }
+        }
+    };
+    reader.readAsText(file);
+  };
 
   // --- Unified Fill Logic ---
   const getUnifiedFillFields = () => {
@@ -644,7 +760,7 @@ const App = () => {
 
   const generateFilename = (pattern: string, values: Record<string, string>) => {
       const name = formatContent(pattern, values);
-      return name.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\- ]/gi, '_') + '.pdf';
+      return name.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\-\. ]/gi, '_') + '.pdf';
   };
 
   const getWrappedLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number) => {
@@ -664,7 +780,6 @@ const App = () => {
       return finalLines;
   };
 
-  // --- RENDER PAGE LOGIC (Extracted for reuse) ---
   const renderProjectToPDF = async (pdf: jsPDF, proj: CertificateProject, isFirstInDoc: boolean) => {
         const sides: Side[] = ['front', 'back'];
         const hasBack = proj.back.bgUrl || proj.back.elements.length > 0;
@@ -777,19 +892,18 @@ const App = () => {
         }
   };
 
-  // --- Export PDF (Main Function) ---
   const exportPDF = async () => {
+    if (isGenerating) return; // Prevent double clicks
     const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
     if (targetProjects.length === 0) return;
 
     setIsGenerating(true);
     setProgress(0);
-    // Force a small delay to let UI update (loader)
-    await new Promise(r => setTimeout(r, 100));
+    // Yield to let UI update
+    await new Promise(r => setTimeout(r, 50));
 
     try {
         if (exportMode === 'single') {
-            // --- SINGLE MODE: MERGE ALL INTO ONE PDF ---
             const firstProj = targetProjects[0];
             const filename = generateFilename(firstProj.filenamePattern || 'Sertifikalar_Birlestirilmis', fillValues);
 
@@ -801,12 +915,16 @@ const App = () => {
 
             for (let i = 0; i < targetProjects.length; i++) {
                 await renderProjectToPDF(pdf, targetProjects[i], i === 0);
+                // Important yield for UI responsiveness
+                if (i % 2 === 0) {
+                    setProgress(Math.round(((i + 1) / targetProjects.length) * 100));
+                    await new Promise(r => setTimeout(r, 0));
+                }
             }
             
             pdf.save(filename);
 
         } else {
-            // --- SEPARATE MODE: WRITE DIRECTLY TO DISK (EXE Mode) ---
             const electron = getElectron();
             if (!electron) {
                 alert("Bu özellik sadece masaüstü uygulamasında (EXE) çalışır. Web sürümünde lütfen 'Tek Dosya' modunu kullanın.");
@@ -815,19 +933,37 @@ const App = () => {
             }
 
             const { ipcRenderer } = electron;
-            
-            // 1. Ask user to select a folder
             const folderPath = await ipcRenderer.invoke('select-directory');
             if (!folderPath) {
                 setIsGenerating(false);
                 return;
             }
 
-            // 2. Loop through projects and save one by one
             let savedCount = 0;
+            const usedNames = new Set<string>();
+
             for (const proj of targetProjects) {
-                const filename = generateFilename(proj.filenamePattern || `Sertifika-${proj.name}`, fillValues);
+                // Generate base filename
+                let rawName = generateFilename(proj.filenamePattern || `Sertifika-${proj.name}`, fillValues);
                 
+                // Clean up filename but keep extension handling manual here for uniqueness checks
+                // The generateFilename adds .pdf, let's strip it to handle duplicates properly
+                let baseName = rawName.replace(/\.pdf$/i, '');
+                
+                // Sanitation specifically for filesystem
+                baseName = baseName.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\-\. _]/gi, '_');
+
+                let uniqueName = `${baseName}.pdf`;
+                let counter = 1;
+                
+                // Prevent overwriting files in the same batch by checking local set
+                while (usedNames.has(uniqueName)) {
+                    uniqueName = `${baseName}_${counter}.pdf`;
+                    counter++;
+                }
+                usedNames.add(uniqueName);
+                
+                // Create a fresh instance for each file to keep memory low
                 const pdf = new jsPDF({
                     orientation: proj.width > proj.height ? 'landscape' : 'portrait',
                     unit: 'px',
@@ -835,23 +971,23 @@ const App = () => {
                 });
 
                 await renderProjectToPDF(pdf, proj, true);
-                
-                // Get buffer data (ArrayBuffer)
                 const pdfData = pdf.output('arraybuffer');
                 
-                // Send to Main process to save
+                // CRITICAL FIX: Convert ArrayBuffer to Uint8Array for reliable IPC transmission
+                // This ensures Electron Main process receives a proper buffer
+                const dataArray = new Uint8Array(pdfData);
+                
                 const result = await ipcRenderer.invoke('save-file', {
                     folderPath,
-                    fileName: filename,
-                    dataBuffer: pdfData
+                    fileName: uniqueName,
+                    dataBuffer: dataArray
                 });
 
-                if (result.success) {
-                    savedCount++;
-                }
+                if (result.success) savedCount++;
                 
-                // Update simple progress UI if we were to show a bar (optional improvement)
+                // Update progress and yield execution to UI thread
                 setProgress(Math.round(((savedCount) / targetProjects.length) * 100));
+                await new Promise(r => setTimeout(r, 0));
             }
 
             alert(`${savedCount} adet dosya başarıyla "${folderPath}" klasörüne kaydedildi!`);
@@ -1010,9 +1146,9 @@ const App = () => {
                           </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <input type="file" ref={htmlTemplateInputRef} onChange={handleImportHTMLTemplate} accept=".html" className="hidden" />
-                        <button onClick={() => htmlTemplateInputRef.current?.click()} className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-bold shadow-sm border border-slate-600 flex items-center justify-center gap-1 transition"><Import size={12} /> HTML ŞABLON YÜKLE</button>
-                        <button onClick={handleSaveTemplateAsHTML} className="w-full py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-[10px] font-bold shadow-sm border border-purple-600 flex items-center justify-center gap-1 transition"><FileCode size={12} /> HTML OLARAK KAYDET</button>
+                        <input type="file" ref={htmlTemplateInputRef} onChange={handleImportHTMLTemplate} accept=".json" className="hidden" />
+                        <button onClick={() => htmlTemplateInputRef.current?.click()} className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-bold shadow-sm border border-slate-600 flex items-center justify-center gap-1 transition"><Import size={12} /> ŞABLON YÜKLE</button>
+                        <button onClick={handleSaveTemplateAsHTML} className="w-full py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-[10px] font-bold shadow-sm border border-purple-600 flex items-center justify-center gap-1 transition"><FileCode size={12} /> ŞABLON KAYDET</button>
                       </div>
                  </div>
                </div>

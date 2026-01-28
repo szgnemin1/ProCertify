@@ -37,11 +37,12 @@ ipcMain.handle('select-directory', async () => {
   return result.filePaths[0];
 });
 
-// 2. Save a specific file to disk
+// 2. Save a specific file to disk (Optimized: Async)
 ipcMain.handle('save-file', async (event, { folderPath, fileName, dataBuffer }) => {
   try {
     const fullPath = path.join(folderPath, fileName);
-    fs.writeFileSync(fullPath, Buffer.from(dataBuffer));
+    // Use promises to avoid blocking the main thread during heavy bulk operations
+    await fs.promises.writeFile(fullPath, Buffer.from(dataBuffer));
     return { success: true, path: fullPath };
   } catch (error) {
     console.error("File save error:", error);

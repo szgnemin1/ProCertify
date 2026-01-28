@@ -12,6 +12,11 @@ export const generateCertificateText = async (
   date: string,
   tone: 'formal' | 'enthusiastic'
 ): Promise<string> => {
+  // Offline Check Optimization: Don't wait for timeout if offline
+  if (!navigator.onLine) {
+      return `Bu belge, ${recipientName} isimli kişinin ${courseTitle} eğitimini ${date} tarihinde başarıyla tamamladığını belgelemektedir.`;
+  }
+
   try {
     const ai = getClient();
     
