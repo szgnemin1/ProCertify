@@ -47,7 +47,12 @@ import {
   ChevronRight,
   SlidersHorizontal,
   FileStack,
-  Files
+  Files,
+  Globe,
+  ExternalLink,
+  MessageSquare,
+  Bot,
+  Send
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
@@ -103,22 +108,9 @@ const createNewProject = (name: string): CertificateProject => ({
 
 const App = () => {
   // --- Global State ---
-  const [projects, setProjects] = useState<CertificateProject[]>(() => {
-    try {
-      const saved = localStorage.getItem('procertify_projects');
-      if (saved) return JSON.parse(saved);
-    } catch(e) {}
-    return [createNewProject('Yeni Sertifika Projesi')];
-  });
-
-  const [activeProjectId, setActiveProjectId] = useState<string>(() => {
-     const saved = localStorage.getItem('procertify_projects');
-     if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.length > 0) return parsed[0].id;
-     }
-     return '';
-  });
+  const [projects, setProjects] = useState<CertificateProject[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string>('');
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   const [selectedFillProjectIds, setSelectedFillProjectIds] = useState<string[]>([]);
   const [previewSides, setPreviewSides] = useState<Record<string, Side>>({});
@@ -133,7 +125,7 @@ const App = () => {
     }
   }, [activeProjectId]);
 
-  const activeProject = projects.find(p => p.id === activeProjectId) || projects[0];
+  const activeProject = projects.find(p => p.id === activeProjectId);
 
   // UI State
   const [activeSide, setActiveSide] = useState<Side>('front');
@@ -146,36 +138,10 @@ const App = () => {
   const [showChoiceFields, setShowChoiceFields] = useState(false);
   
   // Signatures State
-  const [signatures, setSignatures] = useState<SavedSignature[]>(() => {
-    try {
-      const saved = localStorage.getItem('procertify_signatures');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  });
+  const [signatures, setSignatures] = useState<SavedSignature[]>([]);
 
   // Company List State
-  const [companies, setCompanies] = useState<Company[]>(() => {
-    try {
-        const saved = localStorage.getItem('procertify_companies');
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                if (typeof parsed[0] === 'string') {
-                    return parsed.map((name: string) => ({
-                        id: Date.now() + Math.random().toString(),
-                        name: name,
-                        shortName: name 
-                    }));
-                }
-                return parsed;
-            }
-            return parsed;
-        }
-    } catch(e) {}
-    return [];
-  });
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [tempCompanyInput, setTempCompanyInput] = useState('');
 
   // --- Editor State ---
@@ -191,40 +157,79 @@ const App = () => {
 
   // --- Fill State ---
   const [fillValues, setFillValues] = useState<Record<string, string>>({});
+  const [isChatMode, setIsChatMode] = useState(true);
+  const [chatHistory, setChatHistory] = useState<{id: string, sender: 'bot'|'user', text: string}[]>([]);
+  const [currentChatStep, setCurrentChatStep] = useState(0);
+  const [chatInputValue, setChatInputValue] = useState('');
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const unifiedFieldsRef = useRef<string>('');
 
   // --- PERSISTENCE ---
+  // Fetch data on mount
   useEffect(() => {
-    const timer = setTimeout(() => {
-        try {
-            localStorage.setItem('procertify_projects', JSON.stringify(projects));
-        } catch (e) { console.error("Storage limit reached"); }
-    }, 1000);
+    const fetchData = async () => {
+      try {
+        // Create a timeout promise
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), 5000));
+        
+        const res = await Promise.race([fetch('/api/data'), timeout]) as Response;
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.projects && Array.isArray(data.projects) && data.projects.length > 0) {
+             setProjects(data.projects);
+             setActiveProjectId(data.projects[0].id);
+          } else {
+             const newP = createNewProject('Yeni Sertifika Projesi');
+             setProjects([newP]);
+             setActiveProjectId(newP.id);
+          }
+          if (data.signatures) setSignatures(data.signatures);
+          if (data.companies) setCompanies(data.companies);
+        } else {
+             throw new Error('API Error');
+        }
+      } catch (error) {
+        console.error("Failed to fetch data:", error);
+        const newP = createNewProject('Yeni Sertifika Projesi');
+        setProjects([newP]);
+        setActiveProjectId(newP.id);
+      } finally {
+        setIsDataLoaded(true);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // Save data on change
+  useEffect(() => {
+    if (!isDataLoaded) return;
+
+    const saveData = async () => {
+      try {
+        await fetch('/api/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projects,
+            signatures,
+            companies
+          })
+        });
+      } catch (error) {
+        console.error("Failed to save data:", error);
+      }
+    };
+
+    const timer = setTimeout(saveData, 1000);
     return () => clearTimeout(timer);
-  }, [projects]);
+  }, [projects, signatures, companies, isDataLoaded]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-        try {
-            localStorage.setItem('procertify_signatures', JSON.stringify(signatures));
-        } catch (e) { console.error("Storage limit reached"); }
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [signatures]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-        try {
-            localStorage.setItem('procertify_companies', JSON.stringify(companies));
-        } catch (e) { console.error("Storage limit reached"); }
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [companies]);
-
-  useEffect(() => {
-     if (!projects.find(p => p.id === activeProjectId) && projects.length > 0) {
+     if (isDataLoaded && !projects.find(p => p.id === activeProjectId) && projects.length > 0) {
         setActiveProjectId(projects[0].id);
      }
-  }, [projects, activeProjectId]);
+  }, [projects, activeProjectId, isDataLoaded]);
 
   useEffect(() => {
     if (isEditingName && projectNameInputRef.current) {
@@ -233,7 +238,7 @@ const App = () => {
   }, [isEditingName]);
 
   useEffect(() => {
-    if (currentView !== 'template') return;
+    if (currentView !== 'template' || !activeProject) return;
 
     const handleResize = () => {
       if (editorContainerRef.current) {
@@ -249,7 +254,8 @@ const App = () => {
     setTimeout(handleResize, 100);
     window.addEventListener('resize', debouncedResize);
     return () => window.removeEventListener('resize', debouncedResize);
-  }, [activeProject.width, activeProject.height, currentView]);
+  }, [activeProject?.width, activeProject?.height, currentView]);
+
 
   // --- Functions ---
   const normalizeKey = (key: string) => {
@@ -478,7 +484,7 @@ const App = () => {
       else if (e.key === 'ArrowRight') dx = step;
       else return; 
       e.preventDefault();
-      const currentElement = activeProject[activeSide].elements.find(el => el.id === selectedId);
+      const currentElement = activeProject ? activeProject[activeSide].elements.find(el => el.id === selectedId) : null;
       if (currentElement) {
           const updates: Partial<CanvasElement> = { x: currentElement.x + dx, y: currentElement.y + dy };
           if (currentElement.type === ElementType.CHOICE_BOX) {
@@ -491,6 +497,136 @@ const App = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedId, activeProjectId, activeSide, projects, currentView]); 
+
+  // --- Unified Fill Logic ---
+  const getUnifiedFillFields = () => {
+    const fields: Record<string, { 
+        type: ElementType, 
+        label: string, 
+        displayLabel: string, 
+        allowedSignatureIds?: string[],
+        options?: string[],
+        defaultValue?: string
+    }> = {};
+    const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
+    targetProjects.forEach(proj => {
+        [proj.front, proj.back].forEach(side => {
+            side.elements.forEach(el => {
+                if (el.type === ElementType.SIGNATURE || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.CHOICE_BOX || el.type === ElementType.TCKN) {
+                    const rawLabel = el.label || el.id;
+                    const key = normalizeKey(rawLabel); 
+                    const structuredField = {
+                        type: el.type,
+                        label: key,
+                        displayLabel: rawLabel, 
+                        allowedSignatureIds: el.allowedSignatureIds,
+                        options: el.options,
+                        defaultValue: el.content
+                    };
+                    if (!fields[key]) fields[key] = structuredField;
+                    else if (fields[key].type === ElementType.TEXT) fields[key] = structuredField;
+                    else if (fields[key].type === el.type) {
+                        if (el.allowedSignatureIds) fields[key].allowedSignatureIds = Array.from(new Set([...(fields[key].allowedSignatureIds || []), ...el.allowedSignatureIds]));
+                        if (el.options) fields[key].options = Array.from(new Set([...(fields[key].options || []), ...el.options]));
+                    }
+                }
+                if (el.type === ElementType.TEXT || el.type === ElementType.QRCODE) {
+                    const regex = /{([^{}]+)}/g;
+                    let match;
+                    while ((match = regex.exec(el.content)) !== null) {
+                        const rawKey = match[1];
+                        const key = normalizeKey(rawKey); 
+                        if (key.endsWith('_kisa')) continue; 
+                        if (!fields[key]) fields[key] = { type: ElementType.TEXT, label: key, displayLabel: rawKey.trim() };
+                    }
+                }
+            });
+        });
+    });
+    return Object.values(fields);
+  };
+
+  // --- Chat Mode Logic ---
+  useEffect(() => {
+    const fields = getUnifiedFillFields();
+    const fieldsKey = fields.map(f => f.label).join(',');
+    
+    if (fieldsKey !== unifiedFieldsRef.current) {
+      unifiedFieldsRef.current = fieldsKey;
+      if (fields.length === 0) {
+        setChatHistory([{ id: Date.now().toString(), sender: 'bot', text: 'Lütfen doldurmak için sol üstten proje seçin.' }]);
+        setCurrentChatStep(0);
+      } else {
+        setChatHistory([{ id: Date.now().toString(), sender: 'bot', text: `Merhaba! Seçili projeler için ${fields.length} adet bilgiye ihtiyacım var. İlk olarak, lütfen **${fields[0].displayLabel}** giriniz.` }]);
+        setCurrentChatStep(0);
+      }
+    }
+  }, [selectedFillProjectIds, projects]);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatHistory, isChatMode]);
+
+  const handleChatSubmit = (value: string, displayLabel?: string) => {
+    if (!value.trim()) return;
+    const fields = getUnifiedFillFields();
+    const currentField = fields[currentChatStep];
+    if (!currentField) return;
+
+    const userText = displayLabel || value;
+    const newHistory = [...chatHistory, { id: Date.now().toString(), sender: 'user' as const, text: userText }];
+
+    setFillValues(prev => ({ ...prev, [currentField.label]: value }));
+
+    const nextStep = currentChatStep + 1;
+    setCurrentChatStep(nextStep);
+
+    if (nextStep < fields.length) {
+      const nextField = fields[nextStep];
+      newHistory.push({ id: (Date.now() + 1).toString(), sender: 'bot' as const, text: `Teşekkürler. Şimdi lütfen **${nextField.displayLabel}** giriniz.` });
+    } else {
+      newHistory.push({ id: (Date.now() + 1).toString(), sender: 'bot' as const, text: `Harika! Tüm bilgileri aldım. Sağ alt köşeden PDF oluşturabilirsiniz.` });
+    }
+
+    setChatHistory(newHistory);
+    setChatInputValue('');
+  };
+
+  if (!isDataLoaded) {
+      return (
+          <div className="flex items-center justify-center h-screen bg-slate-900 text-white">
+              <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                  <p>Yükleniyor...</p>
+                  <button onClick={() => window.location.reload()} className="mt-4 text-xs text-slate-500 hover:text-white underline">Uzun sürdüyse tıklayın</button>
+              </div>
+          </div>
+      );
+  }
+
+  if (!activeProject) {
+      return (
+          <div className="flex items-center justify-center h-screen bg-slate-900 text-white">
+              <div className="text-center p-8 bg-slate-800 rounded-xl border border-slate-700 shadow-2xl">
+                  <AlertTriangle className="mx-auto mb-4 text-amber-500" size={48} />
+                  <h2 className="text-xl font-bold mb-2">Proje Yüklenemedi</h2>
+                  <p className="text-slate-400 mb-6">Veriler yüklenirken bir sorun oluştu veya proje bulunamadı.</p>
+                  <button 
+                      onClick={() => {
+                          const newP = createNewProject('Yeni Sertifika Projesi');
+                          setProjects([newP]);
+                          setActiveProjectId(newP.id);
+                      }}
+                      className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-lg font-bold transition"
+                  >
+                      Yeni Proje Oluştur ve Sıfırla
+                  </button>
+              </div>
+          </div>
+      );
+  } 
 
   // --- Modals & Options ---
   const toggleAllowedSignature = (elementId: string, sigId: string) => {
@@ -654,7 +790,7 @@ const App = () => {
     }
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
         try {
             const jsonString = evt.target?.result as string;
             const data = JSON.parse(jsonString);
@@ -664,15 +800,18 @@ const App = () => {
                 throw new Error("Geçersiz yedek dosyası formatı.");
             }
 
-            // 1. Force Update LocalStorage immediately to avoid state race conditions
-            // This bypasses the React state cycle for the persistence layer
-            localStorage.setItem('procertify_projects', JSON.stringify(data.projects));
-            if(data.signatures) localStorage.setItem('procertify_signatures', JSON.stringify(data.signatures));
-            if(data.companies) localStorage.setItem('procertify_companies', JSON.stringify(data.companies));
+            // 1. Send data to server
+            await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projects: data.projects,
+                    signatures: data.signatures || [],
+                    companies: data.companies || []
+                })
+            });
             
             // 2. Alert and Reload
-            // Reloading is the safest way to ensure the app initializes with the new data from LocalStorage
-            // without complex state management bugs.
             alert("Yedek başarıyla yüklendi! Uygulama, verilerin geçerli olması için yeniden başlatılıyor.");
             window.location.reload();
 
@@ -687,54 +826,6 @@ const App = () => {
         }
     };
     reader.readAsText(file);
-  };
-
-  // --- Unified Fill Logic ---
-  const getUnifiedFillFields = () => {
-    const fields: Record<string, { 
-        type: ElementType, 
-        label: string, 
-        displayLabel: string, 
-        allowedSignatureIds?: string[],
-        options?: string[],
-        defaultValue?: string
-    }> = {};
-    const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
-    targetProjects.forEach(proj => {
-        [proj.front, proj.back].forEach(side => {
-            side.elements.forEach(el => {
-                if (el.type === ElementType.SIGNATURE || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.CHOICE_BOX || el.type === ElementType.TCKN) {
-                    const rawLabel = el.label || el.id;
-                    const key = normalizeKey(rawLabel); 
-                    const structuredField = {
-                        type: el.type,
-                        label: key,
-                        displayLabel: rawLabel, 
-                        allowedSignatureIds: el.allowedSignatureIds,
-                        options: el.options,
-                        defaultValue: el.content
-                    };
-                    if (!fields[key]) fields[key] = structuredField;
-                    else if (fields[key].type === ElementType.TEXT) fields[key] = structuredField;
-                    else if (fields[key].type === el.type) {
-                        if (el.allowedSignatureIds) fields[key].allowedSignatureIds = Array.from(new Set([...(fields[key].allowedSignatureIds || []), ...el.allowedSignatureIds]));
-                        if (el.options) fields[key].options = Array.from(new Set([...(fields[key].options || []), ...el.options]));
-                    }
-                }
-                if (el.type === ElementType.TEXT || el.type === ElementType.QRCODE) {
-                    const regex = /{([^{}]+)}/g;
-                    let match;
-                    while ((match = regex.exec(el.content)) !== null) {
-                        const rawKey = match[1];
-                        const key = normalizeKey(rawKey); 
-                        if (key.endsWith('_kisa')) continue; 
-                        if (!fields[key]) fields[key] = { type: ElementType.TEXT, label: key, displayLabel: rawKey.trim() };
-                    }
-                }
-            });
-        });
-    });
-    return Object.values(fields);
   };
 
   const formatContent = (pattern: string, values: Record<string, string>) => {
@@ -1238,6 +1329,7 @@ const App = () => {
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-semibold flex items-center gap-2 text-white"><Building className="text-green-500" /> Firma Listesi Yönetimi</h2><span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">Toplam: {companies.length}</span></div><p className="text-sm text-slate-400 mb-4">Sertifikalarda kullanılacak firma/kurum isimlerini buraya ekleyin. Kısaltma belirlemek için "|" karakterini kullanın (Örn: "Acme Şirketi | Acme").</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-2"><label className="text-xs font-bold text-slate-500 uppercase">Toplu Ekleme</label><textarea rows={6} value={tempCompanyInput} onChange={(e) => setTempCompanyInput(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-sm text-white focus:border-green-500 outline-none resize-none font-mono" placeholder={"Firma Adı | Kısaltma\nÖrnek A.Ş. | Örnek\nSadece İsim"} /><button onClick={() => addCompany(tempCompanyInput)} className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition shadow-lg shadow-green-900/20 active:scale-95">Listeye Ekle</button></div><div className="space-y-2 flex flex-col h-full"><label className="text-xs font-bold text-slate-500 uppercase">Mevcut Liste</label><div className="bg-slate-900/50 rounded-lg border border-slate-700 p-2 flex-1 max-h-[200px] overflow-y-auto custom-scrollbar space-y-1">{companies.length === 0 ? (<div className="text-center py-8 text-slate-500 text-sm italic">Liste boş.</div>) : (companies.map((company, idx) => (<div key={idx} className="flex justify-between items-center p-2 bg-slate-800 rounded group hover:bg-slate-700 transition"><div className="flex flex-col truncate pr-2"><span className="text-sm text-slate-200">{company.name}</span>{company.shortName !== company.name && (<span className="text-[10px] text-slate-500 font-mono">Kısaltma: {company.shortName}</span>)}</div><button onClick={() => removeCompany(company.id)} className="text-slate-500 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition"><Trash2 size={14} /></button></div>)))}</div></div></div></div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-semibold flex items-center gap-2 text-white"><PenTool className="text-amber-500" /> Kayıtlı İmzalar</h2><div className="flex gap-2"><button onClick={() => setShowSignaturePad(true)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition shadow-sm border border-slate-600"><PenLine size={18} /> İmza Çiz</button><label className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium transition shadow-lg shadow-amber-900/20 active:scale-95 transform"><Plus size={18} /> İmza Yükle<input type="file" accept="image/*" multiple className="hidden" onChange={handleSignatureUpload} /></label></div></div>{signatures.length === 0 ? (<div className="text-center py-10 border-2 border-dashed border-slate-700 rounded-xl bg-slate-800/50"><Upload className="mx-auto text-slate-600 mb-4" size={40} /><p className="text-slate-500 text-sm">Henüz hiç imza yüklenmemiş.</p></div>) : (<div className="grid grid-cols-2 md:grid-cols-4 gap-4">{signatures.map(sig => (<div key={sig.id} className="group relative bg-white rounded-xl p-4 flex items-center justify-center h-32 shadow-sm border border-slate-600 transition hover:border-amber-500/50"><img src={sig.url} alt={sig.name} className="max-h-full max-w-full object-contain" /><div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center rounded-xl backdrop-blur-sm"><button onClick={() => deleteSignature(sig.id)} className="bg-red-500 p-2 rounded-full text-white hover:bg-red-600 shadow-lg transform active:scale-95 transition"><Trash2 size={20} /></button></div><div className="absolute bottom-2 left-2 right-2 text-center"><span className="text-[10px] bg-slate-900/90 text-white px-2 py-1 rounded truncate block border border-slate-700 shadow-sm">{sig.name}</span></div></div>))}</div>)}</div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white"><Database className="text-blue-500" /> Yedekleme ve Geri Yükleme</h2><p className="text-sm text-slate-400 mb-6">Tüm projelerinizi, şablonlarınızı, ayarlarınızı ve yüklediğiniz görselleri (imzalar dahil) tek bir dosya olarak yedekleyin veya başka bir cihaza taşıyın.</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition"><DownloadCloud size={40} className="text-green-500 mb-4" /><h3 className="font-bold text-white mb-2">Sistemi Yedekle</h3><p className="text-xs text-slate-400 mb-4">Tüm verileri (projeler, görseller, ayarlar) içeren tek bir .json dosyası indirir.</p><button onClick={handleExportBackup} className="mt-auto bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition w-full shadow-lg shadow-green-900/20 active:scale-95">Yedek Dosyasını İndir</button></div><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition"><UploadCloud size={40} className="text-blue-500 mb-4" /><h3 className="font-bold text-white mb-2">Yedeği Geri Yükle</h3><p className="text-xs text-slate-400 mb-4">Daha önce aldığınız yedek dosyasını seçerek tüm verilerinizi geri yükleyin.</p><div className="mt-auto w-full relative"><input ref={backupInputRef} type="file" accept=".json" onChange={handleImportBackup} className="hidden" id="backup-upload" /><label htmlFor="backup-upload" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition w-full flex items-center justify-center cursor-pointer shadow-lg shadow-blue-900/20 active:scale-95">Dosya Seç ve Yükle</label></div><div className="flex items-center gap-2 mt-3 text-[10px] text-amber-500"><AlertTriangle size={12} /><span>Dikkat: Mevcut verilerin üzerine yazılacaktır.</span></div></div></div></div>
+                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white"><Globe className="text-blue-400" /> Web Erişim Linki (Yayınlanan Site)</h2><p className="text-sm text-slate-400 mb-4">Uygulamaya tarayıcı üzerinden erişmek veya başkalarıyla paylaşmak için aşağıdaki yayınlanmış site bağlantısını kullanabilirsiniz.</p><div className="flex items-center gap-2 bg-slate-900 p-3 rounded-lg border border-slate-700"><input type="text" readOnly value="https://ais-pre-62oma5vjna3dv55v52dmoe-20900394953.europe-west2.run.app" className="flex-1 bg-transparent text-slate-300 outline-none text-sm" /><button onClick={() => { navigator.clipboard.writeText("https://ais-pre-62oma5vjna3dv55v52dmoe-20900394953.europe-west2.run.app"); alert('Bağlantı kopyalandı!'); }} className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded transition text-xs font-medium flex items-center gap-1"><Copy size={14} /> Kopyala</button><a href="https://ais-pre-62oma5vjna3dv55v52dmoe-20900394953.europe-west2.run.app" target="_blank" rel="noopener noreferrer" className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded transition text-xs font-medium flex items-center gap-1"><ExternalLink size={14} /> Git</a></div></div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white"><Github className="text-white" /> Hakkında & GitHub</h2><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex items-start gap-4"><div className="p-3 bg-slate-800 rounded-full"><Monitor size={24} className="text-slate-400" /></div><div className="flex-1"><h3 className="font-bold text-white text-lg">ProCertify Studio <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full ml-2">{APP_VERSION}</span></h3><p className="text-sm text-slate-400 mt-1 mb-4">Açık kaynak kodlu, profesyonel sertifika tasarım ve yönetim aracı. Projeyi GitHub üzerinde destekleyebilir veya katkıda bulunabilirsiniz.</p><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-white bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg transition border border-slate-600"><Github size={16} /> GitHub Deposuna Git</a></div></div></div>
              </div>
           </div>
@@ -1269,38 +1361,116 @@ const App = () => {
                      </div>
                  </div>
                  
-                 {/* Form Fields */}
-                 <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                    {getUnifiedFillFields().length === 0 ? (
-                      <div className="text-slate-500 text-center py-10 select-none">
-                        Seçili projelerde doldurulacak ortak alan bulunamadı veya seçim yapmadınız.
-                      </div>
-                    ) : (
-                        <>
-                        {getUnifiedFillFields().filter(f => f.type !== ElementType.CHOICE_BOX).map((field, idx) => (
-                       <div key={idx} className="space-y-2">
-                          <label className="text-sm font-medium text-amber-500 flex justify-between select-none">
-                            <span className="truncate pr-2">{field.displayLabel}</span>
-                            <span className="text-slate-500 text-[10px] bg-slate-900 px-2 rounded uppercase shrink-0">{field.type === ElementType.DROPDOWN ? 'SEÇENEK' : (field.type === ElementType.COMPANY ? 'FİRMA' : (field.type === ElementType.TCKN ? 'TC NO' : (field.type === ElementType.QRCODE ? 'QR VERİSİ' : field.type)))}</span>
-                          </label>
-                          {(field.type === ElementType.TEXT || field.type === ElementType.QRCODE || field.type === ElementType.TCKN) && (
-                            <textarea rows={field.label.toLowerCase().includes('adres') ? 3 : 1} value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-600 transition resize-y min-h-[46px]" placeholder={field.type === ElementType.QRCODE ? "https://site.com" : (field.type === ElementType.TCKN ? "TC Kimlik No Girin (11 Hane)" : "Metin değeri girin")} style={{ overflow: 'hidden' }} maxLength={field.type === ElementType.TCKN ? 11 : undefined} onInput={(e) => { const target = e.target as HTMLTextAreaElement; target.style.height = 'auto'; target.style.height = target.scrollHeight + 'px'; }} />
-                          )}
-                          {field.type === ElementType.DROPDOWN && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">Bir seçenek belirleyin...</option>{field.options && field.options.map((opt, i) => (<option key={i} value={opt}>{opt}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div></div>)}
-                          {field.type === ElementType.COMPANY && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-green-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">Firma Seçiniz...</option>{companies.map((company, i) => (<option key={i} value={company.name}>{company.name}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>{companies.length === 0 && (<div className="text-[10px] text-red-400 mt-1">Firma listesi boş. Ayarlar sekmesinden ekleyebilirsiniz.</div>)}</div>)}
-                          {field.type === ElementType.SIGNATURE && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">İmza Seçiniz...</option>{signatures.filter(sig => !field.allowedSignatureIds || field.allowedSignatureIds.length === 0 || field.allowedSignatureIds.includes(sig.id)).map(sig => (<option key={sig.id} value={sig.url}>{sig.name}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>{field.allowedSignatureIds && field.allowedSignatureIds.length > 0 && (<div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1"><Filter size={10} /> Bu alan için {field.allowedSignatureIds.length} adet imza tanımlı.</div>)}</div>)}
-                       </div>
-                      ))}
-                      {getUnifiedFillFields().some(f => f.type === ElementType.CHOICE_BOX) && (
-                          <div className="border-t border-slate-700 pt-4 mt-4">
-                              <button onClick={() => setShowChoiceFields(!showChoiceFields)} className="flex items-center justify-between w-full p-3 bg-slate-800 hover:bg-slate-700 rounded-lg transition text-sm text-slate-300 font-medium"><div className="flex items-center gap-2"><SlidersHorizontal size={16} /><span>Seçim Kutuları / Onaylar</span><span className="bg-slate-600 text-white text-[10px] px-1.5 rounded-full">{getUnifiedFillFields().filter(f => f.type === ElementType.CHOICE_BOX).length}</span></div>{showChoiceFields ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
-                              {showChoiceFields && (<div className="mt-3 space-y-4 pl-2 border-l-2 border-slate-700 animate-in fade-in slide-in-from-top-2">{getUnifiedFillFields().filter(f => f.type === ElementType.CHOICE_BOX).map((field, idx) => (<div key={`choice-${idx}`} className="space-y-2"><label className="text-xs font-medium text-slate-400 flex justify-between select-none"><span>{field.displayLabel}</span></label><div className="flex flex-col gap-2 bg-slate-900 p-2 rounded border border-slate-700">{field.options && field.options.map((opt, i) => { const currentVal = fillValues[field.label] || field.defaultValue || field.options?.[0]; const isChecked = currentVal === opt; return (<label key={i} className="flex items-center gap-3 cursor-pointer group p-1 rounded hover:bg-slate-800 transition"><input type="radio" name={field.label} value={opt} checked={isChecked} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="hidden" /><div className={`w-4 h-4 rounded-full border flex items-center justify-center transition ${isChecked ? 'border-amber-500' : 'border-slate-500 group-hover:border-slate-400'}`}>{isChecked && <div className="w-2 h-2 bg-amber-500 rounded-full" />}</div><span className={`text-xs ${isChecked ? 'text-white' : 'text-slate-500'}`}>{opt}</span></label>)})}</div></div>))}</div>)}
-                              {!showChoiceFields && (<p className="text-[10px] text-slate-500 mt-2 text-center">Varsayılan seçenekler (Örn: Evet) kullanılacak. Değiştirmek için tıklayın.</p>)}
-                          </div>
-                      )}
-                      </>
-                    )}
+                 {/* Mode Toggle */}
+                 <div className="px-6 pt-4 pb-2 flex justify-between items-center border-b border-slate-700/50">
+                   <span className="text-xs font-bold text-slate-500 uppercase">Veri Girişi</span>
+                   <button onClick={() => setIsChatMode(!isChatMode)} className="text-xs text-amber-500 hover:text-amber-400 flex items-center gap-1 transition bg-amber-500/10 px-2 py-1 rounded">
+                     {isChatMode ? <><List size={14}/> Form Görünümü</> : <><MessageSquare size={14}/> Sohbet Görünümü</>}
+                   </button>
                  </div>
+
+                 {isChatMode ? (
+                   <div className="flex-1 flex flex-col overflow-hidden p-4">
+                     {/* Chat Messages */}
+                     <div ref={chatScrollRef} className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2 pb-4">
+                       {chatHistory.map(msg => (
+                         <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                           <div className={`max-w-[90%] p-3 text-sm shadow-md ${msg.sender === 'user' ? 'bg-amber-600 text-white rounded-2xl rounded-tr-sm' : 'bg-slate-700 text-slate-200 rounded-2xl rounded-tl-sm'}`}>
+                             {msg.sender === 'bot' && <Bot size={16} className="inline-block mr-2 mb-1 text-amber-400"/>}
+                             <span dangerouslySetInnerHTML={{__html: msg.text.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>')}} />
+                           </div>
+                         </div>
+                       ))}
+                     </div>
+
+                     {/* Chat Input Area */}
+                     {getUnifiedFillFields().length > 0 && currentChatStep < getUnifiedFillFields().length && (
+                       <div className="mt-4 space-y-2 pt-2 border-t border-slate-700/50">
+                         {/* Quick Replies */}
+                         {(() => {
+                            const field = getUnifiedFillFields()[currentChatStep];
+                            let options: {label: string, value: string}[] = [];
+                            if (field.type === ElementType.DROPDOWN || field.type === ElementType.CHOICE_BOX) {
+                              options = (field.options || []).map(o => ({label: o, value: o}));
+                            } else if (field.type === ElementType.COMPANY) {
+                              options = companies.map(c => ({label: c.name, value: c.name}));
+                            } else if (field.type === ElementType.SIGNATURE) {
+                              options = signatures.filter(sig => !field.allowedSignatureIds || field.allowedSignatureIds.length === 0 || field.allowedSignatureIds.includes(sig.id)).map(sig => ({label: sig.name, value: sig.url}));
+                            }
+
+                            if (options.length > 0) {
+                              return (
+                                <div className="flex flex-wrap gap-2 mb-2 max-h-32 overflow-y-auto custom-scrollbar">
+                                  {options.map((opt, i) => (
+                                    <button key={i} onClick={() => handleChatSubmit(opt.value, opt.label)} className="bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-full transition border border-slate-600 shadow-sm">
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              );
+                            }
+                            return null;
+                         })()}
+
+                         <div className="relative flex items-center">
+                           <input
+                             type="text"
+                             value={chatInputValue}
+                             onChange={(e) => setChatInputValue(e.target.value)}
+                             onKeyDown={(e) => { if (e.key === 'Enter') handleChatSubmit(chatInputValue); }}
+                             placeholder={`${getUnifiedFillFields()[currentChatStep]?.displayLabel} girin...`}
+                             className="w-full bg-slate-900 border border-slate-600 rounded-full pl-4 pr-12 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-500 transition text-sm shadow-inner"
+                           />
+                           <button onClick={() => handleChatSubmit(chatInputValue)} className="absolute right-2 p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition shadow-md">
+                             <Send size={16} />
+                           </button>
+                         </div>
+                       </div>
+                     )}
+                     
+                     {/* Restart Button */}
+                     {getUnifiedFillFields().length > 0 && currentChatStep >= getUnifiedFillFields().length && (
+                        <button onClick={() => {
+                          setCurrentChatStep(0);
+                          setChatHistory([{ id: Date.now().toString(), sender: 'bot', text: `Baştan başlıyoruz. Lütfen **${getUnifiedFillFields()[0].displayLabel}** giriniz.` }]);
+                        }} className="mt-4 w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm transition flex items-center justify-center gap-2 border border-slate-700">
+                          <RotateCcw size={16} /> Yeniden Doldur
+                        </button>
+                     )}
+                   </div>
+                 ) : (
+                   <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-6 custom-scrollbar">
+                      {getUnifiedFillFields().length === 0 ? (
+                        <div className="text-slate-500 text-center py-10 select-none">
+                          Seçili projelerde doldurulacak ortak alan bulunamadı veya seçim yapmadınız.
+                        </div>
+                      ) : (
+                          <>
+                          {getUnifiedFillFields().filter(f => f.type !== ElementType.CHOICE_BOX).map((field, idx) => (
+                         <div key={idx} className="space-y-2">
+                            <label className="text-sm font-medium text-amber-500 flex justify-between select-none">
+                              <span className="truncate pr-2">{field.displayLabel}</span>
+                              <span className="text-slate-500 text-[10px] bg-slate-900 px-2 rounded uppercase shrink-0">{field.type === ElementType.DROPDOWN ? 'SEÇENEK' : (field.type === ElementType.COMPANY ? 'FİRMA' : (field.type === ElementType.TCKN ? 'TC NO' : (field.type === ElementType.QRCODE ? 'QR VERİSİ' : field.type)))}</span>
+                            </label>
+                            {(field.type === ElementType.TEXT || field.type === ElementType.QRCODE || field.type === ElementType.TCKN) && (
+                              <textarea rows={field.label.toLowerCase().includes('adres') ? 3 : 1} value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-600 transition resize-y min-h-[46px]" placeholder={field.type === ElementType.QRCODE ? "https://site.com" : (field.type === ElementType.TCKN ? "TC Kimlik No Girin (11 Hane)" : "Metin değeri girin")} style={{ overflow: 'hidden' }} maxLength={field.type === ElementType.TCKN ? 11 : undefined} onInput={(e) => { const target = e.target as HTMLTextAreaElement; target.style.height = 'auto'; target.style.height = target.scrollHeight + 'px'; }} />
+                            )}
+                            {field.type === ElementType.DROPDOWN && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">Bir seçenek belirleyin...</option>{field.options && field.options.map((opt, i) => (<option key={i} value={opt}>{opt}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div></div>)}
+                            {field.type === ElementType.COMPANY && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-green-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">Firma Seçiniz...</option>{companies.map((company, i) => (<option key={i} value={company.name}>{company.name}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>{companies.length === 0 && (<div className="text-[10px] text-red-400 mt-1">Firma listesi boş. Ayarlar sekmesinden ekleyebilirsiniz.</div>)}</div>)}
+                            {field.type === ElementType.SIGNATURE && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">İmza Seçiniz...</option>{signatures.filter(sig => !field.allowedSignatureIds || field.allowedSignatureIds.length === 0 || field.allowedSignatureIds.includes(sig.id)).map(sig => (<option key={sig.id} value={sig.url}>{sig.name}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>{field.allowedSignatureIds && field.allowedSignatureIds.length > 0 && (<div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1"><Filter size={10} /> Bu alan için {field.allowedSignatureIds.length} adet imza tanımlı.</div>)}</div>)}
+                         </div>
+                        ))}
+                        {getUnifiedFillFields().some(f => f.type === ElementType.CHOICE_BOX) && (
+                            <div className="border-t border-slate-700 pt-4 mt-4">
+                                <button onClick={() => setShowChoiceFields(!showChoiceFields)} className="flex items-center justify-between w-full p-3 bg-slate-800 hover:bg-slate-700 rounded-lg transition text-sm text-slate-300 font-medium"><div className="flex items-center gap-2"><SlidersHorizontal size={16} /><span>Seçim Kutuları / Onaylar</span><span className="bg-slate-600 text-white text-[10px] px-1.5 rounded-full">{getUnifiedFillFields().filter(f => f.type === ElementType.CHOICE_BOX).length}</span></div>{showChoiceFields ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
+                                {showChoiceFields && (<div className="mt-3 space-y-4 pl-2 border-l-2 border-slate-700 animate-in fade-in slide-in-from-top-2">{getUnifiedFillFields().filter(f => f.type === ElementType.CHOICE_BOX).map((field, idx) => (<div key={`choice-${idx}`} className="space-y-2"><label className="text-xs font-medium text-slate-400 flex justify-between select-none"><span>{field.displayLabel}</span></label><div className="flex flex-col gap-2 bg-slate-900 p-2 rounded border border-slate-700">{field.options && field.options.map((opt, i) => { const currentVal = fillValues[field.label] || field.defaultValue || field.options?.[0]; const isChecked = currentVal === opt; return (<label key={i} className="flex items-center gap-3 cursor-pointer group p-1 rounded hover:bg-slate-800 transition"><input type="radio" name={field.label} value={opt} checked={isChecked} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="hidden" /><div className={`w-4 h-4 rounded-full border flex items-center justify-center transition ${isChecked ? 'border-amber-500' : 'border-slate-500 group-hover:border-slate-400'}`}>{isChecked && <div className="w-2 h-2 bg-amber-500 rounded-full" />}</div><span className={`text-xs ${isChecked ? 'text-white' : 'text-slate-500'}`}>{opt}</span></label>)})}</div></div>))}</div>)}
+                                {!showChoiceFields && (<p className="text-[10px] text-slate-500 mt-2 text-center">Varsayılan seçenekler (Örn: Evet) kullanılacak. Değiştirmek için tıklayın.</p>)}
+                            </div>
+                        )}
+                        </>
+                      )}
+                   </div>
+                 )}
 
                  <div className="p-6 border-t border-slate-700 bg-slate-900 shrink-0 select-none space-y-4">
                     {/* EXPORT MODE TOGGLE */}

@@ -11,18 +11,59 @@ function createWindow() {
     minHeight: 768,
     title: "ProCertify Studio",
     icon: path.join(__dirname, 'public/favicon.ico'), 
-    backgroundColor: '#0f172a', // Matches slate-900 to prevent white flash
+    backgroundColor: '#0f172a', // Matches slate-900
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false, 
-      webSecurity: false // Sometimes needed for local file loading issues in some environments
+      webSecurity: false
     },
-    autoHideMenuBar: true, // Hides the top menu bar for a cleaner app look
-    frame: true // Keep native frame for standard window controls
+    autoHideMenuBar: true,
+    frame: true
   });
 
-  // Load the app
-  mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+  // 1. Load a temporary loading screen immediately
+  const loadingHtml = `
+    <html>
+      <head>
+        <style>
+          body { background-color: #0f172a; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; }
+          .loader { border: 4px solid #f3f3f3; border-top: 4px solid #f59e0b; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 20px; }
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        </style>
+      </head>
+      <body>
+        <div class="loader"></div>
+        <h2>Uygulama Başlatılıyor...</h2>
+        <p>Sunucu bağlantısı kuruluyor, lütfen bekleyin.</p>
+      </body>
+    </html>
+  `;
+  mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(loadingHtml)}`);
+
+  // 2. Start Server Logic
+  const serverUrl = 'http://localhost:3000';
+  let retryCount = 0;
+  
+  const loadServer = () => {
+    // Try to fetch first to see if server is up, to avoid Electron load errors
+    // But we can't fetch easily in main process without extra deps.
+    // Just use loadURL.
+    mainWindow.loadURL(serverUrl).then(() => {
+      console.log('Server loaded successfully');
+    }).catch(err => {
+      console.log(`Server not ready (Attempt ${retryCount + 1})...`);
+      retryCount++;
+      if (retryCount > 30) { // 30 seconds timeout
+          dialog.showErrorBox("Bağlantı Hatası", "Sunucuya bağlanılamadı. Lütfen uygulamayı yeniden başlatın.");
+          return;
+      }
+      // Retry every 1 second
+      setTimeout(loadServer, 1000);
+    });
+  };
+
+  // Give the server a moment to spin up
+  setTimeout(loadServer, 1500);
 }
 
 // --- IPC HANDLERS FOR FILE SYSTEM ACCESS ---
@@ -41,7 +82,6 @@ ipcMain.handle('select-directory', async () => {
 ipcMain.handle('save-file', async (event, { folderPath, fileName, dataBuffer }) => {
   try {
     const fullPath = path.join(folderPath, fileName);
-    // Use promises to avoid blocking the main thread during heavy bulk operations
     await fs.promises.writeFile(fullPath, Buffer.from(dataBuffer));
     return { success: true, path: fullPath };
   } catch (error) {
@@ -52,6 +92,22 @@ ipcMain.handle('save-file', async (event, { folderPath, fileName, dataBuffer }) 
 
 // This method will be called when Electron has finished initialization
 app.whenReady().then(() => {
+  // In production, start the server process
+  if (app.isPackaged) {
+    try {
+      process.env.NODE_ENV = 'production'; // Force production
+      const { startServer } = require('./server');
+      const userDataPath = app.getPath('userData');
+      const dbPath = path.join(userDataPath, 'db.json');
+      
+      console.log("Starting internal server with DB:", dbPath);
+      startServer(3000, dbPath);
+    } catch (e) {
+      console.error("Failed to start internal server:", e);
+      dialog.showErrorBox("Başlatma Hatası", "Sunucu başlatılamadı: " + e.message);
+    }
+  }
+
   createWindow();
 
   app.on('activate', function () {
