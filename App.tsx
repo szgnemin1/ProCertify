@@ -45,6 +45,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   SlidersHorizontal,
   FileStack,
   Files,
@@ -52,7 +53,8 @@ import {
   ExternalLink,
   MessageSquare,
   Bot,
-  Send
+  Send,
+  Calendar
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
@@ -87,26 +89,69 @@ const getElectron = () => {
     return null;
 };
 
-const createNewProject = (name: string): CertificateProject => ({
-  id: Date.now().toString(),
-  name: name,
-  width: DEFAULT_WIDTH,
-  height: DEFAULT_HEIGHT,
-  createdAt: Date.now(),
-  filenamePattern: 'Sertifika-{Ad Soyad}', 
-  front: {
-    bgUrl: TEMPLATES[0].bgUrl,
-    elements: [
-       { id: '1', type: ElementType.TEXT, content: '{AD SOYAD}', x: 800, y: 600, width: 400, height: 100, fontSize: 80, fontFamily: FontStyle.SERIF, color: '#000000', fontWeight: 700, fontStyle: 'normal', textAlign: 'center', label: 'Ad Soyad' },
-    ]
-  },
-  back: {
-    bgUrl: '', 
-    elements: []
-  }
-});
+const createNewProject = (name: string): CertificateProject => {
+  return {
+    id: Date.now().toString(),
+    name: name,
+    width: DEFAULT_WIDTH,
+    height: DEFAULT_HEIGHT,
+    createdAt: Date.now(),
+    filenamePattern: 'Sertifika-{Ad Soyad}', 
+    front: {
+      id: `front-${Date.now()}`,
+      name: 'Ön Yüz',
+      bgUrl: TEMPLATES[0].bgUrl,
+      elements: [
+         { id: '1', type: ElementType.TEXT, content: '{AD SOYAD}', x: 800, y: 600, width: 400, height: 100, fontSize: 80, fontFamily: FontStyle.SERIF, color: '#000000', fontWeight: 700, fontStyle: 'normal', textAlign: 'center', label: 'Ad Soyad' },
+      ]
+    },
+    back: {
+      id: `back-${Date.now()}`,
+      name: 'Arka Yüz',
+      bgUrl: '', 
+      elements: []
+    }
+  };
+};
 
 const App = () => {
+  const [projectFrontSelections, setProjectFrontSelections] = useState<Record<string, string>>({});
+  const [projectBackSelections, setProjectBackSelections] = useState<Record<string, string>>({});
+
+  const getActiveSideData = (project: CertificateProject | undefined, side: Side, useFillSelection: boolean = false): CertificateSide | null => {
+    if (!project) return null;
+    
+    const sideData = side === 'front' ? project.front : project.back;
+    const variants = side === 'front' ? project.frontVariants : project.backVariants;
+    
+    let selectedId: string | undefined;
+    if (side === 'front') {
+        selectedId = useFillSelection && projectFrontSelections[project.id] !== undefined 
+            ? projectFrontSelections[project.id] 
+            : project.selectedFrontId;
+    } else {
+        selectedId = useFillSelection && projectBackSelections[project.id] !== undefined 
+            ? projectBackSelections[project.id] 
+            : project.selectedBackId;
+    }
+    
+    let bgUrl = sideData.bgUrl;
+    let name = sideData.name;
+
+    if (selectedId && variants && variants.length > 0) {
+        const variant = variants.find(v => v.id === selectedId);
+        if (variant) {
+            bgUrl = variant.bgUrl;
+            name = variant.name;
+        }
+    }
+    
+    return {
+        ...sideData,
+        bgUrl,
+        name
+    };
+  };
   // --- Global State ---
   const [projects, setProjects] = useState<CertificateProject[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string>('');
@@ -150,6 +195,7 @@ const App = () => {
   
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const variantFileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const projectNameInputRef = useRef<HTMLInputElement>(null);
@@ -161,21 +207,74 @@ const App = () => {
   const [chatHistory, setChatHistory] = useState<{id: string, sender: 'bot'|'user', text: string}[]>([]);
   const [currentChatStep, setCurrentChatStep] = useState(0);
   const [chatInputValue, setChatInputValue] = useState('');
+  const [chatOptionSearch, setChatOptionSearch] = useState('');
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [isFillSidebarOpen, setIsFillSidebarOpen] = useState(true);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const unifiedFieldsRef = useRef<string>('');
+
+  // Helper to parse dates from chatInputValue
+  const getSelectedDatesFromText = (text: string) => {
+    const dates: string[] = [];
+    if (!text) return dates;
+    const parts = text.split(' - ');
+    for (const part of parts) {
+      const match = part.match(/^([\d.]+)\/(\d{2})\/(\d{4})$/);
+      if (match) {
+        const daysStr = match[1];
+        const month = match[2];
+        const year = match[3];
+        const days = daysStr.split('.');
+        for (const d of days) {
+          if(d) dates.push(`${year}-${month}-${d.padStart(2, '0')}`);
+        }
+      }
+    }
+    return dates;
+  };
+
+  // Helper to format dates back to chatInputValue
+  const generateTextFromDates = (dateStrings: string[]) => {
+    if (!dateStrings || dateStrings.length === 0) return '';
+    const sorted = [...dateStrings].sort();
+    const groups: Record<string, string[]> = {};
+    for (const ds of sorted) {
+      const [y, m, d] = ds.split('-');
+      const key = `${m}/${y}`;
+      if (!groups[key]) groups[key] = [];
+      const dayFormatted = d.replace(/^0+/, ''); // Remove leading zeros if preferred or keep them? 
+      // User said 22.23.24. Usually if it was 01,02,03 it stayed.
+      // Let's keep the day as it is but ensure it's not duplicated.
+      if (!groups[key].includes(d)) groups[key].push(d);
+    }
+    const parts = [];
+    for (const key in groups) {
+      const days = groups[key].join('.');
+      parts.push(`${days}/${key}`);
+    }
+    return parts.join(' - ');
+  };
+
+  const toggleDateSelection = (dateString: string) => {
+    const currentDates = getSelectedDatesFromText(chatInputValue);
+    let newDates;
+    if (currentDates.includes(dateString)) {
+      newDates = currentDates.filter(d => d !== dateString);
+    } else {
+      newDates = [...currentDates, dateString];
+    }
+    setChatInputValue(generateTextFromDates(newDates));
+  };
 
   // --- PERSISTENCE ---
   // Fetch data on mount
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Create a timeout promise
-        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), 5000));
-        
-        const res = await Promise.race([fetch('/api/data'), timeout]) as Response;
-        
-        if (res.ok) {
-          const data = await res.json();
+        const savedData = localStorage.getItem('procertify_studio_data');
+        if (savedData) {
+          const data = JSON.parse(savedData);
           if (data.projects && Array.isArray(data.projects) && data.projects.length > 0) {
              setProjects(data.projects);
              setActiveProjectId(data.projects[0].id);
@@ -187,10 +286,12 @@ const App = () => {
           if (data.signatures) setSignatures(data.signatures);
           if (data.companies) setCompanies(data.companies);
         } else {
-             throw new Error('API Error');
+          const newP = createNewProject('Yeni Sertifika Projesi');
+          setProjects([newP]);
+          setActiveProjectId(newP.id);
         }
       } catch (error) {
-        console.error("Failed to fetch data:", error);
+        console.error("Failed to fetch data from localStorage:", error);
         const newP = createNewProject('Yeni Sertifika Projesi');
         setProjects([newP]);
         setActiveProjectId(newP.id);
@@ -205,23 +306,19 @@ const App = () => {
   useEffect(() => {
     if (!isDataLoaded) return;
 
-    const saveData = async () => {
+    const saveData = () => {
       try {
-        await fetch('/api/data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            projects,
-            signatures,
-            companies
-          })
-        });
+        localStorage.setItem('procertify_studio_data', JSON.stringify({
+          projects,
+          signatures,
+          companies
+        }));
       } catch (error) {
-        console.error("Failed to save data:", error);
+        console.error("Failed to save data to localStorage:", error);
       }
     };
 
-    const timer = setTimeout(saveData, 1000);
+    const timer = setTimeout(saveData, 500);
     return () => clearTimeout(timer);
   }, [projects, signatures, companies, isDataLoaded]);
 
@@ -273,15 +370,81 @@ const App = () => {
   const updateProjectSide = (side: Side, updates: Partial<CertificateSide>) => {
     setProjects(prev => prev.map(p => {
       if (p.id === activeProjectId) {
-        return {
-          ...p,
-          [side]: { ...p[side], ...updates }
-        };
+          const sideKey = side === 'front' ? 'front' : 'back';
+          return {
+              ...p,
+              [sideKey]: { ...p[sideKey], ...updates }
+          };
       }
       return p;
     }));
   };
-  
+
+  const handleAddBackgroundVariant = (side: Side, url: string, name?: string) => {
+    if (!activeProjectId) return;
+    const variantsKey = side === 'front' ? 'frontVariants' : 'backVariants';
+    const selectedIdKey = side === 'front' ? 'selectedFrontId' : 'selectedBackId';
+    
+    const variantName = name || prompt(`${side === 'front' ? 'Ön' : 'Arka'} varyant ismi:`, `Yeni Varyant`);
+    if (!variantName) return;
+
+    const newId = `bg-var-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const newVariant: BackgroundVariant = {
+        id: newId,
+        name: variantName,
+        bgUrl: url
+    };
+
+    setProjects(prev => prev.map(p => {
+        if (p.id === activeProjectId) {
+            return {
+                ...p,
+                [variantsKey]: [...(p[variantsKey] || []), newVariant],
+                [selectedIdKey]: newId
+            };
+        }
+        return p;
+    }));
+  };
+
+  const handleRenameVariant = (side: Side, id: string, name: string) => {
+      const variantsKey = side === 'front' ? 'frontVariants' : 'backVariants';
+      setProjects(prev => prev.map(p => {
+          if (p.id === activeProjectId) {
+              const variants = p[variantsKey] || [];
+              const newVariants = variants.map(v => v.id === id ? { ...v, name } : v);
+              return { ...p, [variantsKey]: newVariants };
+          }
+          return p;
+      }));
+  };
+
+  const handleDeleteVariant = (side: Side, id: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      const variantsKey = side === 'front' ? 'frontVariants' : 'backVariants';
+      const selectedIdKey = side === 'front' ? 'selectedFrontId' : 'selectedBackId';
+      
+      if (confirm("Bu arkaplan seçeneğini silmek istediğinize emin misiniz?")) {
+          setProjects(prev => prev.map(p => {
+              if (p.id === activeProjectId) {
+                   const newVariants = (p[variantsKey] || []).filter(v => v.id !== id);
+                   let newSelectedId = p[selectedIdKey] === id ? (newVariants[0]?.id || undefined) : p[selectedIdKey];
+                   return {
+                       ...p,
+                       [variantsKey]: newVariants,
+                       [selectedIdKey]: newSelectedId
+                   };
+              }
+              return p;
+          }));
+      }
+  };
+
+  const handleSelectVariant = (side: Side, id: string) => {
+      const selectedIdKey = side === 'front' ? 'selectedFrontId' : 'selectedBackId';
+      updateProjectMeta({ [selectedIdKey]: id });
+  };
+
   const updateProjectMeta = (updates: Partial<CertificateProject>) => {
       setProjects(prev => prev.map(p => {
         if (p.id === activeProjectId) {
@@ -317,7 +480,9 @@ const App = () => {
 
   const getProjectLabels = () => {
     const labelMap = new Map<string, string>(); 
-    [activeProject.front, activeProject.back].forEach(side => {
+    const activeBack = getActiveSideData(activeProject, 'back');
+    [activeProject?.front, activeBack].forEach(side => {
+        if (!side) return;
         side.elements.forEach(el => {
             if (el.label) {
                 const norm = normalizeKey(el.label);
@@ -368,17 +533,56 @@ const App = () => {
   };
 
   // --- Element Management ---
+  const handleVariantUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    Array.from(files).forEach((file, index) => {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        if (evt.target?.result) {
+            const url = evt.target.result as string;
+            const defaultName = file.name.split('.')[0] || `Varyant ${index + 1}`;
+            handleAddBackgroundVariant(activeSide, url, defaultName);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
   const handleTemplateUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = (evt) => {
         if (evt.target?.result) {
-            updateProjectSide(activeSide, { bgUrl: evt.target.result as string });
+            const url = evt.target.result as string;
+            setProjects(prev => prev.map(p => {
+                if (p.id === activeProjectId) {
+                    const sideKey = activeSide === 'front' ? 'front' : 'back';
+                    const variantsKey = activeSide === 'front' ? 'frontVariants' : 'backVariants';
+                    const selectedIdKey = activeSide === 'front' ? 'selectedFrontId' : 'selectedBackId';
+                    
+                    if (p[selectedIdKey]) {
+                        return {
+                            ...p,
+                            [variantsKey]: (p[variantsKey] || []).map(v => v.id === p[selectedIdKey] ? { ...v, bgUrl: url } : v)
+                        };
+                    } else {
+                        return {
+                            ...p,
+                            [sideKey]: { ...p[sideKey], bgUrl: url }
+                        };
+                    }
+                }
+                return p;
+            }));
         }
       };
       reader.readAsDataURL(file);
     }
+    e.target.value = '';
   };
 
   const addElement = (type: ElementType) => {
@@ -422,7 +626,8 @@ const App = () => {
       secondaryY: type === ElementType.CHOICE_BOX ? (activeProject.height / 2 - (height/2)) : undefined,
     };
 
-    const currentElements = activeProject[activeSide].elements;
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const currentElements = sideData?.elements || [];
     updateProjectElements(activeSide, [...currentElements, newEl]);
     setSelectedId(newEl.id);
   };
@@ -448,7 +653,8 @@ const App = () => {
                 height: baseH,
                 label: 'Logo'
              };
-             const currentElements = activeProject[activeSide].elements;
+             const sideData = getActiveSideData(activeProject, activeSide);
+             const currentElements = sideData?.elements || [];
              updateProjectElements(activeSide, [...currentElements, newEl]);
            };
         }
@@ -458,14 +664,16 @@ const App = () => {
   };
 
   const updateElement = (id: string, updates: Partial<CanvasElement>) => {
-    const currentElements = activeProject[activeSide].elements;
-    const newElements = currentElements.map(el => el.id === id ? { ...el, ...updates } : el);
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const elements = sideData?.elements || [];
+    const newElements = elements.map(el => el.id === id ? { ...el, ...updates } : el);
     updateProjectElements(activeSide, newElements);
   };
 
   const deleteElement = (id: string) => {
-    const currentElements = activeProject[activeSide].elements;
-    updateProjectElements(activeSide, currentElements.filter(el => el.id !== id));
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const elements = sideData?.elements || [];
+    updateProjectElements(activeSide, elements.filter(el => el.id !== id));
     if (selectedId === id) setSelectedId(null);
   };
 
@@ -484,7 +692,8 @@ const App = () => {
       else if (e.key === 'ArrowRight') dx = step;
       else return; 
       e.preventDefault();
-      const currentElement = activeProject ? activeProject[activeSide].elements.find(el => el.id === selectedId) : null;
+      const sideData = getActiveSideData(activeProject, activeSide);
+      const currentElement = sideData?.elements.find(el => el.id === selectedId);
       if (currentElement) {
           const updates: Partial<CanvasElement> = { x: currentElement.x + dx, y: currentElement.y + dy };
           if (currentElement.type === ElementType.CHOICE_BOX) {
@@ -510,7 +719,9 @@ const App = () => {
     }> = {};
     const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
     targetProjects.forEach(proj => {
-        [proj.front, proj.back].forEach(side => {
+        const activeBack = getActiveSideData(proj, 'back');
+        [proj.front, activeBack].forEach(side => {
+            if (!side) return;
             side.elements.forEach(el => {
                 if (el.type === ElementType.SIGNATURE || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.CHOICE_BOX || el.type === ElementType.TCKN) {
                     const rawLabel = el.label || el.id;
@@ -569,16 +780,20 @@ const App = () => {
     }
   }, [chatHistory, isChatMode]);
 
-  const handleChatSubmit = (value: string, displayLabel?: string) => {
-    if (!value.trim()) return;
+  const handleChatSubmit = (value: string, displayLabel?: string, isSkip: boolean = false) => {
+    if (!value.trim() && !isSkip) return;
     const fields = getUnifiedFillFields();
     const currentField = fields[currentChatStep];
     if (!currentField) return;
 
-    const userText = displayLabel || value;
+    const userText = isSkip ? "(Cevapsız Bırakıldı)" : (displayLabel || value);
     const newHistory = [...chatHistory, { id: Date.now().toString(), sender: 'user' as const, text: userText }];
 
-    setFillValues(prev => ({ ...prev, [currentField.label]: value }));
+    if (!isSkip) {
+      setFillValues(prev => ({ ...prev, [currentField.label]: value }));
+    } else {
+      setFillValues(prev => ({ ...prev, [currentField.label]: '' }));
+    }
 
     const nextStep = currentChatStep + 1;
     setCurrentChatStep(nextStep);
@@ -592,6 +807,7 @@ const App = () => {
 
     setChatHistory(newHistory);
     setChatInputValue('');
+    setChatOptionSearch('');
   };
 
   if (!isDataLoaded) {
@@ -630,7 +846,8 @@ const App = () => {
 
   // --- Modals & Options ---
   const toggleAllowedSignature = (elementId: string, sigId: string) => {
-      const element = activeProject[activeSide].elements.find(el => el.id === elementId);
+      const sideData = getActiveSideData(activeProject, activeSide);
+      const element = sideData?.elements.find(el => el.id === elementId);
       if (!element) return;
       const currentAllowed = element.allowedSignatureIds || [];
       let newAllowed;
@@ -641,7 +858,8 @@ const App = () => {
 
   const addOption = (elementId: string) => {
       if (!tempOptionInput.trim()) return;
-      const element = activeProject[activeSide].elements.find(el => el.id === elementId);
+      const sideData = getActiveSideData(activeProject, activeSide);
+      const element = sideData?.elements.find(el => el.id === elementId);
       if (!element) return;
       const currentOptions = element.options || [];
       updateElement(elementId, { options: [...currentOptions, tempOptionInput.trim()] });
@@ -649,7 +867,8 @@ const App = () => {
   };
 
   const removeOption = (elementId: string, index: number) => {
-      const element = activeProject[activeSide].elements.find(el => el.id === elementId);
+      const sideData = getActiveSideData(activeProject, activeSide);
+      const element = sideData?.elements.find(el => el.id === elementId);
       if (!element || !element.options) return;
       const newOptions = element.options.filter((_, i) => i !== index);
       updateElement(elementId, { options: newOptions });
@@ -800,16 +1019,12 @@ const App = () => {
                 throw new Error("Geçersiz yedek dosyası formatı.");
             }
 
-            // 1. Send data to server
-            await fetch('/api/data', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    projects: data.projects,
-                    signatures: data.signatures || [],
-                    companies: data.companies || []
-                })
-            });
+            // 1. Save data to localStorage
+            localStorage.setItem('procertify_studio_data', JSON.stringify({
+                projects: data.projects,
+                signatures: data.signatures || [],
+                companies: data.companies || []
+            }));
             
             // 2. Alert and Reload
             alert("Yedek başarıyla yüklendi! Uygulama, verilerin geçerli olması için yeniden başlatılıyor.");
@@ -873,7 +1088,8 @@ const App = () => {
 
   const renderProjectToPDF = async (pdf: jsPDF, proj: CertificateProject, isFirstInDoc: boolean) => {
         const sides: Side[] = ['front', 'back'];
-        const hasBack = proj.back.bgUrl || proj.back.elements.length > 0;
+        const activeBackData = getActiveSideData(proj, 'back', true);
+        const hasBack = activeBackData && (activeBackData.bgUrl || activeBackData.elements.length > 0);
         const sidesToPrint = hasBack ? sides : ['front'];
         let pageAddedForProj = false;
 
@@ -883,7 +1099,9 @@ const App = () => {
             }
             pageAddedForProj = true;
 
-            const sideData = proj[side];
+            const sideData = getActiveSideData(proj, side as Side, true);
+            if (!sideData) continue;
+
             const canvas = document.createElement('canvas');
             canvas.width = proj.width;
             canvas.height = proj.height;
@@ -1092,12 +1310,15 @@ const App = () => {
     }
   };
 
-  const currentSideElements = activeProject[activeSide].elements;
-  const currentSideBg = activeProject[activeSide].bgUrl;
+  const currentSideData = getActiveSideData(activeProject, activeSide);
+  const currentSideElements = currentSideData?.elements || [];
+  const currentSideBg = currentSideData?.bgUrl || '';
   const selectedElement = currentSideElements.find(el => el.id === selectedId);
 
-  const getPreviewElements = (proj: CertificateProject, side: Side) => {
-    return proj[side].elements.map(el => {
+  const getPreviewElements = (proj: CertificateProject, side: Side, useFill: boolean = true) => {
+    const sideData = getActiveSideData(proj, side, useFill);
+    if (!sideData) return [];
+    return sideData.elements.map(el => {
       if (el.type === ElementType.QRCODE || el.type === ElementType.TEXT) {
          return { ...el, content: formatContent(el.content, fillValues) };
       }
@@ -1196,9 +1417,77 @@ const App = () => {
                  </div>
                  <div className="h-[1px] bg-slate-700"></div>
                  <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Arkaplan ({activeSide === 'front' ? 'Ön' : 'Arka'})</h3>
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Arkaplan ({activeSide === 'front' ? 'Ön' : 'Arka'})</h3>
+                        <button onClick={() => variantFileInputRef.current?.click()} className="flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-500 px-2 py-1 rounded hover:bg-amber-500/20 transition">
+                            <Plus size={12} /> Yeni Seçenek
+                        </button>
+                    </div>
                     <input type="file" ref={fileInputRef} onChange={handleTemplateUpload} accept="image/*" className="hidden" />
-                    <button onClick={() => fileInputRef.current?.click()} className="w-full py-3 border-2 border-dashed border-slate-600 rounded-xl hover:bg-slate-700/50 hover:border-slate-400 transition text-slate-400 text-sm flex flex-col items-center gap-2"><Upload size={20} /> Arkaplan Değiştir</button>
+                    <input type="file" ref={variantFileInputRef} onChange={handleVariantUpload} accept="image/*" multiple className="hidden" />
+                    
+                    {activeProject && (
+                        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto custom-scrollbar pr-1 -mx-1 px-1">
+                            <div 
+                                onClick={() => handleSelectVariant(activeSide, '')} 
+                                className={`group flex items-center justify-between p-2 rounded text-[11px] cursor-pointer transition border ${!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? 'bg-amber-500/10 border-amber-500/40 text-amber-200' : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'}`}
+                            >
+                                <div className="flex items-center gap-2 truncate flex-1 font-medium">
+                                    {!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? <Check size={12} className="text-amber-500" /> : <div className="w-3 h-3" />}
+                                    <span>Varsayılan Arkaplan</span>
+                                </div>
+                                <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-all">
+                                    <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="p-1 text-slate-400 hover:text-amber-500 transition-all" title="Arkaplanı Değiştir">
+                                        <Upload size={12} />
+                                    </button>
+                                    <button onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        if(confirm('Arkaplanı temizlemek istediğinize emin misiniz?')) {
+                                            updateProjectSide(activeSide, { bgUrl: '' });
+                                        }
+                                    }} className="p-1 text-slate-400 hover:text-red-500 transition-all" title="Arkaplanı Temizle">
+                                        <Trash2 size={12} />
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            {(() => {
+                                const side = activeSide;
+                                const variantsKey = side === 'front' ? 'frontVariants' : 'backVariants';
+                                const selectedKey = side === 'front' ? 'selectedFrontId' : 'selectedBackId';
+                                const variants = activeProject[variantsKey] || [];
+                                
+                                return variants.map(v => {
+                                    const isSelected = activeProject[selectedKey] === v.id;
+                                    return (
+                                        <div 
+                                            key={v.id} 
+                                            onClick={() => handleSelectVariant(side, v.id)} 
+                                            className={`group flex items-center justify-between p-2 rounded text-[11px] cursor-pointer transition border ${isSelected ? 'bg-amber-500/10 border-amber-500/40 text-amber-200' : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'}`}
+                                        >
+                                            <div className="flex items-center gap-2 truncate flex-1">
+                                                {isSelected ? <Check size={12} className="text-amber-500" /> : <div className="w-3 h-3" />}
+                                                <input 
+                                                    type="text" 
+                                                    value={v.name || ''} 
+                                                    onChange={(e) => {
+                                                        e.stopPropagation();
+                                                        handleRenameVariant(side, v.id, e.target.value);
+                                                    }}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="bg-transparent border-none text-[11px] focus:outline-none w-full text-inherit font-medium underline decoration-transparent focus:decoration-amber-500/30"
+                                                    placeholder="Varyant İsmi"
+                                                />
+                                            </div>
+                                            <button onClick={(e) => handleDeleteVariant(side, v.id, e)} className="p-1 text-slate-400 hover:text-red-500 opacity-60 group-hover:opacity-100 transition-all" title="Varyantı Sil">
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                    );
+                                });
+                            })()}
+                        </div>
+                    )}
                  </div>
                  <div className="h-[1px] bg-slate-700"></div>
                  <div className="space-y-3">
@@ -1276,10 +1565,12 @@ const App = () => {
                     </>
                     ) : <span className="text-sm text-slate-500">Özellikler için bileşen seçin</span>}
                  </div>
-                 <div className="flex bg-slate-900 p-1 rounded-lg shrink-0">
-                     <button onClick={() => { setActiveSide('front'); setSelectedId(null); }} className={`px-4 py-1.5 text-sm rounded-md transition font-medium ${activeSide === 'front' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Ön Yüz</button>
-                     <button onClick={() => { setActiveSide('back'); setSelectedId(null); }} className={`px-4 py-1.5 text-sm rounded-md transition font-medium ${activeSide === 'back' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Arka Yüz</button>
-                 </div>
+                 <div className="flex flex-col gap-2">
+                    <div className="flex bg-slate-900 p-1 rounded-lg shrink-0">
+                        <button onClick={() => { setActiveSide('front'); setSelectedId(null); }} className={`flex-1 px-4 py-1.5 text-xs rounded-md transition font-medium ${activeSide === 'front' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Ön Yüz</button>
+                        <button onClick={() => { setActiveSide('back'); setSelectedId(null); }} className={`flex-1 px-4 py-1.5 text-xs rounded-md transition font-medium ${activeSide === 'back' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Arka Yüz</button>
+                    </div>
+                  </div>
               </div>
               <div ref={editorContainerRef} className="flex-1 overflow-hidden relative flex items-center justify-center p-10 bg-dots-pattern" style={{ backgroundImage: 'radial-gradient(#1e293b 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
                 <CanvasEditor elements={currentSideElements} width={activeProject.width} height={activeProject.height} bgUrl={currentSideBg} selectedId={selectedId} onSelect={setSelectedId} onUpdateElement={updateElement} onDeleteElement={deleteElement} scale={scale} />
@@ -1326,10 +1617,10 @@ const App = () => {
              <div className="max-w-4xl mx-auto space-y-8">
                 <div><h1 className="text-3xl font-bold mb-2 text-white">Ayarlar & Varlıklar</h1><p className="text-slate-400">Uygulama genel ayarları ve varlık yönetimi.</p></div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 text-white mb-6"><FileText className="text-blue-500" /> Aktif Proje Yönetimi</h2><div className="w-full"><label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Proje İsmi</label><input type="text" value={activeProject.name} onChange={(e) => updateProjectMeta({ name: e.target.value })} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-amber-500 outline-none" /><p className="text-[10px] text-slate-500 mt-2">Projeyi silmek için <button onClick={() => setCurrentView('projects')} className="text-amber-500 hover:underline">Projeler</button> sayfasına gidiniz.</p></div></div>
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-semibold flex items-center gap-2 text-white"><Building className="text-green-500" /> Firma Listesi Yönetimi</h2><span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">Toplam: {companies.length}</span></div><p className="text-sm text-slate-400 mb-4">Sertifikalarda kullanılacak firma/kurum isimlerini buraya ekleyin. Kısaltma belirlemek için "|" karakterini kullanın (Örn: "Acme Şirketi | Acme").</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-2"><label className="text-xs font-bold text-slate-500 uppercase">Toplu Ekleme</label><textarea rows={6} value={tempCompanyInput} onChange={(e) => setTempCompanyInput(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-sm text-white focus:border-green-500 outline-none resize-none font-mono" placeholder={"Firma Adı | Kısaltma\nÖrnek A.Ş. | Örnek\nSadece İsim"} /><button onClick={() => addCompany(tempCompanyInput)} className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition shadow-lg shadow-green-900/20 active:scale-95">Listeye Ekle</button></div><div className="space-y-2 flex flex-col h-full"><label className="text-xs font-bold text-slate-500 uppercase">Mevcut Liste</label><div className="bg-slate-900/50 rounded-lg border border-slate-700 p-2 flex-1 max-h-[200px] overflow-y-auto custom-scrollbar space-y-1">{companies.length === 0 ? (<div className="text-center py-8 text-slate-500 text-sm italic">Liste boş.</div>) : (companies.map((company, idx) => (<div key={idx} className="flex justify-between items-center p-2 bg-slate-800 rounded group hover:bg-slate-700 transition"><div className="flex flex-col truncate pr-2"><span className="text-sm text-slate-200">{company.name}</span>{company.shortName !== company.name && (<span className="text-[10px] text-slate-500 font-mono">Kısaltma: {company.shortName}</span>)}</div><button onClick={() => removeCompany(company.id)} className="text-slate-500 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition"><Trash2 size={14} /></button></div>)))}</div></div></div></div>
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-semibold flex items-center gap-2 text-white"><PenTool className="text-amber-500" /> Kayıtlı İmzalar</h2><div className="flex gap-2"><button onClick={() => setShowSignaturePad(true)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition shadow-sm border border-slate-600"><PenLine size={18} /> İmza Çiz</button><label className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium transition shadow-lg shadow-amber-900/20 active:scale-95 transform"><Plus size={18} /> İmza Yükle<input type="file" accept="image/*" multiple className="hidden" onChange={handleSignatureUpload} /></label></div></div>{signatures.length === 0 ? (<div className="text-center py-10 border-2 border-dashed border-slate-700 rounded-xl bg-slate-800/50"><Upload className="mx-auto text-slate-600 mb-4" size={40} /><p className="text-slate-500 text-sm">Henüz hiç imza yüklenmemiş.</p></div>) : (<div className="grid grid-cols-2 md:grid-cols-4 gap-4">{signatures.map(sig => (<div key={sig.id} className="group relative bg-white rounded-xl p-4 flex items-center justify-center h-32 shadow-sm border border-slate-600 transition hover:border-amber-500/50"><img src={sig.url} alt={sig.name} className="max-h-full max-w-full object-contain" /><div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center rounded-xl backdrop-blur-sm"><button onClick={() => deleteSignature(sig.id)} className="bg-red-500 p-2 rounded-full text-white hover:bg-red-600 shadow-lg transform active:scale-95 transition"><Trash2 size={20} /></button></div><div className="absolute bottom-2 left-2 right-2 text-center"><span className="text-[10px] bg-slate-900/90 text-white px-2 py-1 rounded truncate block border border-slate-700 shadow-sm">{sig.name}</span></div></div>))}</div>)}</div>
+                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-semibold flex items-center gap-2 text-white"><Building className="text-green-500" /> Firma Listesi Yönetimi</h2><span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">Toplam: {companies.length}</span></div><p className="text-sm text-slate-400 mb-4">Sertifikalarda kullanılacak firma/kurum isimlerini buraya ekleyin. Kısaltma belirlemek için "|" karakterini kullanın (Örn: "Acme Şirketi | Acme").</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-2"><label className="text-xs font-bold text-slate-500 uppercase">Toplu Ekleme</label><textarea rows={6} value={tempCompanyInput} onChange={(e) => setTempCompanyInput(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-sm text-white focus:border-green-500 outline-none resize-none font-mono" placeholder={"Firma Adı | Kısaltma\nÖrnek A.Ş. | Örnek\nSadece İsim"} /><button onClick={() => addCompany(tempCompanyInput)} className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition shadow-lg shadow-green-900/20 active:scale-95">Listeye Ekle</button></div><div className="space-y-2 flex flex-col h-full"><label className="text-xs font-bold text-slate-500 uppercase">Mevcut Liste</label><div className="bg-slate-900/50 rounded-lg border border-slate-700 p-2 flex-1 max-h-[200px] overflow-y-auto custom-scrollbar space-y-1">{companies.length === 0 ? (<div className="text-center py-8 text-slate-500 text-sm italic">Liste boş.</div>) : (companies.map((company, idx) => (<div key={idx} className="flex justify-between items-center p-2 bg-slate-800 rounded group hover:bg-slate-700 transition"><div className="flex flex-col truncate pr-2"><span className="text-sm text-slate-200">{company.name}</span>{company.shortName !== company.name && (<span className="text-[10px] text-slate-500 font-mono">Kısaltma: {company.shortName}</span>)}</div><button onClick={() => removeCompany(company.id)} className="text-slate-500 hover:text-red-500 p-1 opacity-60 group-hover:opacity-100 transition"><Trash2 size={14} /></button></div>)))}</div></div></div></div>
+                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-semibold flex items-center gap-2 text-white"><PenTool className="text-amber-500" /> Kayıtlı İmzalar</h2><div className="flex gap-2"><button onClick={() => setShowSignaturePad(true)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition shadow-sm border border-slate-600"><PenLine size={18} /> İmza Çiz</button><label className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium transition shadow-lg shadow-amber-900/20 active:scale-95 transform"><Plus size={18} /> İmza Yükle<input type="file" accept="image/*" multiple className="hidden" onChange={handleSignatureUpload} /></label></div></div>{signatures.length === 0 ? (<div className="text-center py-10 border-2 border-dashed border-slate-700 rounded-xl bg-slate-800/50"><Upload className="mx-auto text-slate-600 mb-4" size={40} /><p className="text-slate-500 text-sm">Henüz hiç imza yüklenmemiş.</p></div>) : (<div className="grid grid-cols-2 md:grid-cols-4 gap-4">{signatures.map(sig => (<div key={sig.id} className="group relative bg-white rounded-xl p-4 flex items-center justify-center h-32 shadow-sm border border-slate-600 transition hover:border-amber-500/50"><img src={sig.url} alt={sig.name} className="max-h-full max-w-full object-contain" /><div className="absolute inset-0 bg-black/60 opacity-60 group-hover:opacity-100 transition flex items-center justify-center rounded-xl backdrop-blur-sm"><button onClick={() => deleteSignature(sig.id)} className="bg-red-500 p-2 rounded-full text-white hover:bg-red-600 shadow-lg transform active:scale-95 transition"><Trash2 size={20} /></button></div><div className="absolute bottom-2 left-2 right-2 text-center"><span className="text-[10px] bg-slate-900/90 text-white px-2 py-1 rounded truncate block border border-slate-700 shadow-sm">{sig.name}</span></div></div>))}</div>)}</div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white"><Database className="text-blue-500" /> Yedekleme ve Geri Yükleme</h2><p className="text-sm text-slate-400 mb-6">Tüm projelerinizi, şablonlarınızı, ayarlarınızı ve yüklediğiniz görselleri (imzalar dahil) tek bir dosya olarak yedekleyin veya başka bir cihaza taşıyın.</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition"><DownloadCloud size={40} className="text-green-500 mb-4" /><h3 className="font-bold text-white mb-2">Sistemi Yedekle</h3><p className="text-xs text-slate-400 mb-4">Tüm verileri (projeler, görseller, ayarlar) içeren tek bir .json dosyası indirir.</p><button onClick={handleExportBackup} className="mt-auto bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition w-full shadow-lg shadow-green-900/20 active:scale-95">Yedek Dosyasını İndir</button></div><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition"><UploadCloud size={40} className="text-blue-500 mb-4" /><h3 className="font-bold text-white mb-2">Yedeği Geri Yükle</h3><p className="text-xs text-slate-400 mb-4">Daha önce aldığınız yedek dosyasını seçerek tüm verilerinizi geri yükleyin.</p><div className="mt-auto w-full relative"><input ref={backupInputRef} type="file" accept=".json" onChange={handleImportBackup} className="hidden" id="backup-upload" /><label htmlFor="backup-upload" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition w-full flex items-center justify-center cursor-pointer shadow-lg shadow-blue-900/20 active:scale-95">Dosya Seç ve Yükle</label></div><div className="flex items-center gap-2 mt-3 text-[10px] text-amber-500"><AlertTriangle size={12} /><span>Dikkat: Mevcut verilerin üzerine yazılacaktır.</span></div></div></div></div>
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white"><Globe className="text-blue-400" /> Web Erişim Linki (Yayınlanan Site)</h2><p className="text-sm text-slate-400 mb-4">Uygulamaya tarayıcı üzerinden erişmek veya başkalarıyla paylaşmak için aşağıdaki yayınlanmış site bağlantısını kullanabilirsiniz.</p><div className="flex items-center gap-2 bg-slate-900 p-3 rounded-lg border border-slate-700"><input type="text" readOnly value="https://ais-pre-62oma5vjna3dv55v52dmoe-20900394953.europe-west2.run.app" className="flex-1 bg-transparent text-slate-300 outline-none text-sm" /><button onClick={() => { navigator.clipboard.writeText("https://ais-pre-62oma5vjna3dv55v52dmoe-20900394953.europe-west2.run.app"); alert('Bağlantı kopyalandı!'); }} className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded transition text-xs font-medium flex items-center gap-1"><Copy size={14} /> Kopyala</button><a href="https://ais-pre-62oma5vjna3dv55v52dmoe-20900394953.europe-west2.run.app" target="_blank" rel="noopener noreferrer" className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded transition text-xs font-medium flex items-center gap-1"><ExternalLink size={14} /> Git</a></div></div>
+
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white"><Github className="text-white" /> Hakkında & GitHub</h2><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex items-start gap-4"><div className="p-3 bg-slate-800 rounded-full"><Monitor size={24} className="text-slate-400" /></div><div className="flex-1"><h3 className="font-bold text-white text-lg">ProCertify Studio <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full ml-2">{APP_VERSION}</span></h3><p className="text-sm text-slate-400 mt-1 mb-4">Açık kaynak kodlu, profesyonel sertifika tasarım ve yönetim aracı. Projeyi GitHub üzerinde destekleyebilir veya katkıda bulunabilirsiniz.</p><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-white bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg transition border border-slate-600"><Github size={16} /> GitHub Deposuna Git</a></div></div></div>
              </div>
           </div>
@@ -1337,35 +1628,84 @@ const App = () => {
 
         {/* VIEW: FILL & EXPORT */}
         {currentView === 'fill' && (
-           <div className="flex-1 flex">
-              {/* Form Input Area */}
-              <div className="w-96 bg-slate-800 border-r border-slate-700 flex flex-col z-20 overflow-hidden">
-                 <div className="p-5 border-b border-slate-700 bg-slate-900 shrink-0 select-none">
-                   <h2 className="text-xl font-bold text-white mb-1">Sertifika Doldur</h2>
-                   <p className="text-xs text-slate-400">Birden fazla proje seçip tek seferde doldurun.</p>
-                 </div>
+           <div className="flex-1 flex overflow-hidden relative">
+              {/* Pillar 1: Project Selection (Collapsible) */}
+              <div className={`${isFillSidebarOpen ? 'w-48' : 'w-0'} bg-slate-950 border-r border-slate-800 flex flex-col shrink-0 transition-all duration-300 overflow-hidden relative`}>
+                  <div className="p-4 border-b border-slate-800 bg-slate-900/30 whitespace-nowrap">
+                    <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sertifikalar</h2>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar min-w-[192px]">
+                     {projects.length === 0 ? (
+                       <div className="text-[10px] text-slate-600 text-center py-4 italic">Proje bulunamadı.</div>
+                     ) : (
+                       projects.map(p => {
+                          const isSelected = selectedFillProjectIds.includes(p.id);
+                          return (
+                              <div 
+                                key={p.id} 
+                                onClick={() => { if (isSelected) { if (selectedFillProjectIds.length > 1) setSelectedFillProjectIds(prev => prev.filter(id => id !== p.id)); } else { setSelectedFillProjectIds(prev => [...prev, p.id]); } }} 
+                                className={`flex items-center gap-2 p-2.5 rounded-lg cursor-pointer border transition-all text-xs select-none ${isSelected ? 'bg-amber-500/10 border-amber-500/50 text-amber-200' : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-800/50 hover:text-slate-300'}`}
+                              >
+                                  <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-amber-500 border-amber-500' : 'border-slate-700'}`}>
+                                    {isSelected && <Check size={10} className="text-slate-900 font-bold" />}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                      <span className="truncate block">{p.name}</span>
+                                      {isSelected && (
+                                          <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+                                              <div className="flex flex-col gap-1">
+                                                  <label className="text-[9px] text-slate-500 uppercase font-bold">Ön Varyant</label>
+                                                  <select 
+                                                    value={projectFrontSelections[p.id] !== undefined ? projectFrontSelections[p.id] : (p.selectedFrontId || '')} 
+                                                    onChange={(e) => setProjectFrontSelections(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                                    className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-amber-400 outline-none focus:border-amber-500"
+                                                  >
+                                                      <option value="">Varsayılan Arkaplan</option>
+                                                      {p.frontVariants && p.frontVariants.map(v => (
+                                                          <option key={v.id} value={v.id}>{v.name}</option>
+                                                      ))}
+                                                  </select>
+                                              </div>
+                                              <div className="flex flex-col gap-1">
+                                                  <label className="text-[9px] text-slate-500 uppercase font-bold">Arka Varyant</label>
+                                                  <select 
+                                                    value={projectBackSelections[p.id] !== undefined ? projectBackSelections[p.id] : (p.selectedBackId || '')} 
+                                                    onChange={(e) => setProjectBackSelections(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                                    className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-amber-400 outline-none focus:border-amber-500"
+                                                  >
+                                                      <option value="">Varsayılan Arkaplan</option>
+                                                      {p.backVariants && p.backVariants.map(v => (
+                                                          <option key={v.id} value={v.id}>{v.name}</option>
+                                                      ))}
+                                                  </select>
+                                              </div>
+                                          </div>
+                                      )}
+                                  </div>
+                              </div>
+                          )
+                       })
+                     )}
+                  </div>
+              </div>
 
-                 {/* Project Selector */}
-                 <div className="p-4 border-b border-slate-700 bg-slate-800/50 shrink-0 max-h-48 overflow-y-auto custom-scrollbar">
-                     <h3 className="text-xs font-bold uppercase text-slate-500 mb-2 select-none">Doldurulacak Projeler</h3>
-                     <div className="space-y-2">
-                        {projects.map(p => {
-                            const isSelected = selectedFillProjectIds.includes(p.id);
-                            return (
-                                <div key={p.id} onClick={() => { if (isSelected) { if (selectedFillProjectIds.length > 1) setSelectedFillProjectIds(prev => prev.filter(id => id !== p.id)); } else { setSelectedFillProjectIds(prev => [...prev, p.id]); } }} className={`flex items-center gap-2 p-2 rounded cursor-pointer border select-none transition ${isSelected ? 'bg-amber-900/20 border-amber-600/50' : 'bg-slate-900 border-slate-700 hover:border-slate-500'}`}>
-                                    {isSelected ? <CheckSquare size={16} className="text-amber-500" /> : <Square size={16} className="text-slate-600" />}
-                                    <span className={`text-sm ${isSelected ? 'text-amber-100' : 'text-slate-400'}`}>{p.name}</span>
-                                </div>
-                            )
-                        })}
-                     </div>
-                 </div>
-                 
-                 {/* Mode Toggle */}
-                 <div className="px-6 pt-4 pb-2 flex justify-between items-center border-b border-slate-700/50">
-                   <span className="text-xs font-bold text-slate-500 uppercase">Veri Girişi</span>
-                   <button onClick={() => setIsChatMode(!isChatMode)} className="text-xs text-amber-500 hover:text-amber-400 flex items-center gap-1 transition bg-amber-500/10 px-2 py-1 rounded">
-                     {isChatMode ? <><List size={14}/> Form Görünümü</> : <><MessageSquare size={14}/> Sohbet Görünümü</>}
+              {/* Sidebar Toggle Button */}
+              <button 
+                onClick={() => setIsFillSidebarOpen(!isFillSidebarOpen)}
+                className={`absolute top-1/2 -translate-y-1/2 z-50 p-1.5 bg-slate-800 border border-slate-700 text-slate-300 rounded-full shadow-xl hover:text-white transition-all ${isFillSidebarOpen ? 'left-[180px]' : 'left-2'}`}
+              >
+                {isFillSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+              </button>
+
+              {/* Pillar 2: Data Entry */}
+              <div className="w-[360px] bg-slate-800 border-r border-slate-700 flex flex-col z-20 overflow-hidden shadow-2xl shrink-0">
+                 <div className="p-5 border-b border-slate-700 bg-slate-900 shrink-0 flex justify-between items-center">
+                   <div>
+                     <h2 className="text-lg font-bold text-white leading-tight">Veri Girişi</h2>
+                     <p className="text-[10px] text-slate-400 mt-0.5">Seçili {selectedFillProjectIds.length} sertifikayı doldurun.</p>
+                   </div>
+                   <button onClick={() => setIsChatMode(!isChatMode)} className="text-[10px] text-amber-500 hover:text-amber-400 flex items-center gap-1.5 transition bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 font-bold uppercase tracking-tight">
+                     {isChatMode ? <><List size={12}/> Form</> : <><MessageSquare size={12}/> Sohbet</>}
                    </button>
                  </div>
 
@@ -1399,30 +1739,118 @@ const App = () => {
                             }
 
                             if (options.length > 0) {
+                              const isSearchEmpty = chatInputValue.trim() === '';
+                              const filteredOptions = isSearchEmpty ? options : options.filter(opt => opt.label.toLowerCase().includes(chatInputValue.toLowerCase()));
+                              
+                              const shouldShowOptions = options.length <= 4 || !isSearchEmpty;
+
+                              if (!shouldShowOptions) return null;
+
                               return (
-                                <div className="flex flex-wrap gap-2 mb-2 max-h-32 overflow-y-auto custom-scrollbar">
-                                  {options.map((opt, i) => (
-                                    <button key={i} onClick={() => handleChatSubmit(opt.value, opt.label)} className="bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-full transition border border-slate-600 shadow-sm">
-                                      {opt.label}
-                                    </button>
-                                  ))}
+                                <div className="mb-2 space-y-2">
+                                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar">
+                                    {filteredOptions.length > 0 ? filteredOptions.map((opt, i) => (
+                                      <button key={i} onClick={() => handleChatSubmit(opt.value, opt.label)} className="bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-full transition border border-slate-600 shadow-sm">
+                                        {opt.label}
+                                      </button>
+                                    )) : (
+                                      <span className="text-xs text-slate-500">Sonuç bulunamadı.</span>
+                                    )}
+                                  </div>
                                 </div>
                               );
                             }
                             return null;
                          })()}
 
-                         <div className="relative flex items-center">
-                           <input
-                             type="text"
-                             value={chatInputValue}
-                             onChange={(e) => setChatInputValue(e.target.value)}
-                             onKeyDown={(e) => { if (e.key === 'Enter') handleChatSubmit(chatInputValue); }}
-                             placeholder={`${getUnifiedFillFields()[currentChatStep]?.displayLabel} girin...`}
-                             className="w-full bg-slate-900 border border-slate-600 rounded-full pl-4 pr-12 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-500 transition text-sm shadow-inner"
-                           />
-                           <button onClick={() => handleChatSubmit(chatInputValue)} className="absolute right-2 p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition shadow-md">
-                             <Send size={16} />
+                         <div className="flex items-center gap-2">
+                           <div className="relative flex-1 flex items-center">
+                             <input
+                               type="text"
+                               value={chatInputValue}
+                               onChange={(e) => setChatInputValue(e.target.value)}
+                               onKeyDown={(e) => { if (e.key === 'Enter') handleChatSubmit(chatInputValue); }}
+                               placeholder={`${getUnifiedFillFields()[currentChatStep]?.displayLabel} girin...`}
+                               className="w-full bg-slate-900 border border-slate-600 rounded-full pl-4 pr-20 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-500 transition text-sm shadow-inner"
+                             />
+                             <div className="absolute right-2 flex items-center gap-1">
+                               <div className="relative flex items-center justify-center w-8 h-8 group" title="Tarih Seç">
+                                 <button onClick={() => setIsCalendarOpen(!isCalendarOpen)} className="p-1 rounded-full hover:bg-slate-700 transition">
+                                   <Calendar size={18} className={`transition ${isCalendarOpen ? 'text-amber-500' : 'text-slate-400 group-hover:text-amber-500'}`} />
+                                 </button>
+                                 
+                                 {isCalendarOpen && (
+                                   <div className="absolute bottom-full right-0 mb-2 w-48 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                                     <div className="flex justify-between items-center mb-2 gap-1">
+                                       <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} className="p-1 hover:bg-slate-700 rounded text-slate-300 transition-colors"><ChevronLeft size={14}/></button>
+                                       <div className="flex items-center gap-1 overflow-hidden">
+                                          <select 
+                                            value={calendarDate.getMonth()} 
+                                            onChange={(e) => setCalendarDate(new Date(calendarDate.getFullYear(), parseInt(e.target.value), 1))}
+                                            className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-[9px] font-bold text-white w-14 outline-none focus:border-amber-500 transition-colors cursor-pointer appearance-none text-center"
+                                          >
+                                            {Array.from({ length: 12 }, (_, i) => (
+                                              <option key={i} value={i} className="bg-slate-800 text-white">
+                                                {new Date(2000, i, 1).toLocaleDateString('tr-TR', { month: 'short' }).toUpperCase()}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <select 
+                                            value={calendarDate.getFullYear()} 
+                                            onChange={(e) => setCalendarDate(new Date(parseInt(e.target.value), calendarDate.getMonth(), 1))}
+                                            className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-[9px] font-bold text-amber-500 w-14 outline-none focus:border-amber-500 transition-colors cursor-pointer appearance-none text-center"
+                                          >
+                                            {Array.from({ length: 141 }, (_, i) => 1920 + i).map(y => (
+                                              <option key={y} value={y} className="bg-slate-800 text-white">{y}</option>
+                                            ))}
+                                            {calendarDate.getFullYear() < 1920 && <option value={calendarDate.getFullYear()}>{calendarDate.getFullYear()}</option>}
+                                            {calendarDate.getFullYear() > 2060 && <option value={calendarDate.getFullYear()}>{calendarDate.getFullYear()}</option>}
+                                          </select>
+                                       </div>
+                                       <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))} className="p-1 hover:bg-slate-700 rounded text-slate-300 transition-colors"><ChevronRight size={14}/></button>
+                                     </div>
+                                     <div className="grid grid-cols-7 gap-0.5 text-center mb-1">
+                                       {['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'].map(d => <div key={d} className="text-[8px] text-slate-500 font-bold uppercase">{d}</div>)}
+                                     </div>
+                                     <div className="grid grid-cols-7 gap-0.5">
+                                       {(() => {
+                                         const year = calendarDate.getFullYear();
+                                         const month = calendarDate.getMonth();
+                                         const firstDay = new Date(year, month, 1).getDay();
+                                         const daysInMonth = new Date(year, month + 1, 0).getDate();
+                                         const offset = firstDay === 0 ? 6 : firstDay - 1; // Monday first
+                                         
+                                         const days = [];
+                                         for (let i = 0; i < offset; i++) days.push(<div key={`empty-${i}`} />);
+                                         
+                                         const selectedDates = getSelectedDatesFromText(chatInputValue);
+                                         
+                                         for (let i = 1; i <= daysInMonth; i++) {
+                                           const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                                           const isSelected = selectedDates.includes(dateString);
+                                           days.push(
+                                             <button 
+                                               key={i} 
+                                               onClick={() => toggleDateSelection(dateString)}
+                                               className={`w-6 h-6 rounded-md text-[10px] flex items-center justify-center transition ${isSelected ? 'bg-amber-500 text-white font-bold shadow-md shadow-amber-900/50' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}
+                                             >
+                                               {i}
+                                             </button>
+                                           );
+                                         }
+                                         return days;
+                                       })()}
+                                     </div>
+                                   </div>
+                                 )}
+                               </div>
+                               <button onClick={() => { handleChatSubmit(chatInputValue); setIsCalendarOpen(false); }} className="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition shadow-md">
+                                 <Send size={16} />
+                               </button>
+                             </div>
+                           </div>
+                           <button onClick={() => { handleChatSubmit('', undefined, true); setIsCalendarOpen(false); }} className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full text-sm font-medium transition border border-slate-600 whitespace-nowrap" title="Cevapsız Bırak">
+                             Geç
                            </button>
                          </div>
                        </div>
@@ -1513,24 +1941,28 @@ const App = () => {
               </div>
 
               {/* LIST PREVIEW MODE */}
-              <div className="flex-1 bg-[#0b0f19] overflow-y-auto p-10 flex flex-col items-center gap-10">
+              <div className="flex-1 bg-[#0b0f19] overflow-auto p-10 flex flex-col items-center gap-10 custom-scrollbar">
                 {selectedFillProjectIds.length > 0 && (
-                    <div className="text-slate-500 text-sm mb-4 select-none">
+                    <div className="text-slate-500 text-sm mb-4 select-none whitespace-nowrap">
                         Önizleme ({selectedFillProjectIds.length} Proje). Arka yüzü olan kartları çevirmek için üzerine tıklayın.
                     </div>
                 )}
-                {projects.filter(p => selectedFillProjectIds.includes(p.id)).map(p => {
+                <div className="flex flex-col items-center gap-10 min-w-max">
+                  {projects.filter(p => selectedFillProjectIds.includes(p.id)).map(p => {
                     const side = previewSides[p.id] || 'front';
-                    const hasBack = p.back.bgUrl || p.back.elements.length > 0;
+                    const activeBack = getActiveSideData(p, 'back', true);
+                    const hasBack = activeBack && (activeBack.bgUrl || activeBack.elements.length > 0);
                     const previewWidth = 700; 
                     const calcScale = previewWidth / p.width;
+                    const activeSideData = getActiveSideData(p, side, true);
                     return (
                         <div key={p.id} onClick={() => { if (hasBack) { togglePreviewSide(p.id); } }} className={`relative group transition-all duration-300 ${hasBack ? 'cursor-pointer' : 'cursor-default'}`}>
                             <div className="absolute -top-3 left-4 z-10 flex gap-2 select-none"><span className="bg-slate-800 text-white text-xs px-3 py-1 rounded-full border border-slate-700 shadow-lg font-bold">{p.name}</span><span className={`text-xs px-2 py-1 rounded-full border shadow-lg font-bold flex items-center gap-1 ${side === 'front' ? 'bg-blue-900/80 text-blue-200 border-blue-700' : 'bg-purple-900/80 text-purple-200 border-purple-700'}`}>{side === 'front' ? 'ÖN YÜZ' : 'ARKA YÜZ'}</span>{hasBack && (<span className="bg-slate-700 text-slate-300 text-[10px] px-2 py-1 rounded-full border border-slate-600 flex items-center gap-1 group-hover:bg-amber-600 group-hover:text-white transition-colors"><RotateCcw size={10} /> Çevir</span>)}</div>
-                            <div className={`rounded-lg overflow-hidden border-4 shadow-2xl transition-colors ${activeProjectId === p.id ? 'border-amber-500/50' : 'border-slate-800'} ${hasBack ? 'hover:border-slate-600' : ''}`}><CanvasEditor elements={getPreviewElements(p, side)} width={p.width} height={p.height} bgUrl={p[side].bgUrl} selectedId={null} onSelect={() => {}} onUpdateElement={() => {}} onDeleteElement={() => {}} scale={calcScale} readOnly={true} /></div>
+                            <div className={`rounded-lg overflow-hidden border-4 shadow-2xl transition-colors ${activeProjectId === p.id ? 'border-amber-500/50' : 'border-slate-800'} ${hasBack ? 'hover:border-slate-600' : ''}`}><CanvasEditor elements={getPreviewElements(p, side)} width={p.width} height={p.height} bgUrl={activeSideData?.bgUrl || ''} selectedId={null} onSelect={() => {}} onUpdateElement={() => {}} onDeleteElement={() => {}} scale={calcScale} readOnly={true} /></div>
                         </div>
                     );
                 })}
+                </div>
                 {selectedFillProjectIds.length === 0 && (<div className="flex flex-col items-center justify-center h-full text-slate-500 select-none"><LayoutTemplate size={48} className="mb-4 opacity-20" /><p>Önizleme için soldan proje seçiniz.</p></div>)}
               </div>
            </div>

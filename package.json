@@ -14,9 +14,9 @@
     "url": "https://github.com/szgnemin1/ProCertify.git"
   },
   "scripts": {
-    "dev": "node server.js",
-    "dev:electron": "concurrently \"node server.js\" \"wait-on http://localhost:3000 && electron .\"",
-    "start": "node server.js",
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "start": "vite --host 0.0.0.0 --port 3000",
+    "dev:electron": "concurrently \"vite\" \"wait-on http://localhost:3000 && electron .\"",
     "build": "vite build",
     "preview": "vite preview",
     "electron:start": "npm run build && electron .",

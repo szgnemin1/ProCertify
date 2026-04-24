@@ -44,8 +44,16 @@ export interface CanvasElement {
 }
 
 export interface CertificateSide {
+  id?: string; // New: Unique ID for multi-side support
+  name?: string; // New: User-defined name for this version
   bgUrl: string;
   elements: CanvasElement[];
+}
+
+export interface BackgroundVariant {
+  id: string;
+  name: string;
+  bgUrl: string;
 }
 
 export interface CertificateProject {
@@ -55,8 +63,12 @@ export interface CertificateProject {
   height: number;
   front: CertificateSide;
   back: CertificateSide;
+  frontVariants?: BackgroundVariant[]; 
+  backVariants?: BackgroundVariant[];  
+  selectedFrontId?: string; 
+  selectedBackId?: string;  
   createdAt: number;
-  filenamePattern?: string; // New: Pattern for saving files e.g. "{Ad Soyad}-{Tarih}"
+  filenamePattern?: string; 
 }
 
 export interface Company {
