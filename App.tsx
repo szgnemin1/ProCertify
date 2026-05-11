@@ -810,6 +810,25 @@ const App = () => {
     setChatOptionSearch('');
   };
 
+  const handleChatUndo = () => {
+    if (currentChatStep === 0) return;
+    const prevStep = currentChatStep - 1;
+    setCurrentChatStep(prevStep);
+    
+    setChatHistory(prev => prev.slice(0, Math.max(1, prev.length - 2)));
+    
+    const fields = getUnifiedFillFields();
+    if (fields[prevStep]) {
+      setFillValues(prev => {
+        const next = { ...prev };
+        delete next[fields[prevStep].label];
+        return next;
+      });
+    }
+    setChatInputValue('');
+    setChatOptionSearch('');
+  };
+
   if (!isDataLoaded) {
       return (
           <div className="flex items-center justify-center h-screen bg-slate-900 text-white">
@@ -1764,6 +1783,15 @@ const App = () => {
                          })()}
 
                          <div className="flex items-center gap-2">
+                           {currentChatStep > 0 && (
+                             <button 
+                               onClick={handleChatUndo} 
+                               className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full transition border border-slate-600 flex items-center justify-center shrink-0 shadow-sm" 
+                               title="Önceki Adıma Dön"
+                             >
+                               <ChevronLeft size={16} />
+                             </button>
+                           )}
                            <div className="relative flex-1 flex items-center">
                              <input
                                type="text"
@@ -1858,12 +1886,17 @@ const App = () => {
                      
                      {/* Restart Button */}
                      {getUnifiedFillFields().length > 0 && currentChatStep >= getUnifiedFillFields().length && (
-                        <button onClick={() => {
-                          setCurrentChatStep(0);
-                          setChatHistory([{ id: Date.now().toString(), sender: 'bot', text: `Baştan başlıyoruz. Lütfen **${getUnifiedFillFields()[0].displayLabel}** giriniz.` }]);
-                        }} className="mt-4 w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm transition flex items-center justify-center gap-2 border border-slate-700">
-                          <RotateCcw size={16} /> Yeniden Doldur
-                        </button>
+                        <div className="flex flex-col gap-2 w-full mt-4">
+                           <button onClick={handleChatUndo} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm transition flex items-center justify-center gap-2 border border-slate-700">
+                             <ChevronLeft size={16} /> Son Adıma Geri Dön
+                           </button>
+                           <button onClick={() => {
+                             setCurrentChatStep(0);
+                             setChatHistory([{ id: Date.now().toString(), sender: 'bot', text: `Baştan başlıyoruz. Lütfen **${getUnifiedFillFields()[0].displayLabel}** giriniz.` }]);
+                           }} className="w-full py-2.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-500 rounded-xl text-sm transition flex items-center justify-center gap-2 border border-amber-500/20">
+                             <RotateCcw size={16} /> Formu Sıfırla
+                           </button>
+                        </div>
                      )}
                    </div>
                  ) : (
