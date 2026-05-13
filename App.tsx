@@ -54,7 +54,8 @@ import {
   MessageSquare,
   Bot,
   Send,
-  Calendar
+  Calendar,
+  Menu
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
@@ -175,6 +176,7 @@ const App = () => {
   // UI State
   const [activeSide, setActiveSide] = useState<Side>('front');
   const [currentView, setCurrentView] = useState<ViewMode>('template');
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [showSigPermissions, setShowSigPermissions] = useState(false); 
   const [showOptionManager, setShowOptionManager] = useState(false); 
   const [showSignaturePad, setShowSignaturePad] = useState(false); 
@@ -1054,16 +1056,16 @@ const App = () => {
                 throw new Error("Geçersiz yedek dosyası formatı.");
             }
 
-            // 1. Save data to localStorage
-            localStorage.setItem('procertify_studio_data', JSON.stringify({
-                projects: data.projects,
-                signatures: data.signatures || [],
-                companies: data.companies || []
-            }));
+            // Update state
+            setProjects(data.projects);
+            setSignatures(data.signatures || []);
+            setCompanies(data.companies || []);
             
-            // 2. Alert and Reload
-            alert("Yedek başarıyla yüklendi! Uygulama, verilerin geçerli olması için yeniden başlatılıyor.");
-            window.location.reload();
+            if (data.projects && data.projects.length > 0) {
+                setActiveProjectId(data.projects[0].id);
+            }
+            
+            alert("Yedek başarıyla yüklendi!");
 
         } catch(e) {
             console.error("Backup Import Error:", e);
@@ -1369,25 +1371,60 @@ const App = () => {
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-slate-900 text-slate-200 overflow-hidden font-sans selection:bg-amber-500/30">
+    <div className="flex flex-col md:flex-row h-screen bg-slate-900 text-slate-200 overflow-hidden font-sans selection:bg-amber-500/30 w-full relative">
       
+      {/* MOBILE HEADER */}
+      <div className="md:hidden flex items-center justify-between p-4 bg-slate-950 border-b border-slate-800 shrink-0 z-40 w-full">
+         <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-700 rounded-lg flex items-center justify-center shadow-lg">
+               <FileText className="text-white" size={16} />
+            </div>
+            <span className="font-bold text-white text-lg tracking-tight">ProCertify</span>
+         </div>
+         <button onClick={() => setIsMobileNavOpen(true)} className="p-2 text-slate-400 hover:text-white transition bg-slate-900 rounded-lg border border-slate-700">
+           <Menu size={20} />
+         </button>
+      </div>
+
+      {/* MOBILE DRAWER OVERLAY */}
+      {isMobileNavOpen && (
+          <div 
+            className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] animate-in fade-in transition-all" 
+            onClick={() => setIsMobileNavOpen(false)}
+          />
+      )}
+
       {/* SIDEBAR NAVIGATION */}
-      <div className="w-full md:w-20 bg-slate-950 border-t md:border-t-0 md:border-r border-slate-800 flex flex-row md:flex-col items-center py-2 md:py-6 px-2 md:px-0 gap-2 md:gap-8 z-30 shrink-0 select-none order-last md:order-first">
+      <div className={`fixed inset-y-0 left-0 z-[100] transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 w-[240px] md:w-20 bg-slate-950 md:border-r border-slate-800 flex flex-col items-center py-6 px-4 md:px-0 gap-6 md:gap-8 shrink-0 select-none shadow-2xl md:shadow-none ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        
+        {/* Mobile Sidebar Header */}
+        <div className="flex md:hidden items-center justify-between w-full pb-4 border-b border-slate-800">
+           <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-700 rounded-lg flex items-center justify-center shadow-lg">
+                 <FileText className="text-white" size={16} />
+              </div>
+              <span className="font-bold text-white text-lg tracking-tight">Menü</span>
+           </div>
+           <button onClick={() => setIsMobileNavOpen(false)} className="p-1.5 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition border border-slate-700">
+             <X size={20} />
+           </button>
+        </div>
+
         <div className="hidden md:flex w-10 h-10 bg-gradient-to-br from-amber-500 to-amber-700 rounded-xl items-center justify-center shadow-lg shadow-amber-900/40">
            <FileText className="text-white" size={24} />
         </div>
         
-        <div className="flex flex-row md:flex-col w-full gap-1 md:gap-4 flex-1 justify-around md:justify-start">
-           <button onClick={() => setCurrentView('projects')} className={`p-2 flex-1 md:w-full flex justify-center md:flex-col items-center gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'projects' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><FolderOpen size={20} className="md:w-6 md:h-6" /><span className="text-[10px] font-medium hidden sm:block md:block">Projeler</span>{currentView === 'projects' && <div className="absolute top-auto bottom-0 md:left-0 md:top-0 md:bottom-0 h-1 w-8 md:h-auto md:w-1 bg-amber-500 rounded-t md:rounded-t-none md:rounded-r"></div>}</button>
-           <button onClick={() => setCurrentView('template')} className={`p-2 flex-1 md:w-full flex justify-center md:flex-col items-center gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'template' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><LayoutTemplate size={20} className="md:w-6 md:h-6" /><span className="text-[10px] font-medium hidden sm:block md:block">Şablon</span>{currentView === 'template' && <div className="absolute top-auto bottom-0 md:left-0 md:top-0 md:bottom-0 h-1 w-8 md:h-auto md:w-1 bg-amber-500 rounded-t md:rounded-t-none md:rounded-r"></div>}</button>
-           <button onClick={() => setCurrentView('settings')} className={`p-2 flex-1 md:w-full flex justify-center md:flex-col items-center gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'settings' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><Settings size={20} className="md:w-6 md:h-6" /><span className="text-[10px] font-medium hidden sm:block md:block">Ayarlar</span>{currentView === 'settings' && <div className="absolute top-auto bottom-0 md:left-0 md:top-0 md:bottom-0 h-1 w-8 md:h-auto md:w-1 bg-amber-500 rounded-t md:rounded-t-none md:rounded-r"></div>}</button>
-           <button onClick={() => setCurrentView('fill')} className={`p-2 flex-1 md:w-full flex justify-center md:flex-col items-center gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'fill' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><PenTool size={20} className="md:w-6 md:h-6" /><span className="text-[10px] font-medium hidden sm:block md:block">Doldur</span>{currentView === 'fill' && <div className="absolute top-auto bottom-0 md:left-0 md:top-0 md:bottom-0 h-1 w-8 md:h-auto md:w-1 bg-amber-500 rounded-t md:rounded-t-none md:rounded-r"></div>}</button>
+        <div className="flex flex-col w-full gap-2 flex-1 justify-start">
+           <button onClick={() => { setCurrentView('projects'); setIsMobileNavOpen(false); }} className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'projects' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900 md:hover:bg-transparent'}`}><FolderOpen size={20} className="md:w-6 md:h-6 shrink-0" /><span className="text-sm md:text-[10px] font-medium block">Projeler</span>{currentView === 'projects' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}</button>
+           <button onClick={() => { setCurrentView('template'); setIsMobileNavOpen(false); }} className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'template' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900 md:hover:bg-transparent'}`}><LayoutTemplate size={20} className="md:w-6 md:h-6 shrink-0" /><span className="text-sm md:text-[10px] font-medium block">Şablon</span>{currentView === 'template' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}</button>
+           <button onClick={() => { setCurrentView('settings'); setIsMobileNavOpen(false); }} className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'settings' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900 md:hover:bg-transparent'}`}><Settings size={20} className="md:w-6 md:h-6 shrink-0" /><span className="text-sm md:text-[10px] font-medium block">Ayarlar</span>{currentView === 'settings' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}</button>
+           <button onClick={() => { setCurrentView('fill'); setIsMobileNavOpen(false); }} className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'fill' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900 md:hover:bg-transparent'}`}><PenTool size={20} className="md:w-6 md:h-6 shrink-0" /><span className="text-sm md:text-[10px] font-medium block">Doldur</span>{currentView === 'fill' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}</button>
         </div>
-        <div className="hidden md:flex flex-col items-center gap-2 pb-2"><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:text-white transition"><Github size={20} /></a><span className="text-[9px] text-slate-600 font-mono">{APP_VERSION}</span></div>
+        <div className="flex flex-col items-center gap-2 pb-2 mt-auto"><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:text-white transition flex items-center md:block gap-2"><Github size={20} className="md:hidden"/><span className="md:hidden text-xs">GitHub'da Görüntüle</span></a><span className="text-[9px] text-slate-600 font-mono">{APP_VERSION}</span></div>
       </div>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         
         {/* VIEW: PROJECTS LIST */}
         {currentView === 'projects' && (
@@ -1672,9 +1709,20 @@ const App = () => {
                         </div>
                         <button 
                             onClick={handlePasswordChange}
-                            className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition shadow-lg shadow-red-900/20 active:scale-95 w-full md:w-auto"
+                            className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition shadow-lg shadow-red-900/20 active:scale-95 w-full md:w-auto shrink-0"
                         >
                             Şifreyi Değiştir
+                        </button>
+                    </div>
+                    <div className="mt-6 pt-4 border-t border-slate-700">
+                         <button 
+                            onClick={() => {
+                                localStorage.removeItem('vps_session');
+                                window.location.reload();
+                            }}
+                            className="text-sm text-slate-400 hover:text-white underline decoration-slate-600 underline-offset-4"
+                        >
+                            Oturumu Kapat (Şifre Ekranına Dön)
                         </button>
                     </div>
                     {passwordMessage && (
@@ -1701,7 +1749,7 @@ const App = () => {
 
               <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
               {/* Pillar 1: Project Selection (Collapsible) */}
-              <div className={`${mobileFillStep === 0 ? 'flex w-full flex-1' : 'hidden md:flex'} ${isFillSidebarOpen ? 'md:w-48' : 'md:w-0'} bg-slate-950 border-r border-slate-800 flex-col shrink-0 transition-all duration-300 overflow-hidden relative`}>
+              <div className={`${mobileFillStep === 0 ? 'flex flex-1 w-full md:flex-none' : 'hidden md:flex'} ${isFillSidebarOpen ? 'md:w-48' : 'md:w-0'} bg-slate-950 border-r border-slate-800 flex-col shrink-0 transition-all duration-300 overflow-hidden relative`}>
                   <div className="p-4 border-b border-slate-800 bg-slate-900/30 whitespace-nowrap flex justify-between items-center">
                     <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sertifikalar</h2>
                   </div>
@@ -1769,7 +1817,7 @@ const App = () => {
               </button>
               
               {/* Pillar 2: Data Entry */}
-              <div className={`${mobileFillStep === 1 ? 'flex w-full flex-1' : 'hidden md:flex'} md:w-[360px] bg-slate-800 border-r border-slate-700 flex-col z-20 overflow-hidden shadow-2xl shrink-0`}>
+              <div className={`${mobileFillStep === 1 ? 'flex flex-1 w-full md:flex-none' : 'hidden md:flex'} md:w-[360px] bg-slate-800 border-r border-slate-700 flex-col z-20 overflow-hidden shadow-2xl shrink-0`}>
                  <div className="p-5 border-b border-slate-700 bg-slate-900 shrink-0 flex justify-between items-center">
                    <div>
                      <h2 className="text-lg font-bold text-white leading-tight">Veri Girişi</h2>
