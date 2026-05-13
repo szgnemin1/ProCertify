@@ -1086,25 +1086,39 @@ const App = () => {
                 throw new Error("Geçersiz yedek dosyası formatı.");
             }
 
+            const dataObj = {
+                projects: data.projects,
+                signatures: data.signatures || [],
+                companies: data.companies || []
+            };
+
             // Explicitly overwrite localStorage immediately
             try {
-                localStorage.setItem('procertify_studio_data', JSON.stringify({
-                    projects: data.projects,
-                    signatures: data.signatures || [],
-                    companies: data.companies || []
-                }));
+                localStorage.setItem('procertify_studio_data', JSON.stringify(dataObj));
             } catch(e) {}
+
+            // Save to API backend if available
+            try {
+                await fetch('/api/data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dataObj)
+                });
+            } catch (error) {
+                console.error("Failed to save imported backup to API", error);
+            }
 
             // Update state
             setProjects(data.projects);
-            setSignatures(data.signatures || []);
-            setCompanies(data.companies || []);
+            setSignatures(dataObj.signatures);
+            setCompanies(dataObj.companies);
             
             if (data.projects && data.projects.length > 0) {
                 setActiveProjectId(data.projects[0].id);
             }
             
             alert("Yedek başarıyla yüklendi!");
+            window.location.reload();
 
         } catch(e) {
             console.error("Backup Import Error:", e);
