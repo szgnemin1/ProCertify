@@ -85,8 +85,10 @@ async function startServer() {
     }
   });
 
+  const isProduction = process.env.NODE_ENV === "production" || process.env.NODE_ENV === "production " || fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'));
+
   // Serve static files in production or map vite middleware in dev
-  if (process.env.NODE_ENV !== "production") {
+  if (!isProduction) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
