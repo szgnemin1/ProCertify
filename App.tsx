@@ -278,33 +278,41 @@ const App = () => {
   // Fetch data on mount
   useEffect(() => {
     const fetchData = async () => {
+      let data = null;
+      let fromApi = false;
       try {
         const res = await fetch('/api/data');
         if (res.ok) {
-          const data = await res.json();
-          if (data.projects && Array.isArray(data.projects) && data.projects.length > 0) {
-             setProjects(data.projects);
-             setActiveProjectId(data.projects[0].id);
-          } else {
-             const newP = createNewProject('Yeni Sertifika Projesi');
-             setProjects([newP]);
-             setActiveProjectId(newP.id);
+          data = await res.json();
+          // If the API returned an empty object, it means no file data yet.
+          if (Object.keys(data).length > 0) {
+             fromApi = true;
           }
+        }
+      } catch (error) {
+        console.warn("API not available, falling back to localStorage.");
+      }
+
+      if (!fromApi) {
+        const savedData = localStorage.getItem('procertify_studio_data');
+        if (savedData) {
+           try {
+             data = JSON.parse(savedData);
+           } catch(e) {}
+        }
+      }
+
+      if (data && data.projects && Array.isArray(data.projects) && data.projects.length > 0) {
+          setProjects(data.projects);
+          setActiveProjectId(data.projects[0].id);
           if (data.signatures) setSignatures(data.signatures);
           if (data.companies) setCompanies(data.companies);
-        } else {
+      } else {
           const newP = createNewProject('Yeni Sertifika Projesi');
           setProjects([newP]);
           setActiveProjectId(newP.id);
-        }
-      } catch (error) {
-        console.error("Failed to fetch data from API:", error);
-        const newP = createNewProject('Yeni Sertifika Projesi');
-        setProjects([newP]);
-        setActiveProjectId(newP.id);
-      } finally {
-        setIsDataLoaded(true);
       }
+      setIsDataLoaded(true);
     };
     fetchData();
   }, []);
@@ -314,18 +322,23 @@ const App = () => {
     if (!isDataLoaded) return;
 
     const saveData = async () => {
+      const dataObj = { projects, signatures, companies };
+      
+      // Always save to localStorage implicitly so the app works anywhere
+      try {
+          localStorage.setItem('procertify_studio_data', JSON.stringify(dataObj));
+      } catch (e) {
+          console.error("LocalStorage save error", e);
+      }
+
       try {
         await fetch('/api/data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-             projects,
-             signatures,
-             companies
-          })
+          body: JSON.stringify(dataObj)
         });
       } catch (error) {
-        console.error("Failed to save data to API:", error);
+        // Pass silently if no API
       }
     };
 
@@ -1072,6 +1085,15 @@ const App = () => {
             if(!data.projects || !Array.isArray(data.projects)) {
                 throw new Error("Geçersiz yedek dosyası formatı.");
             }
+
+            // Explicitly overwrite localStorage immediately
+            try {
+                localStorage.setItem('procertify_studio_data', JSON.stringify({
+                    projects: data.projects,
+                    signatures: data.signatures || [],
+                    companies: data.companies || []
+                }));
+            } catch(e) {}
 
             // Update state
             setProjects(data.projects);
