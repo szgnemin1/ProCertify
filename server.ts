@@ -1,19 +1,110 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 
-const app = express();
-const PORT = process.env.PORT || 5555;
+async function startServer() {
+  const app = express();
+  const PORT = process.env.PORT || 5555;
+  const DATA_FILE = path.join(process.cwd(), 'data.json');
 
-// Statik dosyaları sun (build edildikten sonra "dist" klasörü)
-const distPath = path.join(process.cwd(), 'dist');
-app.use(express.static(distPath));
+  // Parse JSON bodies (with increased limit for base64 images)
+  app.use(express.json({ limit: '50mb' }));
 
-// React Router vb. için her isteği index.html'e yönlendir
-app.get('*all', (req, res) => {
-  res.sendFile(path.join(distPath, 'index.html'));
-});
+  // API Route to GET data
+  app.get('/api/data', (req, res) => {
+    try {
+      if (fs.existsSync(DATA_FILE)) {
+        const data = fs.readFileSync(DATA_FILE, 'utf-8');
+        const parsed = JSON.parse(data);
+        // Remove password from exported data for safety
+        if (parsed.appPassword) delete parsed.appPassword;
+        res.json(parsed);
+      } else {
+        res.json({});
+      }
+    } catch (error) {
+      console.error("Data read error:", error);
+      res.status(500).json({ error: "Veri okunamadı." });
+    }
+  });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`VPS Sunucusu başarıyla başlatıldı! http://0.0.0.0:${PORT} adresinden erişebilirsiniz.`);
-  console.log('Bu sunucunun kapanmaması için "pm2" aracını kullanabilirsiniz.');
-});
+  // API Route to POST data
+  app.post('/api/data', (req, res) => {
+    try {
+      let dataToSave = req.body;
+      
+      // Preserve existing password
+      if (fs.existsSync(DATA_FILE)) {
+        const existingData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+        if (existingData.appPassword) {
+           dataToSave.appPassword = existingData.appPassword;
+        }
+      }
+
+      fs.writeFileSync(DATA_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Data write error:", error);
+      res.status(500).json({ error: "Veri kaydedilemedi." });
+    }
+  });
+
+  // API Route to Login
+  app.post('/api/login', (req, res) => {
+    try {
+      const { password } = req.body;
+      let currentPassword = 'admin5555'; // Default password
+      if (fs.existsSync(DATA_FILE)) {
+         const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+         if (data.appPassword) currentPassword = data.appPassword;
+      }
+      
+      if (password === currentPassword) {
+         res.json({ success: true });
+      } else {
+         res.status(401).json({ error: "Hatalı şifre" });
+      }
+    } catch (error) {
+      res.status(500).json({ error: "Giriş işlemi başarısız" });
+    }
+  });
+
+  // API Route to Change Password
+  app.post('/api/change-password', (req, res) => {
+    try {
+      const { newPassword } = req.body;
+      let data: any = {};
+      if (fs.existsSync(DATA_FILE)) {
+         data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+      }
+      data.appPassword = newPassword;
+      fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+      res.json({ success: true });
+    } catch(error) {
+      res.status(500).json({ error: "Şifre değiştirilemedi" });
+    }
+  });
+
+  // Serve static files in production or map vite middleware in dev
+  if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*all', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  // Bind to 0.0.0.0
+  app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`Sunucu http://0.0.0.0:${PORT} adresinde çalışıyor`);
+  });
+}
+
+startServer();

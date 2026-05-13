@@ -78,7 +78,7 @@ type ExportMode = 'single' | 'separate';
 
 const DEFAULT_WIDTH = 2000;
 const DEFAULT_HEIGHT = 1414;
-const APP_VERSION = "v1.3.5-exe"; 
+const APP_VERSION = "v1.4.0-vps"; 
 const GITHUB_URL = "https://github.com/szgnemin1/ProCertify";
 
 const getElectron = () => {
@@ -279,9 +279,9 @@ const App = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const savedData = localStorage.getItem('procertify_studio_data');
-        if (savedData) {
-          const data = JSON.parse(savedData);
+        const res = await fetch('/api/data');
+        if (res.ok) {
+          const data = await res.json();
           if (data.projects && Array.isArray(data.projects) && data.projects.length > 0) {
              setProjects(data.projects);
              setActiveProjectId(data.projects[0].id);
@@ -298,7 +298,7 @@ const App = () => {
           setActiveProjectId(newP.id);
         }
       } catch (error) {
-        console.error("Failed to fetch data from localStorage:", error);
+        console.error("Failed to fetch data from API:", error);
         const newP = createNewProject('Yeni Sertifika Projesi');
         setProjects([newP]);
         setActiveProjectId(newP.id);
@@ -313,15 +313,19 @@ const App = () => {
   useEffect(() => {
     if (!isDataLoaded) return;
 
-    const saveData = () => {
+    const saveData = async () => {
       try {
-        localStorage.setItem('procertify_studio_data', JSON.stringify({
-          projects,
-          signatures,
-          companies
-        }));
+        await fetch('/api/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+             projects,
+             signatures,
+             companies
+          })
+        });
       } catch (error) {
-        console.error("Failed to save data to localStorage:", error);
+        console.error("Failed to save data to API:", error);
       }
     };
 
@@ -957,14 +961,27 @@ const App = () => {
       setSignatures(prev => prev.filter(s => s.id !== id));
   };
   
-  const handlePasswordChange = () => {
+  const handlePasswordChange = async () => {
       if (newPassword.trim() === '') {
           setPasswordMessage('Lütfen geçerli bir şifre girin.');
           return;
       }
-      localStorage.setItem('vps_app_password', newPassword);
-      setPasswordMessage('Şifre başarıyla güncellendi!');
-      setNewPassword('');
+      try {
+          const res = await fetch('/api/change-password', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ newPassword })
+          });
+          const data = await res.json();
+          if (data.success) {
+              setPasswordMessage('Şifre başarıyla güncellendi!');
+              setNewPassword('');
+          } else {
+              setPasswordMessage('Şifre güncellenemedi: ' + data.error);
+          }
+      } catch (e) {
+          setPasswordMessage('Sunucu ile iletişim kurulamadı.');
+      }
       setTimeout(() => setPasswordMessage(''), 3000);
   };
 
@@ -2136,15 +2153,23 @@ const ProtectedApp = () => {
     }
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const storedPassword = localStorage.getItem('vps_app_password');
-    const APP_CONFIRM_PASSWORD = storedPassword || import.meta.env.VITE_APP_PASSWORD || 'admin5555';
-    if (password === APP_CONFIRM_PASSWORD) {
-      localStorage.setItem('vps_session', 'authenticated');
-      setIsAuthenticated(true);
-    } else {
-      setError('Hatalı şifre. Lütfen tekrar deneyin.');
+    try {
+      const res = await fetch('/api/login', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ password })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        localStorage.setItem('vps_session', 'authenticated');
+        setIsAuthenticated(true);
+      } else {
+        setError(data.error || 'Hatalı şifre. Lütfen tekrar deneyin.');
+      }
+    } catch (error) {
+      setError('Sunucu ile iletişim kurulamadı.');
     }
   };
 
