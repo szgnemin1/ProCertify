@@ -188,6 +188,10 @@ const App = () => {
   // Company List State
   const [companies, setCompanies] = useState<Company[]>([]);
   const [tempCompanyInput, setTempCompanyInput] = useState('');
+  
+  // Settings - Password State
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
 
   // --- Editor State ---
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -202,6 +206,7 @@ const App = () => {
   const htmlTemplateInputRef = useRef<HTMLInputElement>(null);
 
   // --- Fill State ---
+  const [mobileFillStep, setMobileFillStep] = useState<0 | 1 | 2>(0);
   const [fillValues, setFillValues] = useState<Record<string, string>>({});
   const [isChatMode, setIsChatMode] = useState(true);
   const [chatHistory, setChatHistory] = useState<{id: string, sender: 'bot'|'user', text: string}[]>([]);
@@ -949,6 +954,17 @@ const App = () => {
   const deleteSignature = (id: string) => {
       setSignatures(prev => prev.filter(s => s.id !== id));
   };
+  
+  const handlePasswordChange = () => {
+      if (newPassword.trim() === '') {
+          setPasswordMessage('Lütfen geçerli bir şifre girin.');
+          return;
+      }
+      localStorage.setItem('vps_app_password', newPassword);
+      setPasswordMessage('Şifre başarıyla güncellendi!');
+      setNewPassword('');
+      setTimeout(() => setPasswordMessage(''), 3000);
+  };
 
   // --- IMPORT/EXPORT LOGIC ---
   
@@ -1353,29 +1369,29 @@ const App = () => {
   };
 
   return (
-    <div className="flex h-screen bg-slate-900 text-slate-200 overflow-hidden font-sans selection:bg-amber-500/30">
+    <div className="flex flex-col md:flex-row h-screen bg-slate-900 text-slate-200 overflow-hidden font-sans selection:bg-amber-500/30">
       
       {/* SIDEBAR NAVIGATION */}
-      <div className="w-20 bg-slate-950 border-r border-slate-800 flex flex-col items-center py-6 gap-8 z-30 shrink-0 select-none">
-        <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-amber-700 rounded-xl flex items-center justify-center shadow-lg shadow-amber-900/40">
+      <div className="w-full md:w-20 bg-slate-950 border-t md:border-t-0 md:border-r border-slate-800 flex flex-row md:flex-col items-center py-2 md:py-6 px-2 md:px-0 gap-2 md:gap-8 z-30 shrink-0 select-none order-last md:order-first">
+        <div className="hidden md:flex w-10 h-10 bg-gradient-to-br from-amber-500 to-amber-700 rounded-xl items-center justify-center shadow-lg shadow-amber-900/40">
            <FileText className="text-white" size={24} />
         </div>
         
-        <div className="flex flex-col w-full gap-4 flex-1">
-           <button onClick={() => setCurrentView('projects')} className={`p-3 w-full flex flex-col items-center gap-1 transition-all relative ${currentView === 'projects' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><FolderOpen size={24} /><span className="text-[10px] font-medium">Projeler</span>{currentView === 'projects' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r"></div>}</button>
-           <button onClick={() => setCurrentView('template')} className={`p-3 w-full flex flex-col items-center gap-1 transition-all relative ${currentView === 'template' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><LayoutTemplate size={24} /><span className="text-[10px] font-medium">Şablon</span>{currentView === 'template' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r"></div>}</button>
-           <button onClick={() => setCurrentView('settings')} className={`p-3 w-full flex flex-col items-center gap-1 transition-all relative ${currentView === 'settings' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><Settings size={24} /><span className="text-[10px] font-medium">Ayarlar</span>{currentView === 'settings' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r"></div>}</button>
-           <button onClick={() => setCurrentView('fill')} className={`p-3 w-full flex flex-col items-center gap-1 transition-all relative ${currentView === 'fill' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><PenTool size={24} /><span className="text-[10px] font-medium">Doldur</span>{currentView === 'fill' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r"></div>}</button>
+        <div className="flex flex-row md:flex-col w-full gap-1 md:gap-4 flex-1 justify-around md:justify-start">
+           <button onClick={() => setCurrentView('projects')} className={`p-2 flex-1 md:w-full flex justify-center md:flex-col items-center gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'projects' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><FolderOpen size={20} className="md:w-6 md:h-6" /><span className="text-[10px] font-medium hidden sm:block md:block">Projeler</span>{currentView === 'projects' && <div className="absolute top-auto bottom-0 md:left-0 md:top-0 md:bottom-0 h-1 w-8 md:h-auto md:w-1 bg-amber-500 rounded-t md:rounded-t-none md:rounded-r"></div>}</button>
+           <button onClick={() => setCurrentView('template')} className={`p-2 flex-1 md:w-full flex justify-center md:flex-col items-center gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'template' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><LayoutTemplate size={20} className="md:w-6 md:h-6" /><span className="text-[10px] font-medium hidden sm:block md:block">Şablon</span>{currentView === 'template' && <div className="absolute top-auto bottom-0 md:left-0 md:top-0 md:bottom-0 h-1 w-8 md:h-auto md:w-1 bg-amber-500 rounded-t md:rounded-t-none md:rounded-r"></div>}</button>
+           <button onClick={() => setCurrentView('settings')} className={`p-2 flex-1 md:w-full flex justify-center md:flex-col items-center gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'settings' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><Settings size={20} className="md:w-6 md:h-6" /><span className="text-[10px] font-medium hidden sm:block md:block">Ayarlar</span>{currentView === 'settings' && <div className="absolute top-auto bottom-0 md:left-0 md:top-0 md:bottom-0 h-1 w-8 md:h-auto md:w-1 bg-amber-500 rounded-t md:rounded-t-none md:rounded-r"></div>}</button>
+           <button onClick={() => setCurrentView('fill')} className={`p-2 flex-1 md:w-full flex justify-center md:flex-col items-center gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'fill' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300'}`}><PenTool size={20} className="md:w-6 md:h-6" /><span className="text-[10px] font-medium hidden sm:block md:block">Doldur</span>{currentView === 'fill' && <div className="absolute top-auto bottom-0 md:left-0 md:top-0 md:bottom-0 h-1 w-8 md:h-auto md:w-1 bg-amber-500 rounded-t md:rounded-t-none md:rounded-r"></div>}</button>
         </div>
-        <div className="flex flex-col items-center gap-2 pb-2"><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:text-white transition"><Github size={20} /></a><span className="text-[9px] text-slate-600 font-mono">{APP_VERSION}</span></div>
+        <div className="hidden md:flex flex-col items-center gap-2 pb-2"><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:text-white transition"><Github size={20} /></a><span className="text-[9px] text-slate-600 font-mono">{APP_VERSION}</span></div>
       </div>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         
         {/* VIEW: PROJECTS LIST */}
         {currentView === 'projects' && (
-             <div className="flex-1 bg-slate-900 p-10 overflow-y-auto">
+             <div className="flex-1 bg-slate-900 p-4 md:p-10 overflow-y-auto">
                 {/* ... existing project list UI ... */}
                 <div className="max-w-6xl mx-auto">
                     <div className="flex justify-between items-center mb-8">
@@ -1412,8 +1428,8 @@ const App = () => {
 
         {/* VIEW: TEMPLATE EDITOR */}
         {currentView === 'template' && (
-          <>
-            <div className="w-72 bg-slate-800 border-r border-slate-700 flex flex-col z-20 shadow-xl flex-shrink-0 select-none">
+          <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+            <div className="w-full md:w-72 h-[40vh] md:h-auto bg-slate-800 border-b md:border-b-0 md:border-r border-slate-700 flex flex-col z-20 shadow-xl flex-shrink-0 select-none">
                <div className="p-5 border-b border-slate-700 bg-slate-800 group relative">
                  {isEditingName ? (
                      <input ref={projectNameInputRef} type="text" value={activeProject.name} onChange={(e) => updateProjectMeta({ name: e.target.value })} onBlur={() => setIsEditingName(false)} onKeyDown={(e) => e.key === 'Enter' && setIsEditingName(false)} className="w-full bg-slate-900 border border-amber-500 rounded px-2 py-1 text-sm text-white outline-none font-bold" />
@@ -1591,7 +1607,7 @@ const App = () => {
                     </div>
                   </div>
               </div>
-              <div ref={editorContainerRef} className="flex-1 overflow-hidden relative flex items-center justify-center p-10 bg-dots-pattern" style={{ backgroundImage: 'radial-gradient(#1e293b 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+              <div ref={editorContainerRef} className="flex-1 overflow-hidden relative flex items-center justify-center p-4 md:p-10 bg-dots-pattern" style={{ backgroundImage: 'radial-gradient(#1e293b 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
                 <CanvasEditor elements={currentSideElements} width={activeProject.width} height={activeProject.height} bgUrl={currentSideBg} selectedId={selectedId} onSelect={setSelectedId} onUpdateElement={updateElement} onDeleteElement={deleteElement} scale={scale} />
               </div>
               {showSigPermissions && selectedElement && selectedElement.type === ElementType.SIGNATURE && (
@@ -1626,18 +1642,46 @@ const App = () => {
                   </div>
               )}
             </div>
-          </>
+          </div>
         )}
 
         {/* VIEW: SETTINGS */}
         {currentView === 'settings' && (
-          <div className="flex-1 bg-slate-900 p-10 overflow-y-auto custom-scrollbar">
+          <div className="flex-1 bg-slate-900 p-4 md:p-10 overflow-y-auto custom-scrollbar">
              {/* ... Settings Content (same as before) ... */}
              <div className="max-w-4xl mx-auto space-y-8">
                 <div><h1 className="text-3xl font-bold mb-2 text-white">Ayarlar & Varlıklar</h1><p className="text-slate-400">Uygulama genel ayarları ve varlık yönetimi.</p></div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 text-white mb-6"><FileText className="text-blue-500" /> Aktif Proje Yönetimi</h2><div className="w-full"><label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Proje İsmi</label><input type="text" value={activeProject.name} onChange={(e) => updateProjectMeta({ name: e.target.value })} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-amber-500 outline-none" /><p className="text-[10px] text-slate-500 mt-2">Projeyi silmek için <button onClick={() => setCurrentView('projects')} className="text-amber-500 hover:underline">Projeler</button> sayfasına gidiniz.</p></div></div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-semibold flex items-center gap-2 text-white"><Building className="text-green-500" /> Firma Listesi Yönetimi</h2><span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">Toplam: {companies.length}</span></div><p className="text-sm text-slate-400 mb-4">Sertifikalarda kullanılacak firma/kurum isimlerini buraya ekleyin. Kısaltma belirlemek için "|" karakterini kullanın (Örn: "Acme Şirketi | Acme").</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-2"><label className="text-xs font-bold text-slate-500 uppercase">Toplu Ekleme</label><textarea rows={6} value={tempCompanyInput} onChange={(e) => setTempCompanyInput(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-sm text-white focus:border-green-500 outline-none resize-none font-mono" placeholder={"Firma Adı | Kısaltma\nÖrnek A.Ş. | Örnek\nSadece İsim"} /><button onClick={() => addCompany(tempCompanyInput)} className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition shadow-lg shadow-green-900/20 active:scale-95">Listeye Ekle</button></div><div className="space-y-2 flex flex-col h-full"><label className="text-xs font-bold text-slate-500 uppercase">Mevcut Liste</label><div className="bg-slate-900/50 rounded-lg border border-slate-700 p-2 flex-1 max-h-[200px] overflow-y-auto custom-scrollbar space-y-1">{companies.length === 0 ? (<div className="text-center py-8 text-slate-500 text-sm italic">Liste boş.</div>) : (companies.map((company, idx) => (<div key={idx} className="flex justify-between items-center p-2 bg-slate-800 rounded group hover:bg-slate-700 transition"><div className="flex flex-col truncate pr-2"><span className="text-sm text-slate-200">{company.name}</span>{company.shortName !== company.name && (<span className="text-[10px] text-slate-500 font-mono">Kısaltma: {company.shortName}</span>)}</div><button onClick={() => removeCompany(company.id)} className="text-slate-500 hover:text-red-500 p-1 opacity-60 group-hover:opacity-100 transition"><Trash2 size={14} /></button></div>)))}</div></div></div></div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-semibold flex items-center gap-2 text-white"><PenTool className="text-amber-500" /> Kayıtlı İmzalar</h2><div className="flex gap-2"><button onClick={() => setShowSignaturePad(true)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition shadow-sm border border-slate-600"><PenLine size={18} /> İmza Çiz</button><label className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium transition shadow-lg shadow-amber-900/20 active:scale-95 transform"><Plus size={18} /> İmza Yükle<input type="file" accept="image/*" multiple className="hidden" onChange={handleSignatureUpload} /></label></div></div>{signatures.length === 0 ? (<div className="text-center py-10 border-2 border-dashed border-slate-700 rounded-xl bg-slate-800/50"><Upload className="mx-auto text-slate-600 mb-4" size={40} /><p className="text-slate-500 text-sm">Henüz hiç imza yüklenmemiş.</p></div>) : (<div className="grid grid-cols-2 md:grid-cols-4 gap-4">{signatures.map(sig => (<div key={sig.id} className="group relative bg-white rounded-xl p-4 flex items-center justify-center h-32 shadow-sm border border-slate-600 transition hover:border-amber-500/50"><img src={sig.url} alt={sig.name} className="max-h-full max-w-full object-contain" /><div className="absolute inset-0 bg-black/60 opacity-60 group-hover:opacity-100 transition flex items-center justify-center rounded-xl backdrop-blur-sm"><button onClick={() => deleteSignature(sig.id)} className="bg-red-500 p-2 rounded-full text-white hover:bg-red-600 shadow-lg transform active:scale-95 transition"><Trash2 size={20} /></button></div><div className="absolute bottom-2 left-2 right-2 text-center"><span className="text-[10px] bg-slate-900/90 text-white px-2 py-1 rounded truncate block border border-slate-700 shadow-sm">{sig.name}</span></div></div>))}</div>)}</div>
+                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><ShieldCheck className="text-red-500" /> Güvenlik Ayarları</h2>
+                    </div>
+                    <p className="text-sm text-slate-400 mb-4">Uygulamanıza erişim sağlayan yönetici şifrenizi buradan değiştirebilirsiniz. Değiştirdiğiniz şifre tarayıcınızda veya sistemde yerel olarak saklanacaktır.</p>
+                    <div className="flex flex-col md:flex-row gap-4 items-start md:items-end">
+                        <div className="w-full md:flex-1 space-y-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Yeni Şifre</label>
+                            <input 
+                                type="password" 
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-red-500 outline-none"
+                                placeholder="Yeni Şifre Girin"
+                            />
+                        </div>
+                        <button 
+                            onClick={handlePasswordChange}
+                            className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition shadow-lg shadow-red-900/20 active:scale-95 w-full md:w-auto"
+                        >
+                            Şifreyi Değiştir
+                        </button>
+                    </div>
+                    {passwordMessage && (
+                        <p className={`mt-3 text-sm ${passwordMessage.includes('başarıyla') ? 'text-green-500' : 'text-red-500'}`}>{passwordMessage}</p>
+                    )}
+                </div>
+
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white"><Database className="text-blue-500" /> Yedekleme ve Geri Yükleme</h2><p className="text-sm text-slate-400 mb-6">Tüm projelerinizi, şablonlarınızı, ayarlarınızı ve yüklediğiniz görselleri (imzalar dahil) tek bir dosya olarak yedekleyin veya başka bir cihaza taşıyın.</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition"><DownloadCloud size={40} className="text-green-500 mb-4" /><h3 className="font-bold text-white mb-2">Sistemi Yedekle</h3><p className="text-xs text-slate-400 mb-4">Tüm verileri (projeler, görseller, ayarlar) içeren tek bir .json dosyası indirir.</p><button onClick={handleExportBackup} className="mt-auto bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition w-full shadow-lg shadow-green-900/20 active:scale-95">Yedek Dosyasını İndir</button></div><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition"><UploadCloud size={40} className="text-blue-500 mb-4" /><h3 className="font-bold text-white mb-2">Yedeği Geri Yükle</h3><p className="text-xs text-slate-400 mb-4">Daha önce aldığınız yedek dosyasını seçerek tüm verilerinizi geri yükleyin.</p><div className="mt-auto w-full relative"><input ref={backupInputRef} type="file" accept=".json" onChange={handleImportBackup} className="hidden" id="backup-upload" /><label htmlFor="backup-upload" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition w-full flex items-center justify-center cursor-pointer shadow-lg shadow-blue-900/20 active:scale-95">Dosya Seç ve Yükle</label></div><div className="flex items-center gap-2 mt-3 text-[10px] text-amber-500"><AlertTriangle size={12} /><span>Dikkat: Mevcut verilerin üzerine yazılacaktır.</span></div></div></div></div>
 
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white"><Github className="text-white" /> Hakkında & GitHub</h2><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex items-start gap-4"><div className="p-3 bg-slate-800 rounded-full"><Monitor size={24} className="text-slate-400" /></div><div className="flex-1"><h3 className="font-bold text-white text-lg">ProCertify Studio <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full ml-2">{APP_VERSION}</span></h3><p className="text-sm text-slate-400 mt-1 mb-4">Açık kaynak kodlu, profesyonel sertifika tasarım ve yönetim aracı. Projeyi GitHub üzerinde destekleyebilir veya katkıda bulunabilirsiniz.</p><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-white bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg transition border border-slate-600"><Github size={16} /> GitHub Deposuna Git</a></div></div></div>
@@ -1647,10 +1691,18 @@ const App = () => {
 
         {/* VIEW: FILL & EXPORT */}
         {currentView === 'fill' && (
-           <div className="flex-1 flex overflow-hidden relative">
+           <div className="flex-1 flex flex-col overflow-hidden relative">
+              {/* Mobile Steps Navigator */}
+              <div className="md:hidden flex bg-slate-950 border-b border-slate-800 shrink-0 select-none z-30">
+                  <button onClick={() => setMobileFillStep(0)} className={`flex-1 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition ${mobileFillStep === 0 ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>1. Sertifikalar</button>
+                  <button onClick={() => setMobileFillStep(1)} className={`flex-1 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition ${mobileFillStep === 1 ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>2. Veri</button>
+                  <button onClick={() => setMobileFillStep(2)} className={`flex-1 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition ${mobileFillStep === 2 ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>3. Önizle & İndir</button>
+              </div>
+
+              <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
               {/* Pillar 1: Project Selection (Collapsible) */}
-              <div className={`${isFillSidebarOpen ? 'w-48' : 'w-0'} bg-slate-950 border-r border-slate-800 flex flex-col shrink-0 transition-all duration-300 overflow-hidden relative`}>
-                  <div className="p-4 border-b border-slate-800 bg-slate-900/30 whitespace-nowrap">
+              <div className={`${mobileFillStep === 0 ? 'flex w-full flex-1' : 'hidden md:flex'} ${isFillSidebarOpen ? 'md:w-48' : 'md:w-0'} bg-slate-950 border-r border-slate-800 flex-col shrink-0 transition-all duration-300 overflow-hidden relative`}>
+                  <div className="p-4 border-b border-slate-800 bg-slate-900/30 whitespace-nowrap flex justify-between items-center">
                     <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sertifikalar</h2>
                   </div>
                   <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar min-w-[192px]">
@@ -1711,13 +1763,13 @@ const App = () => {
               {/* Sidebar Toggle Button */}
               <button 
                 onClick={() => setIsFillSidebarOpen(!isFillSidebarOpen)}
-                className={`absolute top-1/2 -translate-y-1/2 z-50 p-1.5 bg-slate-800 border border-slate-700 text-slate-300 rounded-full shadow-xl hover:text-white transition-all ${isFillSidebarOpen ? 'left-[180px]' : 'left-2'}`}
+                className={`hidden md:block absolute top-1/2 -translate-y-1/2 z-50 p-1.5 bg-slate-800 border border-slate-700 text-slate-300 rounded-full shadow-xl hover:text-white transition-all ${isFillSidebarOpen ? 'left-[180px]' : 'left-2'}`}
               >
                 {isFillSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
               </button>
-
+              
               {/* Pillar 2: Data Entry */}
-              <div className="w-[360px] bg-slate-800 border-r border-slate-700 flex flex-col z-20 overflow-hidden shadow-2xl shrink-0">
+              <div className={`${mobileFillStep === 1 ? 'flex w-full flex-1' : 'hidden md:flex'} md:w-[360px] bg-slate-800 border-r border-slate-700 flex-col z-20 overflow-hidden shadow-2xl shrink-0`}>
                  <div className="p-5 border-b border-slate-700 bg-slate-900 shrink-0 flex justify-between items-center">
                    <div>
                      <h2 className="text-lg font-bold text-white leading-tight">Veri Girişi</h2>
@@ -1933,48 +1985,65 @@ const App = () => {
                    </div>
                  )}
 
-                 <div className="p-6 border-t border-slate-700 bg-slate-900 shrink-0 select-none space-y-4">
-                    {/* EXPORT MODE TOGGLE */}
-                    {selectedFillProjectIds.length > 1 && (
-                        <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
-                            <button 
-                                onClick={() => setExportMode('single')} 
-                                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-xs font-medium transition ${exportMode === 'single' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                <FileStack size={14} /> Tek Dosya (Birleştir)
-                            </button>
-                            <button 
-                                onClick={() => setExportMode('separate')} 
-                                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-xs font-medium transition ${exportMode === 'separate' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                <Files size={14} /> Ayrı Dosyalar (Klasör)
-                            </button>
-                        </div>
-                    )}
+                 <div className="hidden md:block">
+                    <div className="p-6 border-t border-slate-700 bg-slate-900 shrink-0 select-none space-y-4">
+                       {/* EXPORT MODE TOGGLE */}
+                       {selectedFillProjectIds.length > 1 && (
+                           <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+                               <button 
+                                   onClick={() => setExportMode('single')} 
+                                   className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-xs font-medium transition ${exportMode === 'single' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                               >
+                                   <FileStack size={14} /> Tek Dosya (Birleştir)
+                               </button>
+                               <button 
+                                   onClick={() => setExportMode('separate')} 
+                                   className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-xs font-medium transition ${exportMode === 'separate' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                               >
+                                   <Files size={14} /> Ayrı Dosyalar (Klasör)
+                               </button>
+                           </div>
+                       )}
 
-                    <button 
-                      onClick={exportPDF}
-                      disabled={isGenerating}
-                      className={`w-full py-4 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 transition active:scale-95 transform ${isGenerating ? 'opacity-70 cursor-wait' : ''}`}
-                    >
-                      {isGenerating ? (
-                          <div className="flex items-center gap-2">
-                             <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
-                             {progress > 0 && <span className="text-xs">{progress}%</span>}
-                          </div>
-                      ) : (
-                          <Download size={22} />
-                      )}
-                      {isGenerating ? 'Kaydediliyor...' : `PDF OLUŞTUR (${selectedFillProjectIds.length})`}
-                    </button>
-                    {exportMode === 'separate' && selectedFillProjectIds.length > 1 && (
-                        <p className="text-[10px] text-slate-500 text-center">Seçilen klasöre tüm sertifikalar ayrı ayrı kaydedilecektir.</p>
-                    )}
+                       <button 
+                         onClick={exportPDF}
+                         disabled={isGenerating}
+                         className={`w-full py-4 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 transition active:scale-95 transform ${isGenerating ? 'opacity-70 cursor-wait' : ''}`}
+                       >
+                         {isGenerating ? (
+                             <div className="flex items-center gap-2">
+                                <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
+                                {progress > 0 && <span className="text-xs">{progress}%</span>}
+                             </div>
+                         ) : (
+                             <Download size={22} />
+                         )}
+                         {isGenerating ? 'Kaydediliyor...' : `PDF OLUŞTUR (${selectedFillProjectIds.length})`}
+                       </button>
+                       {exportMode === 'separate' && selectedFillProjectIds.length > 1 && (
+                           <p className="text-[10px] text-slate-500 text-center">Seçilen klasöre tüm sertifikalar ayrı ayrı kaydedilecektir.</p>
+                       )}
+                    </div>
                  </div>
               </div>
 
               {/* LIST PREVIEW MODE */}
-              <div className="flex-1 bg-[#0b0f19] overflow-auto p-10 flex flex-col items-center gap-10 custom-scrollbar">
+              <div className={`${mobileFillStep === 2 ? 'flex w-full' : 'hidden md:flex'} flex-1 bg-[#0b0f19] overflow-auto p-4 md:p-10 flex-col items-center gap-6 md:gap-10 custom-scrollbar relative pb-32`}>
+                <div className="md:hidden w-full max-w-md mx-auto mb-4 relative z-20">
+                     <div className="p-4 border border-slate-700 bg-slate-900 rounded-xl select-none space-y-4 shadow-xl">
+                       {selectedFillProjectIds.length > 1 && (
+                           <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+                               <button onClick={() => setExportMode('single')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-[10px] font-medium transition ${exportMode === 'single' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}><FileStack size={14} /> Tek Dosya</button>
+                               <button onClick={() => setExportMode('separate')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-[10px] font-medium transition ${exportMode === 'separate' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}><Files size={14} /> Ayrı Dosyalar</button>
+                           </div>
+                       )}
+                       <button onClick={exportPDF} disabled={isGenerating || selectedFillProjectIds.length === 0} className={`w-full py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 transition active:scale-95 transform ${isGenerating ? 'opacity-70 cursor-wait' : ''} ${selectedFillProjectIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                         {isGenerating ? (<div className="flex items-center gap-2"><div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />{progress > 0 && <span className="text-xs">{progress}%</span>}</div>) : (<Download size={22} />)}
+                         {isGenerating ? 'Kaydediliyor...' : `PDF İNDİR (${selectedFillProjectIds.length})`}
+                       </button>
+                    </div>
+                </div>
+
                 {selectedFillProjectIds.length > 0 && (
                     <div className="text-slate-500 text-sm mb-4 select-none whitespace-nowrap">
                         Önizleme ({selectedFillProjectIds.length} Proje). Arka yüzü olan kartları çevirmek için üzerine tıklayın.
@@ -1998,6 +2067,7 @@ const App = () => {
                 </div>
                 {selectedFillProjectIds.length === 0 && (<div className="flex flex-col items-center justify-center h-full text-slate-500 select-none"><LayoutTemplate size={48} className="mb-4 opacity-20" /><p>Önizleme için soldan proje seçiniz.</p></div>)}
               </div>
+            </div>
            </div>
         )}
       </div>
@@ -2005,4 +2075,69 @@ const App = () => {
     </div>
   );
 };
-export default App;
+
+const ProtectedApp = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const session = localStorage.getItem('vps_session');
+    if (session === 'authenticated') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const storedPassword = localStorage.getItem('vps_app_password');
+    const APP_CONFIRM_PASSWORD = storedPassword || import.meta.env.VITE_APP_PASSWORD || 'admin5555';
+    if (password === APP_CONFIRM_PASSWORD) {
+      localStorage.setItem('vps_session', 'authenticated');
+      setIsAuthenticated(true);
+    } else {
+      setError('Hatalı şifre. Lütfen tekrar deneyin.');
+    }
+  };
+
+  if (isAuthenticated) {
+    return <App />;
+  }
+
+  return (
+    <div className="flex h-screen bg-slate-950 items-center justify-center font-sans text-slate-200 selection:bg-amber-500/30">
+      <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-2xl w-full max-w-sm flex flex-col items-center">
+        <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-900/40 mb-6">
+           <FileText className="text-white" size={32} />
+        </div>
+        <h1 className="text-2xl font-bold text-white mb-2 text-center">ProCertify <span className="text-amber-500">Studio</span></h1>
+        <p className="text-slate-500 text-sm mb-6 text-center">Devam etmek için yönetici şifrenizi girin.</p>
+
+        <form onSubmit={handleLogin} className="w-full space-y-4">
+          <div>
+            <input 
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Şifre"
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition shadow-inner"
+              autoFocus
+            />
+          </div>
+          {error && <p className="text-red-500 text-xs text-center">{error}</p>}
+          <button 
+            type="submit" 
+            className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-amber-900/20 transition active:scale-95"
+          >
+            Giriş Yap
+          </button>
+        </form>
+        <div className="mt-8 text-[10px] text-slate-600 font-mono text-center">
+          <p>Güvenli Erişim Sistemi</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ProtectedApp;
