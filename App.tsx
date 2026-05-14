@@ -1201,7 +1201,7 @@ const App = () => {
       return finalLines;
   };
 
-  const renderProjectToPDF = async (pdf: jsPDF, proj: CertificateProject, isFirstInDoc: boolean) => {
+  const renderProjectToPDF = async (pdf: jsPDF, proj: CertificateProject, isFirstInDoc: boolean, activeValues: Record<string, string> = fillValues) => {
         const sides: Side[] = ['front', 'back'];
         const activeBackData = getActiveSideData(proj, 'back', true);
         const hasBack = activeBackData && (activeBackData.bgUrl || activeBackData.elements.length > 0);
@@ -1242,10 +1242,10 @@ const App = () => {
                 let content = '';
 
                 if (el.type === ElementType.QRCODE || el.type === ElementType.TEXT) {
-                   content = formatContent(el.content, fillValues);
+                   content = formatContent(el.content, activeValues);
                 } else {
                    const key = normalizeKey(el.label || '');
-                   content = fillValues[key] || el.content;
+                   content = activeValues[key] || el.content;
                 }
 
                 if (el.type === ElementType.SIGNATURE && !content) continue;
@@ -1337,8 +1337,37 @@ const App = () => {
                 format: [firstProj.width, firstProj.height]
             });
 
+            // Generate unique Serial Number for this batch
+            const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
+            // Optional: you can prepend a prefix like "PRC"
+            const serialNo = `PRC-${baseSerial}`;
+            
+            const activeValues = { ...fillValues, 'Seri No': serialNo, 'Seri Numarasi': serialNo, 'Sertifika No': serialNo };
+
+            // Save to verification system
+            if (isAuthenticated) {
+                try {
+                    const token = localStorage.getItem('vps_session_token');
+                    await fetch('/api/issue', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            serialNo,
+                            fields: fillValues,
+                            projects: targetProjects.map(p => p.name),
+                            date: new Date().toISOString()
+                        })
+                    });
+                } catch (e) {
+                   console.error("Backend issue error", e);
+                }
+            }
+
             for (let i = 0; i < targetProjects.length; i++) {
-                await renderProjectToPDF(pdf, targetProjects[i], i === 0);
+                await renderProjectToPDF(pdf, targetProjects[i], i === 0, activeValues);
                 // Important yield for UI responsiveness
                 if (i % 2 === 0) {
                     setProgress(Math.round(((i + 1) / targetProjects.length) * 100));
@@ -1355,9 +1384,37 @@ const App = () => {
             let savedCount = 0;
             const usedNames = new Set<string>();
 
+            // Generate unique Serial Number for this batch
+            const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
+            const serialNo = `PRC-${baseSerial}`;
+            
+            const activeValues = { ...fillValues, 'Seri No': serialNo, 'Seri Numarasi': serialNo, 'Sertifika No': serialNo };
+
+            // Save to verification system
+            if (isAuthenticated) {
+                try {
+                    const token = localStorage.getItem('vps_session_token');
+                    await fetch('/api/issue', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            serialNo,
+                            fields: fillValues,
+                            projects: targetProjects.map(p => p.name),
+                            date: new Date().toISOString()
+                        })
+                    });
+                } catch (e) {
+                   console.error("Backend issue error", e);
+                }
+            }
+
             for (const proj of targetProjects) {
                 // Generate base filename
-                let rawName = generateFilename(proj.filenamePattern || `Sertifika-${proj.name}`, fillValues);
+                let rawName = generateFilename(proj.filenamePattern || `Sertifika-${proj.name}`, activeValues);
                 let baseName = rawName.replace(/\.pdf$/i, '');
                 baseName = baseName.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\-\. _]/gi, '_');
 
@@ -1378,7 +1435,7 @@ const App = () => {
                     format: [proj.width, proj.height]
                 });
 
-                await renderProjectToPDF(pdf, proj, true);
+                await renderProjectToPDF(pdf, proj, true, activeValues);
                 const pdfData = pdf.output('arraybuffer');
                 
                 // Add to zip

@@ -25,8 +25,13 @@
 
         <!-- Content -->
         <div class="p-6 space-y-4" id="cert-details">
-            <!-- Details will be injected here via JavaScript -->
-            <p class="text-center text-slate-500 text-sm">Veriler yükleniyor...</p>
+            <div class="text-center py-4 text-slate-500 text-sm">
+                <svg class="animate-spin h-6 w-6 text-green-600 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Doğrulanıyor...
+            </div>
         </div>
 
         <!-- Footer -->
@@ -36,28 +41,18 @@
     </div>
 
     <script>
-        // Use URL query parameters to get data. e.g. ?isim=Ahmet%20Yılmaz&no=12345
-        window.onload = function() {
+        // Use URL query parameters to get data. e.g. ?id=PRC-12345
+        window.onload = async function() {
             const urlParams = new URLSearchParams(window.location.search);
             const container = document.getElementById('cert-details');
             
-            // If no parameters, show error warning
-            if (Array.from(urlParams).length === 0) {
-                container.innerHTML = `
-                    <div class="text-center py-6">
-                        <svg class="w-12 h-12 text-red-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                        <h2 class="text-lg font-bold text-slate-800">Geçersiz Kod</h2>
-                        <p class="text-sm text-slate-500 mt-2">Bu QR kod herhangi bir doğrulama verisi içermiyor.</p>
-                    </div>
-                `;
-                document.querySelector('.bg-green-600').classList.replace('bg-green-600', 'bg-red-600');
-                document.querySelector('.text-green-600').classList.replace('text-green-600', 'text-red-600');
+            let searchStr = decodeURIComponent(window.location.search.substring(1));
+            
+            if (!searchStr) {
+                showError("Geçersiz Kod", "Bu QR kod herhangi bir doğrulama verisi içermiyor.");
                 return;
             }
 
-            // Create HTML content based on parameters
-            let htmlContent = '';
-            
             // Basic HTML escape function to prevent XSS
             function escapeHtml(unsafe) {
                 return (unsafe || "").toString()
@@ -67,21 +62,121 @@
                      .replace(/"/g, "&quot;")
                      .replace(/'/g, "&#039;");
             }
+
+            function showError(title, message) {
+                container.innerHTML = `
+                    <div class="text-center py-6">
+                        <svg class="w-12 h-12 text-red-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                        <h2 class="text-lg font-bold text-slate-800">${title}</h2>
+                        <p class="text-sm text-slate-500 mt-2">${message}</p>
+                    </div>
+                `;
+                const header = document.querySelector('.bg-green-600');
+                if (header) header.classList.replace('bg-green-600', 'bg-red-600');
+                const icon = document.querySelector('.text-green-600');
+                if (icon) icon.classList.replace('text-green-600', 'text-red-600');
+            }
             
-            for (const [key, value] of urlParams.entries()) {
-                // Capitalize the first letter of the key for a nicer label
-                const label = escapeHtml(key.charAt(0).toUpperCase() + key.slice(1));
-                const safeValue = escapeHtml(value);
-                
-                htmlContent += `
-                    <div class="flex flex-col border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">${label}</span>
-                        <span class="text-md font-medium text-slate-800">${safeValue}</span>
+            function renderItems(fields) {
+                let htmlContent = '';
+                for (const [key, value] of Object.entries(fields)) {
+                    let safeKey = escapeHtml(key);
+                    const label = safeKey.charAt(0).toUpperCase() + safeKey.slice(1);
+                    const safeValue = escapeHtml(value);
+                    
+                    htmlContent += `
+                        <div class="flex flex-col border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">${label}</span>
+                            <span class="text-md font-medium text-slate-800">${safeValue}</span>
+                        </div>
+                    `;
+                }
+                container.innerHTML = htmlContent;
+            }
+
+            // Check if it's an ID-based verification
+            // Could be ?id=PRC-12345 or just ?PRC-12345
+            let certId = urlParams.get('id');
+            if (!certId && !searchStr.includes('=') && (searchStr.startsWith('PRC-') || /^[^\s&]{5,20}$/.test(searchStr))) {
+                certId = searchStr;
+            }
+
+            if (certId) {
+                try {
+                    const res = await fetch('/api/verify/' + encodeURIComponent(certId));
+                    if (res.ok) {
+                        const data = await res.json();
+                        
+                        let htmlContent = `
+                            <div class="bg-green-50 rounded-lg p-3 border border-green-100 mb-4 text-center">
+                                <span class="text-xs font-bold text-green-600 uppercase">Sertifika ID</span>
+                                <div class="text-lg font-mono text-green-800 tracking-wider">${escapeHtml(data.serialNo)}</div>
+                            </div>
+                        `;
+                        
+                        // Render fields
+                        for (const [key, value] of Object.entries(data.fields || {})) {
+                            let safeKey = escapeHtml(key);
+                            const label = safeKey.charAt(0).toUpperCase() + safeKey.slice(1);
+                            const safeValue = escapeHtml(value);
+                            htmlContent += `
+                                <div class="flex flex-col border-b border-slate-100 pb-3 mb-3 last:border-0 last:pb-0 last:mb-0">
+                                    <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">${label}</span>
+                                    <span class="text-md font-medium text-slate-800">${safeValue}</span>
+                                </div>
+                            `;
+                        }
+                        
+                        if (data.projects && Array.isArray(data.projects)) {
+                            htmlContent += `
+                                <div class="flex flex-col pt-3 border-t border-slate-100 mt-3">
+                                    <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Onaylanan Eğitimler/Belgeler</span>
+                                    <div class="flex flex-wrap gap-2">
+                                        ${data.projects.map(p => `<span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md border border-slate-200">${escapeHtml(p)}</span>`).join('')}
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        
+                        if (data.date) {
+                            htmlContent += `
+                                <div class="flex flex-col pt-3 mt-3 text-center">
+                                    <span class="text-xs text-slate-400">Veriliş: ${new Date(data.date).toLocaleString('tr-TR')}</span>
+                                </div>
+                            `;
+                        }
+
+                        container.innerHTML = htmlContent;
+                        return;
+                    } else {
+                        showError("Sertifika Bulunamadı", "Sistemde böyle bir sertifika kaydı bulunmamaktadır. Seri numarasını (Örn: PRC-123456) kontrol edin.");
+                        return;
+                    }
+                } catch (e) {
+                    showError("Bağlantı Hatası", "Sunucu ile iletişim kurulamadı.");
+                    return;
+                }
+            }
+
+            // Legacy fallback for explicit parameters
+            if (searchStr.includes('=')) {
+                let fields = {};
+                for (const [key, value] of urlParams.entries()) {
+                    let safeKey = key;
+                    if (safeKey.endsWith(':')) safeKey = safeKey.slice(0, -1);
+                    fields[safeKey] = value;
+                }
+                renderItems(fields);
+            } else {
+                // Not standard "x=y" format. It's just a raw string payload.
+                const safePayload = escapeHtml(searchStr).replace(/\\n/g, '<br/>');
+                container.innerHTML = `
+                    <div class="flex flex-col">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">DOĞRULAMA BİLGİSİ</span>
+                        <div class="text-sm font-medium text-slate-800 bg-slate-50 p-4 rounded-lg border border-slate-100 leading-relaxed whitespace-pre-wrap">${safePayload}</div>
                     </div>
                 `;
             }
-
-            container.innerHTML = htmlContent;
         }
     </script>
 </body>

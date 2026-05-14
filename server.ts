@@ -112,6 +112,60 @@ async function startServer() {
 
   const isProduction = process.env.NODE_ENV === "production" || process.env.NODE_ENV === "production " || fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'));
 
+  // Serve dogrula.html bypass for dev mode and explicit definition
+  app.get('/dogrula.html', (req, res) => {
+    const isProd = process.env.NODE_ENV === "production";
+    const dogrulaPath = isProd 
+      ? path.join(process.cwd(), 'dist', 'dogrula.html')
+      : path.join(process.cwd(), 'public', 'dogrula.html');
+      
+    if (fs.existsSync(dogrulaPath)) {
+       res.sendFile(dogrulaPath);
+    } else {
+       res.status(404).send("Dogrulama sayfasi bulunamadi.");
+    }
+  });
+
+  app.get('/api/verify/:id', (req, res) => {
+    const certPath = path.join(process.cwd(), 'certificates.json');
+    if (!fs.existsSync(certPath)) {
+       return res.status(404).json({ error: "No certificates found" });
+    }
+    const data = JSON.parse(fs.readFileSync(certPath, 'utf8'));
+    const cert = data[req.params.id];
+    if (cert) {
+        res.json(cert);
+    } else {
+        res.status(404).json({ error: "Certificate not found" });
+    }
+  });
+
+  app.post('/api/issue', verifyToken, (req, res) => {
+    try {
+      const records = req.body;
+      const certPath = path.join(process.cwd(), 'certificates.json');
+      let data: any = {};
+      
+      if (fs.existsSync(certPath)) {
+         data = JSON.parse(fs.readFileSync(certPath, 'utf8'));
+      }
+      
+      if (Array.isArray(records)) {
+          records.forEach(r => {
+             data[r.serialNo] = r;
+          });
+      } else {
+          data[records.serialNo] = records;
+      }
+      
+      fs.writeFileSync(certPath, JSON.stringify(data, null, 2), 'utf8');
+      res.json({ success: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to issue certificates" });
+    }
+  });
+
   // Serve static files in production or map vite middleware in dev
   if (!isProduction) {
     const { createServer: createViteServer } = await import("vite");
