@@ -187,6 +187,10 @@ const App = () => {
   const [newPassword, setNewPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState('');
 
+  // Settings - QR Code Base URL State
+  const [qrBaseUrl, setQrBaseUrl] = useState(() => localStorage.getItem('vps_qr_base_url') || (window.location.origin + '/dogrula.html'));
+
+
   // --- Editor State ---
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scale, setScale] = useState(0.4);
@@ -625,7 +629,7 @@ const App = () => {
                     : (type === ElementType.COMPANY ? '{FİRMA}' 
                     : (type === ElementType.TCKN ? '{TCKN}' 
                     : (type === ElementType.CHOICE_BOX ? 'Evet' 
-                    : (type === ElementType.QRCODE ? '{Ad Soyad}' : '')))));
+                    : (type === ElementType.QRCODE ? '{Sistem URL}?id={Seri No}' : '')))));
     
     const width = (type === ElementType.SIGNATURE || type === ElementType.QRCODE) ? 200 : (type === ElementType.CHOICE_BOX ? 40 : 400);
     const height = (type === ElementType.SIGNATURE) ? 100 : (type === ElementType.QRCODE ? 200 : (type === ElementType.CHOICE_BOX ? 40 : 100));
@@ -753,6 +757,10 @@ const App = () => {
         [proj.front, activeBack].forEach(side => {
             if (!side) return;
             side.elements.forEach(el => {
+                const rawLabelOriginal = el.label || el.id;
+                const normalizeCheck = normalizeKey(rawLabelOriginal);
+                if (normalizeCheck === normalizeKey('Seri No') || normalizeCheck === normalizeKey('Seri Numarasi') || normalizeCheck === normalizeKey('Sertifika No')) return;
+
                 if (el.type === ElementType.SIGNATURE || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.CHOICE_BOX || el.type === ElementType.TCKN) {
                     const rawLabel = el.label || el.id;
                     const key = normalizeKey(rawLabel); 
@@ -777,7 +785,7 @@ const App = () => {
                     while ((match = regex.exec(el.content)) !== null) {
                         const rawKey = match[1];
                         const key = normalizeKey(rawKey); 
-                        if (key.endsWith('_kisa')) continue; 
+                        if (key.endsWith('_kisa') || key === normalizeKey('Sistem URL') || key === normalizeKey('Seri No') || key === normalizeKey('Seri Numarasi') || key === normalizeKey('Sertifika No')) continue; 
                         if (!fields[key]) fields[key] = { type: ElementType.TEXT, label: key, displayLabel: rawKey.trim() };
                     }
                 }
@@ -1162,9 +1170,17 @@ const App = () => {
       if (!pattern) return '';
       return pattern.replace(/{([^{}]+)}/g, (match, rawLabel) => {
          const label = normalizeKey(rawLabel); 
+         if (label === normalizeKey('Sistem URL')) return qrBaseUrl;
+
          const isShortRequest = label.endsWith('_kisa');
          const cleanLabel = isShortRequest ? label.replace('_kisa', '') : label;
          let val = values[cleanLabel];
+         
+         // Preview handling for system-generated fields
+         if (val === undefined && (cleanLabel === normalizeKey('Seri No') || cleanLabel === normalizeKey('Seri Numarasi') || cleanLabel === normalizeKey('Sertifika No'))) {
+             return 'PRC-XXXXXXXX';
+         }
+         
          if (val === undefined) return match;
          if (val.startsWith('data:')) {
              const sig = signatures.find(s => s.url === val);
@@ -1337,37 +1353,36 @@ const App = () => {
                 format: [firstProj.width, firstProj.height]
             });
 
-            // Generate unique Serial Number for this batch
-            const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
-            // Optional: you can prepend a prefix like "PRC"
-            const serialNo = `PRC-${baseSerial}`;
-            
-            const activeValues = { ...fillValues, 'Seri No': serialNo, 'Seri Numarasi': serialNo, 'Sertifika No': serialNo };
-
-            // Save to verification system
-            if (isAuthenticated) {
-                try {
-                    const token = localStorage.getItem('vps_session_token');
-                    await fetch('/api/issue', {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({
-                            serialNo,
-                            fields: fillValues,
-                            projects: targetProjects.map(p => p.name),
-                            date: new Date().toISOString()
-                        })
-                    });
-                } catch (e) {
-                   console.error("Backend issue error", e);
-                }
-            }
-
             for (let i = 0; i < targetProjects.length; i++) {
-                await renderProjectToPDF(pdf, targetProjects[i], i === 0, activeValues);
+                const proj = targetProjects[i];
+                
+                const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
+                const serialNo = `PRC-${baseSerial}`;
+                const activeValues = { ...fillValues, 'seri no': serialNo, 'seri numarasi': serialNo, 'sertifika no': serialNo };
+
+                if (isAuthenticated) {
+                    try {
+                        const token = localStorage.getItem('vps_session_token');
+                        await fetch('/api/issue', {
+                            method: 'POST',
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({
+                                serialNo,
+                                fields: fillValues,
+                                projects: [proj.name],
+                                date: new Date().toISOString()
+                            })
+                        });
+                    } catch (e) {
+                       console.error("Backend issue error", e);
+                    }
+                }
+
+                await renderProjectToPDF(pdf, proj, i === 0, activeValues);
+                
                 // Important yield for UI responsiveness
                 if (i % 2 === 0) {
                     setProgress(Math.round(((i + 1) / targetProjects.length) * 100));
@@ -1384,35 +1399,34 @@ const App = () => {
             let savedCount = 0;
             const usedNames = new Set<string>();
 
-            // Generate unique Serial Number for this batch
-            const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
-            const serialNo = `PRC-${baseSerial}`;
-            
-            const activeValues = { ...fillValues, 'Seri No': serialNo, 'Seri Numarasi': serialNo, 'Sertifika No': serialNo };
-
-            // Save to verification system
-            if (isAuthenticated) {
-                try {
-                    const token = localStorage.getItem('vps_session_token');
-                    await fetch('/api/issue', {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({
-                            serialNo,
-                            fields: fillValues,
-                            projects: targetProjects.map(p => p.name),
-                            date: new Date().toISOString()
-                        })
-                    });
-                } catch (e) {
-                   console.error("Backend issue error", e);
-                }
-            }
-
             for (const proj of targetProjects) {
+                // Generate unique Serial Number for this certificate
+                const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
+                const serialNo = `PRC-${baseSerial}`;
+                const activeValues = { ...fillValues, 'seri no': serialNo, 'seri numarasi': serialNo, 'sertifika no': serialNo };
+
+                // Save to verification system
+                if (isAuthenticated) {
+                    try {
+                        const token = localStorage.getItem('vps_session_token');
+                        await fetch('/api/issue', {
+                            method: 'POST',
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({
+                                serialNo,
+                                fields: fillValues,
+                                projects: [proj.name],
+                                date: new Date().toISOString()
+                            })
+                        });
+                    } catch (e) {
+                       console.error("Backend issue error", e);
+                    }
+                }
+
                 // Generate base filename
                 let rawName = generateFilename(proj.filenamePattern || `Sertifika-${proj.name}`, activeValues);
                 let baseName = rawName.replace(/\.pdf$/i, '');
@@ -1813,6 +1827,28 @@ const App = () => {
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 text-white mb-6"><FileText className="text-blue-500" /> Aktif Proje Yönetimi</h2><div className="w-full"><label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Proje İsmi</label><input type="text" value={activeProject.name} onChange={(e) => updateProjectMeta({ name: e.target.value })} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-amber-500 outline-none" /><p className="text-[10px] text-slate-500 mt-2">Projeyi silmek için <button onClick={() => setCurrentView('projects')} className="text-amber-500 hover:underline">Projeler</button> sayfasına gidiniz.</p></div></div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-semibold flex items-center gap-2 text-white"><Building className="text-green-500" /> Firma Listesi Yönetimi</h2><span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">Toplam: {companies.length}</span></div><p className="text-sm text-slate-400 mb-4">Sertifikalarda kullanılacak firma/kurum isimlerini buraya ekleyin. Kısaltma belirlemek için "|" karakterini kullanın (Örn: "Acme Şirketi | Acme").</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-2"><label className="text-xs font-bold text-slate-500 uppercase">Toplu Ekleme</label><textarea rows={6} value={tempCompanyInput} onChange={(e) => setTempCompanyInput(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-sm text-white focus:border-green-500 outline-none resize-none font-mono" placeholder={"Firma Adı | Kısaltma\nÖrnek A.Ş. | Örnek\nSadece İsim"} /><button onClick={() => addCompany(tempCompanyInput)} className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition shadow-lg shadow-green-900/20 active:scale-95">Listeye Ekle</button></div><div className="space-y-2 flex flex-col h-full"><label className="text-xs font-bold text-slate-500 uppercase">Mevcut Liste</label><div className="bg-slate-900/50 rounded-lg border border-slate-700 p-2 flex-1 max-h-[200px] overflow-y-auto custom-scrollbar space-y-1">{companies.length === 0 ? (<div className="text-center py-8 text-slate-500 text-sm italic">Liste boş.</div>) : (companies.map((company, idx) => (<div key={idx} className="flex justify-between items-center p-2 bg-slate-800 rounded group hover:bg-slate-700 transition"><div className="flex flex-col truncate pr-2"><span className="text-sm text-slate-200">{company.name}</span>{company.shortName !== company.name && (<span className="text-[10px] text-slate-500 font-mono">Kısaltma: {company.shortName}</span>)}</div><button onClick={() => removeCompany(company.id)} className="text-slate-500 hover:text-red-500 p-1 opacity-60 group-hover:opacity-100 transition"><Trash2 size={14} /></button></div>)))}</div></div></div></div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-semibold flex items-center gap-2 text-white"><PenTool className="text-amber-500" /> Kayıtlı İmzalar</h2><div className="flex gap-2"><button onClick={() => setShowSignaturePad(true)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition shadow-sm border border-slate-600"><PenLine size={18} /> İmza Çiz</button><label className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium transition shadow-lg shadow-amber-900/20 active:scale-95 transform"><Plus size={18} /> İmza Yükle<input type="file" accept="image/*" multiple className="hidden" onChange={handleSignatureUpload} /></label></div></div>{signatures.length === 0 ? (<div className="text-center py-10 border-2 border-dashed border-slate-700 rounded-xl bg-slate-800/50"><Upload className="mx-auto text-slate-600 mb-4" size={40} /><p className="text-slate-500 text-sm">Henüz hiç imza yüklenmemiş.</p></div>) : (<div className="grid grid-cols-2 md:grid-cols-4 gap-4">{signatures.map(sig => (<div key={sig.id} className="group relative bg-white rounded-xl p-4 flex items-center justify-center h-32 shadow-sm border border-slate-600 transition hover:border-amber-500/50"><img src={sig.url} alt={sig.name} className="max-h-full max-w-full object-contain" /><div className="absolute inset-0 bg-black/60 opacity-60 group-hover:opacity-100 transition flex items-center justify-center rounded-xl backdrop-blur-sm"><button onClick={() => deleteSignature(sig.id)} className="bg-red-500 p-2 rounded-full text-white hover:bg-red-600 shadow-lg transform active:scale-95 transition"><Trash2 size={20} /></button></div><div className="absolute bottom-2 left-2 right-2 text-center"><span className="text-[10px] bg-slate-900/90 text-white px-2 py-1 rounded truncate block border border-slate-700 shadow-sm">{sig.name}</span></div></div>))}</div>)}</div>
+                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><QrCode className="text-teal-500" /> Doğrulama ve QR Ayarları</h2>
+                    </div>
+                    <p className="text-sm text-slate-400 mb-4">Sertifikalar oluşturulurken QR kodlara eklenecek temel web sitesi adresini buradan düzeltebilirsiniz. Sertifika üzerindeki QR kod, bu adres ve sertifika seri numarası ile oluşturulacaktır.</p>
+                    <div className="flex flex-col md:flex-row gap-4 items-start md:items-end">
+                        <div className="w-full md:flex-1 space-y-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Sistem Doğrulama URL'si</label>
+                            <input 
+                                type="text"
+                                value={qrBaseUrl}
+                                onChange={(e) => {
+                                    setQrBaseUrl(e.target.value);
+                                    localStorage.setItem('vps_qr_base_url', e.target.value);
+                                }}
+                                className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-teal-500 outline-none font-mono text-sm"
+                                placeholder="http://194.146.36.153:5555/dogrula.html"
+                            />
+                        </div>
+                    </div>
+                </div>
+
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><ShieldCheck className="text-red-500" /> Güvenlik Ayarları</h2>
