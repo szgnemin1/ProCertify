@@ -327,7 +327,7 @@ const App = () => {
       }
     };
 
-    const timer = setTimeout(saveData, 500);
+    const timer = setTimeout(saveData, 2500);
     return () => clearTimeout(timer);
   }, [projects, signatures, companies, isDataLoaded]);
 

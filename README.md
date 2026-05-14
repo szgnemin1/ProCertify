@@ -3,7 +3,7 @@
   <h1>🎓 ProCertify Studio</h1>
   
   <p>
-    <strong>Profesyonel Sertifika Tasarım ve Toplu Üretim Fabrikası</strong>
+    <strong>Profesyonel Sertifika Tasarım ve Toplu Üretim Fabrikası (Web/VPS Edition)</strong>
   </p>
 
   <p>
@@ -12,10 +12,10 @@
     <a href="#-kurulum">📦 İndir</a>
   </p>
 
-  ![Version](https://img.shields.io/badge/Versiyon-v1.3.5-blue?style=for-the-badge)
+  ![Version](https://img.shields.io/badge/Versiyon-v1.4.0--vps-blue?style=for-the-badge)
   ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
   ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
-  ![Electron](https://img.shields.io/badge/Electron-191970?style=for-the-badge&logo=Electron&logoColor=white)
+  ![NodeJS](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
   ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
   <br />
@@ -25,9 +25,9 @@
 
 ## 🚀 Proje Hakkında
 
-**ProCertify Studio**, etkinlikler, eğitimler ve kurumlar için geliştirilmiş; internet bağlantısına ihtiyaç duymayan, tamamen güvenli ve yerel çalışan bir sertifika üretim motorudur.
+**ProCertify Studio (VPS Edition)**, etkinlikler, eğitimler ve kurumlar için geliştirilmiş; sunucunuz üzerinde (Web tabanlı) çalışan bir sertifika üretim motorudur.
 
-Modern sürükle-bırak arayüzü ile dakikalar içinde şablonunuzu hazırlayabilir, Excel/Liste mantığıyla yüzlerce kişiye özel PDF sertifikayı saniyeler içinde üretebilirsiniz.
+Modern sürükle-bırak arayüzü ile dakikalar içinde şablonunuzu hazırlayabilir, Excel/Liste mantığıyla yüzlerce kişiye özel PDF sertifikayı saniyeler içinde üretebilirsiniz. Verileriniz sunucudaki yerel `data.json` dosyasında güvenle saklanır.
 
 ---
 
@@ -35,14 +35,14 @@ Modern sürükle-bırak arayüzü ile dakikalar içinde şablonunuzu hazırlayab
 
 ### ✨ Neden ProCertify Studio?
 
-*   **🔒 %100 Güvenli ve Çevrimdışı:** Verileriniz asla bir sunucuya gitmez. Bilgisayarınızda (EXE) çalışır.
-*   **📂 Esnek Çıktı Modları (YENİ):** Sertifikalarınızı ister **tek bir PDF** dosyasında birleştirin, isterseniz bilgisayarınızda seçeceğiniz bir **klasöre ayrı ayrı dosyalar** (örn: `Ahmet-Yilmaz.pdf`, `Ayse-Demir.pdf`) olarak otomatik kaydedin.
+*   **🌐 Web Tabanlı ve Merkezi:** Verileriniz sunucu üzerinde `data.json` olarak saklanır. Yedeklemelerinizi içeri alıp dışarı çıkartabilirsiniz. Ekip olarak ortak çalışmaya uygundur.
+*   **📂 Esnek Çıktı Modları (YENİ):** Sertifikalarınızı ister **tek bir PDF** dosyasında birleştirin, isterseniz de **ZIP dosyası içinde ayrı ayrı PDF'ler** olarak cihazınıza anında indirin!
 *   **✍️ Gelişmiş İmza Yönetimi:** İmzalarınızı sisteme yükleyin veya doğrudan uygulama içinde **mouse/tablet ile çizin**.
 *   **🧠 Akıllı Veri Birleştirme:** Şablonda `{AD SOYAD}` ve `{Ad Soyad}` gibi farklı yazımlar olsa bile, sistem bunları **tek bir kutuda** birleştirir.
 *   **✅ Seçim Kutuları (Checkbox):** Sertifika üzerinde "Evet/Hayır" veya onay kutucukları oluşturabilirsiniz.
 *   **🔗 QR ve Metin Senkronizasyonu:** Bir metin alanına ve QR koda aynı etiketi (Örn: `{Firma}`) verirseniz, doldurma ekranında tek seçim yaparak ikisini de aynı anda güncelleyebilirsiniz.
 *   **⚡ Toplu Üretim Gücü:** Tek bir şablon yapın, 1000 farklı isim için tek tuşla üretim yapın.
-*   **🚀 Performans Modu:** Binlerce imza veya görsel yükleseniz bile uygulama donmaz.
+*   **🚀 Performans Modu:** Binlerce imza veya büyük yedek dosyaları yükleseniz bile arka planda verimli bir şekilde çalışır.
 
 ### 🔥 Temel Özellikler
 
@@ -52,7 +52,7 @@ Modern sürükle-bırak arayüzü ile dakikalar içinde şablonunuzu hazırlayab
 | **Dinamik Yer Tutucular** | `{Ad Soyad}`, `{Tarih}` gibi etiketler koyun, "Doldur" ekranında bu alanları otomatik değiştirin. |
 | **İmza Çizimi ve Yükleme** | Tablet veya mouse ile imza atın, veya şeffaf PNG imzalarınızı yükleyin. |
 | **Firma & Kısaltma** | Uzun firma isimlerini sertifikaya, kısa kodlarını dosya ismine otomatik yazdırın. |
-| **Yedekleme Sistemi** | Tüm projelerinizi tek bir `.json` dosyası olarak yedekleyin/taşıyın. |
+| **Gelişmiş Yedekleme Sistemi** | Tüm verileri JSON olarak tam kapasiteli yedekleyin ve tek tıkla sisteme entegre edin. |
 
 ---
 
@@ -61,13 +61,13 @@ Modern sürükle-bırak arayüzü ile dakikalar içinde şablonunuzu hazırlayab
 ### 🛠️ Teknoloji Yığını
 
 *   **Core:** React 18, TypeScript, Vite
-*   **Desktop Wrapper:** Electron.js (IPC, Native File System)
+*   **Backend:** Node.js, Express (API & File Storage)
 *   **Styling:** Tailwind CSS
-*   **PDF Engine:** jsPDF
+*   **PDF Engine & Archiving:** jsPDF & JSZip
 
 ### ⚙️ Kurulum ve Çalıştırma
 
-Projeyi yerel ortamınızda geliştirmek için:
+Projeyi sunucunuzda veya yerel ortamınızda web olarak kurmak için:
 
 1.  **Depoyu Klonlayın:**
     ```bash
@@ -80,20 +80,25 @@ Projeyi yerel ortamınızda geliştirmek için:
     npm install
     ```
 
-3.  **Geliştirme Modunda Çalıştırın:**
+3.  **Hızlı Geliştirme (API ile Beraber Vite Modu):**
     ```bash
-    npm run electron:start
+    npm run dev
     ```
 
-### 📦 EXE Olarak Paketleme (Build)
+### 📦 VPS veya Production (Build) İçin Dağıtım
 
-Uygulamayı dağıtılabilir bir `.exe` (Windows) dosyasına dönüştürmek için:
+Uygulamayı optimize edip tam stack production versiyonunu çalıştırmak için:
 
+1. Projeyi Build Edin:
 ```bash
-npm run dist
+npm run vps:build
 ```
 
-Bu işlem tamamlandığında `release/` klasörü altında kurulum dosyasını (`ProCertify Studio Setup 1.3.5.exe`) bulabilirsiniz.
+2. Ortamı Başlatın (Production):
+```bash
+npm run vps:start
+```
+> Varsayılan olarak `5555` veya Ortam (ENV) portunda ayağa kalkar. Tüm yedeklemeler kök dizindeki `data.json` dosyasına yazılır.
 
 ## 📄 Lisans
 
