@@ -8,7 +8,7 @@ async function startServer() {
   const DATA_FILE = path.join(process.cwd(), 'data.json');
 
   // Parse JSON bodies (with increased limit for base64 images)
-  app.use(express.json({ limit: '50mb' }));
+  app.use(express.json({ limit: '200mb' }));
 
   // API Route to GET data
   app.get('/api/data', (req, res) => {
@@ -35,9 +35,13 @@ async function startServer() {
       
       // Preserve existing password
       if (fs.existsSync(DATA_FILE)) {
-        const existingData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-        if (existingData.appPassword) {
-           dataToSave.appPassword = existingData.appPassword;
+        try {
+           const existingData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+           if (existingData.appPassword) {
+              dataToSave.appPassword = existingData.appPassword;
+           }
+        } catch(e) {
+           console.error("Existing data corrupted, overwriting without old password");
         }
       }
 

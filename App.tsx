@@ -81,15 +81,6 @@ const DEFAULT_HEIGHT = 1414;
 const APP_VERSION = "v1.4.0-vps"; 
 const GITHUB_URL = "https://github.com/szgnemin1/ProCertify";
 
-const getElectron = () => {
-    // @ts-ignore
-    if (window.require) {
-        // @ts-ignore
-        return window.require('electron');
-    }
-    return null;
-};
-
 const createNewProject = (name: string): CertificateProject => {
   return {
     id: Date.now().toString(),
@@ -157,6 +148,7 @@ const App = () => {
   const [projects, setProjects] = useState<CertificateProject[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string>('');
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [apiFetchFailed, setApiFetchFailed] = useState(false);
 
   const [selectedFillProjectIds, setSelectedFillProjectIds] = useState<string[]>([]);
   const [previewSides, setPreviewSides] = useState<Record<string, Side>>({});
@@ -278,36 +270,34 @@ const App = () => {
   // Fetch data on mount
   useEffect(() => {
     const fetchData = async () => {
-      let data = null;
-      let fromApi = false;
+      let data: any = null;
+      let isNetworkError = false;
       try {
         const res = await fetch('/api/data');
         if (res.ok) {
           data = await res.json();
-          // If the API returned an empty object, it means no file data yet.
-          if (Object.keys(data).length > 0) {
-             fromApi = true;
-          }
+          console.log("FETCHED DATA FROM API:", data);
+        } else {
+          isNetworkError = true;
+          console.error("API responded with not ok:", res.status);
         }
       } catch (error) {
-        console.warn("API not available, falling back to localStorage.");
+        console.error("API network error:", error);
+        isNetworkError = true;
       }
 
-      if (!fromApi) {
-        const savedData = localStorage.getItem('procertify_studio_data');
-        if (savedData) {
-           try {
-             data = JSON.parse(savedData);
-           } catch(e) {}
-        }
+      if (isNetworkError) {
+          setApiFetchFailed(true);
       }
 
       if (data && data.projects && Array.isArray(data.projects) && data.projects.length > 0) {
+          console.log("Setting projects from API data", data.projects.length);
           setProjects(data.projects);
           setActiveProjectId(data.projects[0].id);
           if (data.signatures) setSignatures(data.signatures);
           if (data.companies) setCompanies(data.companies);
-      } else {
+      } else if (!isNetworkError) {
+          console.log("Data invalid or empty, creating new default project", data);
           const newP = createNewProject('Yeni Sertifika Projesi');
           setProjects([newP]);
           setActiveProjectId(newP.id);
@@ -319,26 +309,21 @@ const App = () => {
 
   // Save data on change
   useEffect(() => {
-    if (!isDataLoaded) return;
+    if (!isDataLoaded || apiFetchFailed) return;
 
     const saveData = async () => {
       const dataObj = { projects, signatures, companies };
+      console.log("SAVING DATA TO API:", dataObj);
       
-      // Always save to localStorage implicitly so the app works anywhere
       try {
-          localStorage.setItem('procertify_studio_data', JSON.stringify(dataObj));
-      } catch (e) {
-          console.error("LocalStorage save error", e);
-      }
-
-      try {
-        await fetch('/api/data', {
+        const result = await fetch('/api/data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(dataObj)
         });
+        console.log("SAVE DATA RESULT:", await result.text());
       } catch (error) {
-        // Pass silently if no API
+        console.error("Failed to save data to API:", error);
       }
     };
 
@@ -1092,20 +1077,19 @@ const App = () => {
                 companies: data.companies || []
             };
 
-            // Explicitly overwrite localStorage immediately
-            try {
-                localStorage.setItem('procertify_studio_data', JSON.stringify(dataObj));
-            } catch(e) {}
-
             // Save to API backend if available
             try {
-                await fetch('/api/data', {
+                const res = await fetch('/api/data', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(dataObj)
                 });
+                if (!res.ok) {
+                    throw new Error("Server rejected the data. Status: " + res.status);
+                }
             } catch (error) {
                 console.error("Failed to save imported backup to API", error);
+                alert("Uyarı: Sunucuya kaydedilemedi!\n" + String(error));
             }
 
             // Update state
@@ -1324,38 +1308,22 @@ const App = () => {
             pdf.save(filename);
 
         } else {
-            const electron = getElectron();
-            if (!electron) {
-                alert("Bu özellik sadece masaüstü uygulamasında (EXE) çalışır. Web sürümünde lütfen 'Tek Dosya' modunu kullanın.");
-                setIsGenerating(false);
-                return;
-            }
-
-            const { ipcRenderer } = electron;
-            const folderPath = await ipcRenderer.invoke('select-directory');
-            if (!folderPath) {
-                setIsGenerating(false);
-                return;
-            }
-
+            // Import JSZip dynamically
+            const JSZip = (await import('jszip')).default;
+            const zip = new JSZip();
             let savedCount = 0;
             const usedNames = new Set<string>();
 
             for (const proj of targetProjects) {
                 // Generate base filename
                 let rawName = generateFilename(proj.filenamePattern || `Sertifika-${proj.name}`, fillValues);
-                
-                // Clean up filename but keep extension handling manual here for uniqueness checks
-                // The generateFilename adds .pdf, let's strip it to handle duplicates properly
                 let baseName = rawName.replace(/\.pdf$/i, '');
-                
-                // Sanitation specifically for filesystem
                 baseName = baseName.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\-\. _]/gi, '_');
 
                 let uniqueName = `${baseName}.pdf`;
                 let counter = 1;
                 
-                // Prevent overwriting files in the same batch by checking local set
+                // Prevent overwriting files in the same batch
                 while (usedNames.has(uniqueName)) {
                     uniqueName = `${baseName}_${counter}.pdf`;
                     counter++;
@@ -1372,24 +1340,27 @@ const App = () => {
                 await renderProjectToPDF(pdf, proj, true);
                 const pdfData = pdf.output('arraybuffer');
                 
-                // CRITICAL FIX: Convert ArrayBuffer to Uint8Array for reliable IPC transmission
-                // This ensures Electron Main process receives a proper buffer
-                const dataArray = new Uint8Array(pdfData);
-                
-                const result = await ipcRenderer.invoke('save-file', {
-                    folderPath,
-                    fileName: uniqueName,
-                    dataBuffer: dataArray
-                });
-
-                if (result.success) savedCount++;
+                // Add to zip
+                zip.file(uniqueName, pdfData);
+                savedCount++;
                 
                 // Update progress and yield execution to UI thread
                 setProgress(Math.round(((savedCount) / targetProjects.length) * 100));
                 await new Promise(r => setTimeout(r, 0));
             }
 
-            alert(`${savedCount} adet dosya başarıyla "${folderPath}" klasörüne kaydedildi!`);
+            setProgress(99); // Generating zip
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const zipUrl = URL.createObjectURL(zipBlob);
+            const a = document.createElement('a');
+            a.href = zipUrl;
+            a.download = `Sertifikalar_${new Date().getTime()}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(zipUrl);
+
+            alert(`${savedCount} adet dosya başarıyla ZIP olarak indirildi!`);
         }
     } catch (e) {
         console.error("Export failed", e);

@@ -19,36 +19,8 @@
     "vps:dev": "vite --host 0.0.0.0 --port 5555",
     "vps:build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
     "vps:start": "cross-env NODE_ENV=production node dist/server.cjs",
-    "dev:electron": "concurrently \"vite\" \"wait-on http://localhost:3000 && electron .\"",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
-    "preview": "vite preview",
-    "electron:start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder"
-  },
-  "build": {
-    "appId": "com.procertify.studio",
-    "productName": "ProCertify Studio",
-    "copyright": "Copyright © 2024 ProCertify",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "main.js",
-      "server.js",
-      "package.json"
-    ],
-    "win": {
-      "target": "nsis",
-      "icon": "public/favicon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "ProCertify Studio"
-    }
+    "preview": "vite preview"
   },
   "dependencies": {
     "body-parser": "^2.2.2",
@@ -68,17 +40,13 @@
     "@types/react-dom": "^18.2.21",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.18",
-    "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
-    "electron": "^29.1.0",
-    "electron-builder": "^24.13.3",
     "esbuild": "^0.28.0",
     "express": "^5.2.1",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.21.0",
     "typescript": "^5.2.2",
-    "vite": "^5.1.4",
-    "wait-on": "^9.0.4"
+    "vite": "^5.1.4"
   }
 }
