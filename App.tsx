@@ -273,10 +273,21 @@ const App = () => {
       let data: any = null;
       let isNetworkError = false;
       try {
-        const res = await fetch('/api/data');
+        const token = localStorage.getItem('vps_session_token');
+        const res = await fetch('/api/data', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
         if (res.ok) {
           data = await res.json();
           console.log("FETCHED DATA FROM API:", data);
+        } else if (res.status === 401) {
+          console.error("Token expired or invalid. Logging out.");
+          localStorage.removeItem('vps_session');
+          localStorage.removeItem('vps_session_token');
+          window.location.reload();
+          return;
         } else {
           isNetworkError = true;
           console.error("API responded with not ok:", res.status);
@@ -316,11 +327,21 @@ const App = () => {
       console.log("SAVING DATA TO API:", dataObj);
       
       try {
+        const token = localStorage.getItem('vps_session_token');
         const result = await fetch('/api/data', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
           body: JSON.stringify(dataObj)
         });
+        if (result.status === 401) {
+          localStorage.removeItem('vps_session');
+          localStorage.removeItem('vps_session_token');
+          window.location.reload();
+          return;
+        }
         console.log("SAVE DATA RESULT:", await result.text());
       } catch (error) {
         console.error("Failed to save data to API:", error);
@@ -965,11 +986,21 @@ const App = () => {
           return;
       }
       try {
+          const token = localStorage.getItem('vps_session_token');
           const res = await fetch('/api/change-password', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                 'Content-Type': 'application/json',
+                 'Authorization': `Bearer ${token}`
+              },
               body: JSON.stringify({ newPassword })
           });
+          if (res.status === 401) {
+             localStorage.removeItem('vps_session');
+             localStorage.removeItem('vps_session_token');
+             window.location.reload();
+             return;
+          }
           const data = await res.json();
           if (data.success) {
               setPasswordMessage('Şifre başarıyla güncellendi!');
@@ -1079,11 +1110,21 @@ const App = () => {
 
             // Save to API backend if available
             try {
+                const token = localStorage.getItem('vps_session_token');
                 const res = await fetch('/api/data', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                       'Content-Type': 'application/json',
+                       'Authorization': `Bearer ${token}`
+                    },
                     body: JSON.stringify(dataObj)
                 });
+                if (res.status === 401) {
+                  localStorage.removeItem('vps_session');
+                  localStorage.removeItem('vps_session_token');
+                  window.location.reload();
+                  return;
+                }
                 if (!res.ok) {
                     throw new Error("Server rejected the data. Status: " + res.status);
                 }
@@ -2155,7 +2196,8 @@ const ProtectedApp = () => {
 
   useEffect(() => {
     const session = localStorage.getItem('vps_session');
-    if (session === 'authenticated') {
+    const token = localStorage.getItem('vps_session_token');
+    if (session === 'authenticated' && token) {
       setIsAuthenticated(true);
     }
   }, []);
@@ -2169,8 +2211,9 @@ const ProtectedApp = () => {
          body: JSON.stringify({ password })
       });
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && data.success && data.token) {
         localStorage.setItem('vps_session', 'authenticated');
+        localStorage.setItem('vps_session_token', data.token);
         setIsAuthenticated(true);
       } else {
         setError(data.error || 'Hatalı şifre. Lütfen tekrar deneyin.');

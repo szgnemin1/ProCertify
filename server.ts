@@ -1,6 +1,9 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "procertify-super-secret-key-2024!";
 
 async function startServer() {
   const app = express();
@@ -10,8 +13,25 @@ async function startServer() {
   // Parse JSON bodies (with increased limit for base64 images)
   app.use(express.json({ limit: '200mb' }));
 
+  const verifyToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ error: "Erişim reddedildi. Token bulunamadı." });
+    }
+
+    try {
+      const verified = jwt.verify(token, JWT_SECRET);
+      (req as any).user = verified;
+      next();
+    } catch (err) {
+      res.status(401).json({ error: "Geçersiz veya süresi dolmuş token." });
+    }
+  };
+
   // API Route to GET data
-  app.get('/api/data', (req, res) => {
+  app.get('/api/data', verifyToken, (req, res) => {
     try {
       if (fs.existsSync(DATA_FILE)) {
         const data = fs.readFileSync(DATA_FILE, 'utf-8');
@@ -29,7 +49,7 @@ async function startServer() {
   });
 
   // API Route to POST data
-  app.post('/api/data', (req, res) => {
+  app.post('/api/data', verifyToken, (req, res) => {
     try {
       let dataToSave = req.body;
       
@@ -64,7 +84,8 @@ async function startServer() {
       }
       
       if (password === currentPassword) {
-         res.json({ success: true });
+         const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '24h' });
+         res.json({ success: true, token });
       } else {
          res.status(401).json({ error: "Hatalı şifre" });
       }
@@ -74,7 +95,7 @@ async function startServer() {
   });
 
   // API Route to Change Password
-  app.post('/api/change-password', (req, res) => {
+  app.post('/api/change-password', verifyToken, (req, res) => {
     try {
       const { newPassword } = req.body;
       let data: any = {};
