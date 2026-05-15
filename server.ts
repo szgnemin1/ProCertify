@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "procertify-super-secret-key-2024!";
+const JWT_SECRET = "procertify-super-secret-key-2024-static";
 
 async function startServer() {
   const app = express();

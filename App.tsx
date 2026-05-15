@@ -802,13 +802,32 @@ const App = () => {
     const fieldsKey = fields.map(f => f.label).join(',');
     
     if (fieldsKey !== unifiedFieldsRef.current) {
+      const isInitial = !unifiedFieldsRef.current;
       unifiedFieldsRef.current = fieldsKey;
       if (fields.length === 0) {
         setChatHistory([{ id: Date.now().toString(), sender: 'bot', text: 'Lütfen doldurmak için sol üstten proje seçin.' }]);
         setCurrentChatStep(0);
       } else {
-        setChatHistory([{ id: Date.now().toString(), sender: 'bot', text: `Merhaba! Seçili projeler için ${fields.length} adet bilgiye ihtiyacım var. İlk olarak, lütfen **${fields[0].displayLabel}** giriniz.` }]);
-        setCurrentChatStep(0);
+        setFillValues(prevFill => {
+            let nextIndex = 0;
+            while (nextIndex < fields.length && (prevFill[fields[nextIndex].label] !== undefined && prevFill[fields[nextIndex].label] !== '')) {
+                nextIndex++;
+            }
+            setCurrentChatStep(nextIndex);
+            
+            setChatHistory(prevHistory => {
+               const newHistory = isInitial ? [] : [...prevHistory];
+               if (isInitial && nextIndex === 0) {
+                   newHistory.push({ id: Date.now().toString(), sender: 'bot', text: `Merhaba! Seçili projeler için ${fields.length} adet bilgiye ihtiyacım var. İlk olarak, lütfen **${fields[0].displayLabel}** giriniz.` });
+               } else if (nextIndex < fields.length) {
+                   newHistory.push({ id: Date.now().toString(), sender: 'bot', text: `Yeni alanlar eklendi. Lütfen **${fields[nextIndex].displayLabel}** giriniz.` });
+               } else {
+                   newHistory.push({ id: Date.now().toString(), sender: 'bot', text: `Tüm gerekli bilgileri girdiniz. Sağ alt köşeden PDF oluşturabilirsiniz.` });
+               }
+               return newHistory;
+            });
+            return prevFill;
+        });
       }
     }
   }, [selectedFillProjectIds, projects]);
@@ -2060,7 +2079,7 @@ const App = () => {
                              />
                              <div className="absolute right-2 flex items-center gap-1">
                                <div className="relative flex items-center justify-center w-8 h-8 group" title="Tarih Seç">
-                                 <button onClick={() => setIsCalendarOpen(!isCalendarOpen)} className="p-1 rounded-full hover:bg-slate-700 transition">
+                                 <button onClick={() => { setIsCalendarOpen(!isCalendarOpen); if (!isCalendarOpen) setCalendarDate(new Date()); }} className="p-1 rounded-full hover:bg-slate-700 transition">
                                    <Calendar size={18} className={`transition ${isCalendarOpen ? 'text-amber-500' : 'text-slate-400 group-hover:text-amber-500'}`} />
                                  </button>
                                  
