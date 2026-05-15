@@ -59,6 +59,7 @@ import {
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
+import JSZip from 'jszip';
 import { 
   CanvasElement, 
   ElementType, 
@@ -1393,8 +1394,6 @@ const App = () => {
             pdf.save(filename);
 
         } else {
-            // Import JSZip dynamically
-            const JSZip = (await import('jszip')).default;
             const zip = new JSZip();
             let savedCount = 0;
             const usedNames = new Set<string>();
@@ -1474,9 +1473,9 @@ const App = () => {
 
             alert(`${savedCount} adet dosya başarıyla ZIP olarak indirildi!`);
         }
-    } catch (e) {
+    } catch (e: any) {
         console.error("Export failed", e);
-        alert("PDF oluşturulurken bir hata oluştu.");
+        alert("PDF oluşturulurken bir hata oluştu: " + (e.message || String(e)));
     } finally {
         setIsGenerating(false);
         setProgress(0);
