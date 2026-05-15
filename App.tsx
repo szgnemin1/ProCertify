@@ -1361,7 +1361,7 @@ const App = () => {
                 const serialNo = `PRC-${baseSerial}`;
                 const activeValues = { ...fillValues, 'seri no': serialNo, 'seri numarasi': serialNo, 'sertifika no': serialNo };
 
-                if (isAuthenticated) {
+                if (localStorage.getItem('vps_session') === 'authenticated') {
                     try {
                         const token = localStorage.getItem('vps_session_token');
                         await fetch('/api/issue', {
@@ -1405,7 +1405,7 @@ const App = () => {
                 const activeValues = { ...fillValues, 'seri no': serialNo, 'seri numarasi': serialNo, 'sertifika no': serialNo };
 
                 // Save to verification system
-                if (isAuthenticated) {
+                if (localStorage.getItem('vps_session') === 'authenticated') {
                     try {
                         const token = localStorage.getItem('vps_session_token');
                         await fetch('/api/issue', {
