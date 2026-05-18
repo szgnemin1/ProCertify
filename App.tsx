@@ -174,7 +174,7 @@ const App = () => {
 
   // UI State
   const [activeSide, setActiveSide] = useState<Side>('front');
-  const [currentView, setCurrentView] = useState<ViewMode>('template');
+  const [currentView, setCurrentView] = useState<ViewMode>('fill');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [showSigPermissions, setShowSigPermissions] = useState(false); 
   const [showOptionManager, setShowOptionManager] = useState(false); 
@@ -1542,7 +1542,7 @@ const App = () => {
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-slate-900 text-slate-200 overflow-hidden font-sans selection:bg-amber-500/30 w-full relative">
+    <div className="flex flex-col md:flex-row h-[100dvh] bg-slate-900 text-slate-200 overflow-hidden font-sans selection:bg-amber-500/30 w-full relative">
       
       {/* MOBILE HEADER */}
       <div className="md:hidden flex items-center justify-between p-4 bg-slate-950 border-b border-slate-800 shrink-0 z-40 w-full">
@@ -2054,19 +2054,25 @@ const App = () => {
                               const isSearchEmpty = chatInputValue.trim() === '';
                               const filteredOptions = isSearchEmpty ? options : options.filter(opt => opt.label.toLowerCase().includes(chatInputValue.toLowerCase()));
                               
-                              const shouldShowOptions = options.length <= 4 || !isSearchEmpty;
+                              const shouldShowOptions = options.length <= 4 || !isSearchEmpty || field.type === ElementType.COMPANY;
+                              
+                              const displayMax = field.type === ElementType.COMPANY ? 6 : 999;
+                              const displayedOptions = filteredOptions.slice(0, displayMax);
 
                               if (!shouldShowOptions) return null;
 
                               return (
                                 <div className="mb-2 space-y-2">
                                   <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar">
-                                    {filteredOptions.length > 0 ? filteredOptions.map((opt, i) => (
+                                    {displayedOptions.length > 0 ? displayedOptions.map((opt, i) => (
                                       <button key={i} onClick={() => handleChatSubmit(opt.value, opt.label)} className="bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-full transition border border-slate-600 shadow-sm">
                                         {opt.label}
                                       </button>
                                     )) : (
                                       <span className="text-xs text-slate-500">Sonuç bulunamadı.</span>
+                                    )}
+                                    {filteredOptions.length > displayMax && (
+                                        <span className="text-[10px] text-slate-500 flex items-center px-2 italic">+{filteredOptions.length - displayMax} daha var (Yazarak arayın)</span>
                                     )}
                                   </div>
                                 </div>
@@ -2091,6 +2097,14 @@ const App = () => {
                                value={chatInputValue}
                                onChange={(e) => setChatInputValue(e.target.value)}
                                onKeyDown={(e) => { if (e.key === 'Enter') handleChatSubmit(chatInputValue); }}
+                               onFocus={() => {
+                                 setTimeout(() => {
+                                   if (chatScrollRef.current) {
+                                     chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+                                   }
+                                   window.scrollTo(0, document.body.scrollHeight);
+                                 }, 300);
+                               }}
                                placeholder={`${getUnifiedFillFields()[currentChatStep]?.displayLabel} girin...`}
                                className="w-full bg-slate-900 border border-slate-600 rounded-full pl-4 pr-20 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-500 transition text-sm shadow-inner"
                              />
@@ -2210,7 +2224,7 @@ const App = () => {
                               <textarea rows={field.label.toLowerCase().includes('adres') ? 3 : 1} value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-600 transition resize-y min-h-[46px]" placeholder={field.type === ElementType.QRCODE ? "https://site.com" : (field.type === ElementType.TCKN ? "TC Kimlik No Girin (11 Hane)" : "Metin değeri girin")} style={{ overflow: 'hidden' }} maxLength={field.type === ElementType.TCKN ? 11 : undefined} onInput={(e) => { const target = e.target as HTMLTextAreaElement; target.style.height = 'auto'; target.style.height = target.scrollHeight + 'px'; }} />
                             )}
                             {field.type === ElementType.DROPDOWN && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">Bir seçenek belirleyin...</option>{field.options && field.options.map((opt, i) => (<option key={i} value={opt}>{opt}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div></div>)}
-                            {field.type === ElementType.COMPANY && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-green-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">Firma Seçiniz...</option>{companies.map((company, i) => (<option key={i} value={company.name}>{company.name}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>{companies.length === 0 && (<div className="text-[10px] text-red-400 mt-1">Firma listesi boş. Ayarlar sekmesinden ekleyebilirsiniz.</div>)}</div>)}
+                            {field.type === ElementType.COMPANY && (<div className="relative"><input list={`companies-list-${idx}`} value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-green-500 outline-none text-white transition placeholder-slate-600" placeholder="Yazarak arayın veya seçin..." /><datalist id={`companies-list-${idx}`}>{companies.map((company, i) => (<option key={i} value={company.name}>{company.name}</option>))}</datalist>{companies.length === 0 && (<div className="text-[10px] text-red-400 mt-1">Firma listesi boş. Ayarlar sekmesinden ekleyebilirsiniz.</div>)}</div>)}
                             {field.type === ElementType.SIGNATURE && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">İmza Seçiniz...</option>{signatures.filter(sig => !field.allowedSignatureIds || field.allowedSignatureIds.length === 0 || field.allowedSignatureIds.includes(sig.id)).map(sig => (<option key={sig.id} value={sig.url}>{sig.name}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>{field.allowedSignatureIds && field.allowedSignatureIds.length > 0 && (<div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1"><Filter size={10} /> Bu alan için {field.allowedSignatureIds.length} adet imza tanımlı.</div>)}</div>)}
                          </div>
                         ))}
@@ -2356,7 +2370,7 @@ const ProtectedApp = () => {
   }
 
   return (
-    <div className="flex h-screen bg-slate-950 items-center justify-center font-sans text-slate-200 selection:bg-amber-500/30">
+    <div className="flex h-[100dvh] bg-slate-950 items-center justify-center font-sans text-slate-200 selection:bg-amber-500/30">
       <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-2xl w-full max-w-sm flex flex-col items-center">
         <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-900/40 mb-6">
            <FileText className="text-white" size={32} />
