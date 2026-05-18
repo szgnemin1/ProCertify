@@ -107,6 +107,12 @@ const createNewProject = (name: string): CertificateProject => {
   };
 };
 
+const getApiUrl = (endpoint: string) => {
+  let base = window.location.pathname;
+  if(base.endsWith('/')) base = base.slice(0, -1);
+  return `${base}${endpoint}`;
+};
+
 const App = () => {
   const [projectFrontSelections, setProjectFrontSelections] = useState<Record<string, string>>({});
   const [projectBackSelections, setProjectBackSelections] = useState<Record<string, string>>({});
@@ -279,7 +285,7 @@ const App = () => {
       let isNetworkError = false;
       try {
         const token = localStorage.getItem('vps_session_token');
-        const res = await fetch('/api/data', {
+        const res = await fetch(getApiUrl('/api/data'), {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -333,7 +339,7 @@ const App = () => {
       
       try {
         const token = localStorage.getItem('vps_session_token');
-        const result = await fetch('/api/data', {
+        const result = await fetch(getApiUrl('/api/data'), {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -1015,7 +1021,7 @@ const App = () => {
       }
       try {
           const token = localStorage.getItem('vps_session_token');
-          const res = await fetch('/api/change-password', {
+          const res = await fetch(getApiUrl('/api/change-password'), {
               method: 'POST',
               headers: { 
                  'Content-Type': 'application/json',
@@ -1139,7 +1145,7 @@ const App = () => {
             // Save to API backend if available
             try {
                 const token = localStorage.getItem('vps_session_token');
-                const res = await fetch('/api/data', {
+                const res = await fetch(getApiUrl('/api/data'), {
                     method: 'POST',
                     headers: { 
                        'Content-Type': 'application/json',
@@ -1394,7 +1400,7 @@ const App = () => {
                 if (localStorage.getItem('vps_session') === 'authenticated') {
                     try {
                         const token = localStorage.getItem('vps_session_token');
-                        await fetch('/api/issue', {
+                        await fetch(getApiUrl('/api/issue'), {
                             method: 'POST',
                             headers: { 
                                 'Content-Type': 'application/json',
@@ -1438,7 +1444,7 @@ const App = () => {
                 if (localStorage.getItem('vps_session') === 'authenticated') {
                     try {
                         const token = localStorage.getItem('vps_session_token');
-                        await fetch('/api/issue', {
+                        await fetch(getApiUrl('/api/issue'), {
                             method: 'POST',
                             headers: { 
                                 'Content-Type': 'application/json',
@@ -2327,7 +2333,7 @@ const ProtectedApp = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch(getApiUrl('/api/login'), {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
          body: JSON.stringify({ password })
