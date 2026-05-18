@@ -102,4 +102,4 @@ npm run vps:start
 
 ## 📄 Lisans
 
-Bu proje GNU General Public License v3.0 altında sunulmuştur.
+Bu proje MIT Lisansı altında sunulmuştur.

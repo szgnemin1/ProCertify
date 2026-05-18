@@ -1352,6 +1352,17 @@ const App = () => {
         }
   };
 
+  const getVerificationPayload = (values: Record<string, string>) => {
+      const payload = { ...values };
+      for (const [k, v] of Object.entries(payload)) {
+          if (v && v.startsWith('data:image/')) {
+              const sig = signatures.find(s => s.url === v);
+              payload[k] = sig ? sig.name : 'Görsel Mevcut';
+          }
+      }
+      return payload;
+  };
+
   const exportPDF = async () => {
     if (isGenerating) return; // Prevent double clicks
     const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
@@ -1391,7 +1402,7 @@ const App = () => {
                             },
                             body: JSON.stringify({
                                 serialNo,
-                                fields: fillValues,
+                                fields: getVerificationPayload(fillValues),
                                 projects: [proj.name],
                                 date: new Date().toISOString()
                             })
