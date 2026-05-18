@@ -138,6 +138,9 @@
                             // Don't duplicate serial no in the regular fields listing since we have a dedicated section for it at the top
                             const lowerKey = key.toLowerCase();
                             if (lowerKey === 'seri no' || lowerKey === 'seri numarasi' || lowerKey === 'sertifika no') continue;
+                            
+                            // Do not show raw base64 images if they exist in old records
+                            if (typeof value === 'string' && value.startsWith('data:image/')) continue;
 
                             let safeKey = escapeHtml(key);
                             const label = safeKey.charAt(0).toUpperCase() + safeKey.slice(1);
