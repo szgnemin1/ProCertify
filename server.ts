@@ -12,6 +12,7 @@ async function startServer() {
 
   // Parse JSON bodies (with increased limit for base64 images)
   app.use(express.json({ limit: '200mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '200mb' }));
 
   const verifyToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const authHeader = req.headers['authorization'];
