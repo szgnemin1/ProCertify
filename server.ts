@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import jwt from "jsonwebtoken";
+import { exec } from "child_process";
 
 const JWT_SECRET = "procertify-super-secret-key-2024-static";
 
@@ -165,6 +166,37 @@ async function startServer() {
       console.error(e);
       res.status(500).json({ error: "Failed to issue certificates" });
     }
+  });
+
+  // API Route to Self-Update via GitHub in PM2/VPS environment
+  app.post('/api/update-app', verifyToken, (req, res) => {
+    console.log("GitHub güncelleme tetiklendi...");
+    const cmd = "git pull && npm run build";
+    
+    exec(cmd, (error, stdout, stderr) => {
+      if (error) {
+        console.error("Güncelleme hatası oluştu:", error);
+        return res.status(500).json({
+          success: false,
+          error: error.message,
+          stdout: stdout || "",
+          stderr: stderr || ""
+        });
+      }
+      
+      res.json({
+        success: true,
+        stdout: stdout || "",
+        stderr: stderr || "",
+        message: "Uygulama başarıyla güncellendi ve derlendi! Sunucu PM2 tarafından yeniden başlatılıyor..."
+      });
+      
+      // Since PM2 manages this, process.exit(0) will trigger an automatic clean reload
+      setTimeout(() => {
+        console.log("PM2 tetiklemesi için çıkış yapılıyor...");
+        process.exit(0);
+      }, 1500);
+    });
   });
 
   // Serve static files in production or map vite middleware in dev

@@ -233,6 +233,11 @@ const App = () => {
   const [newPassword, setNewPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState('');
 
+  // Settings - App System Update State
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState('');
+  const [updateLogs, setUpdateLogs] = useState<{ stdout: string; stderr: string; success: boolean } | null>(null);
+
   // Settings - QR Code Base URL State
   const [qrBaseUrl, setQrBaseUrl] = useState(() => localStorage.getItem('vps_qr_base_url') || (window.location.origin + '/dogrula.html'));
 
@@ -1085,6 +1090,60 @@ const App = () => {
           setPasswordMessage('Sunucu ile iletişim kurulamadı.');
       }
       setTimeout(() => setPasswordMessage(''), 3000);
+  };
+
+  const handleUpdateApp = async () => {
+      setIsUpdating(true);
+      setUpdateMessage('GitHub güncellemesi çekiliyor ve derleniyor... Lütfen bekleyin.');
+      setUpdateLogs(null);
+      
+      try {
+          const token = localStorage.getItem('vps_session_token');
+          const res = await fetch(getApiUrl('/api/update-app'), {
+              method: 'POST',
+              headers: { 
+                 'Content-Type': 'application/json',
+                 'Authorization': `Bearer ${token}`
+              }
+          });
+          
+          if (res.status === 401) {
+             localStorage.removeItem('vps_session');
+             localStorage.removeItem('vps_session_token');
+             window.location.reload();
+             return;
+          }
+          
+          const data = await res.json();
+          if (res.ok && data.success) {
+              setUpdateMessage(data.message || 'Güncelleme başarıyla uygulandı! Sayfa 5 saniye içinde yenilenecektir...');
+              setUpdateLogs({ stdout: data.stdout, stderr: data.stderr, success: true });
+              setTimeout(() => {
+                  window.location.reload();
+              }, 5000);
+          } else {
+              setUpdateMessage('Güncelleme başarısız oldu. Log detayını aşağıda görebilirsiniz.');
+              setUpdateLogs({ 
+                  stdout: data.stdout || '', 
+                  stderr: data.stderr || data.error || 'Bilinmeyen bir sunucu hatası.',
+                  success: false 
+              });
+          }
+      } catch (e: any) {
+          // It's possible the server killed itself to restart, so we show success if it responded nicely, 
+          // but if we caught an error while updating, we inform the user to check back.
+          setUpdateMessage('Sunucu ile bağlantı kesildi. (Güncelleme başarılı olup yeniden başlatılıyor olabilir.)');
+          setUpdateLogs({ 
+              stdout: 'Bağlantı koptu.', 
+              stderr: e.message || 'Sunucu yeniden başlıyor...', 
+              success: true 
+          });
+          setTimeout(() => {
+              window.location.reload();
+          }, 6000);
+      } finally {
+          setIsUpdating(false);
+      }
   };
 
   // --- IMPORT/EXPORT LOGIC ---
@@ -1941,9 +2000,121 @@ const App = () => {
                     )}
                 </div>
 
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white"><Database className="text-blue-500" /> Yedekleme ve Geri Yükleme</h2><p className="text-sm text-slate-400 mb-6">Tüm projelerinizi, şablonlarınızı, ayarlarınızı ve yüklediğiniz görselleri (imzalar dahil) tek bir dosya olarak yedekleyin veya başka bir cihaza taşıyın.</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition"><DownloadCloud size={40} className="text-green-500 mb-4" /><h3 className="font-bold text-white mb-2">Sistemi Yedekle</h3><p className="text-xs text-slate-400 mb-4">Tüm verileri (projeler, görseller, ayarlar) içeren tek bir .json dosyası indirir.</p><button onClick={handleExportBackup} className="mt-auto bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition w-full shadow-lg shadow-green-900/20 active:scale-95">Yedek Dosyasını İndir</button></div><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition"><UploadCloud size={40} className="text-blue-500 mb-4" /><h3 className="font-bold text-white mb-2">Yedeği Geri Yükle</h3><p className="text-xs text-slate-400 mb-4">Daha önce aldığınız yedek dosyasını seçerek tüm verilerinizi geri yükleyin.</p><div className="mt-auto w-full relative"><input ref={backupInputRef} type="file" accept=".json" onChange={handleImportBackup} className="hidden" id="backup-upload" /><label htmlFor="backup-upload" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition w-full flex items-center justify-center cursor-pointer shadow-lg shadow-blue-900/20 active:scale-95">Dosya Seç ve Yükle</label></div><div className="flex items-center gap-2 mt-3 text-[10px] text-amber-500"><AlertTriangle size={12} /><span>Dikkat: Mevcut verilerin üzerine yazılacaktır.</span></div></div></div></div>
+                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+                    <h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white">
+                        <Database className="text-blue-500" /> Yedekleme ve Geri Yükleme
+                    </h2>
+                    <p className="text-sm text-slate-400 mb-6">
+                        Tüm projelerinizi, şablonlarınızı, ayarlarınızı ve yüklediğiniz görselleri (imzalar dahil) tek bir dosya olarak yedekleyin veya başka bir cihaza taşıyın.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition">
+                            <DownloadCloud size={40} className="text-green-500 mb-4" />
+                            <h3 className="font-bold text-white mb-2">Sistemi Yedekle</h3>
+                            <p className="text-xs text-slate-400 mb-4">Tüm verileri (projeler, görseller, ayarlar) içeren tek bir .json dosyası indirir.</p>
+                            <button onClick={handleExportBackup} className="mt-auto bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition w-full shadow-lg shadow-green-900/20 active:scale-95">Yedek Dosyasını İndir</button>
+                        </div>
+                        <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition">
+                            <UploadCloud size={40} className="text-blue-500 mb-4" />
+                            <h3 className="font-bold text-white mb-2">Yedeği Geri Yükle</h3>
+                            <p className="text-xs text-slate-400 mb-4">Daha önce aldığınız yedek dosyasını seçerek tüm verilerinizi geri yükleyin.</p>
+                            <div className="mt-auto w-full relative">
+                                <input ref={backupInputRef} type="file" accept=".json" onChange={handleImportBackup} className="hidden" id="backup-upload" />
+                                <label htmlFor="backup-upload" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition w-full flex items-center justify-center cursor-pointer shadow-lg shadow-blue-900/20 active:scale-95">Dosya Seç ve Yükle</label>
+                            </div>
+                            <div className="flex items-center gap-2 mt-3 text-[10px] text-amber-500">
+                                <AlertTriangle size={12} /><span>Dikkat: Mevcut verilerin üzerine yazılacaktır.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white"><Github className="text-white" /> Hakkında & GitHub</h2><div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex items-start gap-4"><div className="p-3 bg-slate-800 rounded-full"><Monitor size={24} className="text-slate-400" /></div><div className="flex-1"><h3 className="font-bold text-white text-lg">ProCertify Studio <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full ml-2">{APP_VERSION}</span></h3><p className="text-sm text-slate-400 mt-1 mb-4">Açık kaynak kodlu, profesyonel sertifika tasarım ve yönetim aracı. Projeyi GitHub üzerinde destekleyebilir veya katkıda bulunabilirsiniz.</p><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-white bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg transition border border-slate-600"><Github size={16} /> GitHub Deposuna Git</a></div></div></div>
+                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+                     <h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white">
+                         <Github className="text-white" /> Sunucu / GitHub Otomatik Güncelleme
+                     </h2>
+                     <p className="text-sm text-slate-400 mb-6">
+                         Uygulamanın en son sürümünü GitHub deposundan (<span className="font-mono text-slate-300">szgnemin1/ProCertify</span>) çeker, arka planda otomatik olarak yeniden derler ve sunucu sürecini PM2 ile yeniden başlatır. Mevcut verileriniz (projeler, şablonlar, imzalar vb.) bu işlemden **etkilenmez**.
+                     </p>
+                     
+                     <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 space-y-4">
+                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                             <div>
+                                 <h3 className="font-bold text-white mb-1">Tek Tıkla Otomatik Güncelleme</h3>
+                                 <p className="text-xs text-slate-400">
+                                     Mevcut Çalışan Sürüm: <span className="bg-slate-800 text-amber-500 px-2 py-0.5 rounded font-mono font-bold ml-1">{APP_VERSION}</span>
+                                 </p>
+                             </div>
+                             <button 
+                                 onClick={handleUpdateApp}
+                                 disabled={isUpdating}
+                                 className={`px-6 py-3 rounded-lg font-bold transition flex items-center justify-center gap-2 select-none shadow-lg active:scale-95 ${
+                                     isUpdating 
+                                         ? 'bg-slate-700 text-slate-400 cursor-not-allowed animate-pulse' 
+                                         : 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-900/20'
+                                 }`}
+                             >
+                                 {isUpdating ? 'Güncelleniyor...' : 'Sürümü Otomatik Güncelle'}
+                             </button>
+                         </div>
+                         
+                         {updateMessage && (
+                             <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex items-start gap-2">
+                                 <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                                 <span className="text-sm text-slate-300 font-medium">{updateMessage}</span>
+                             </div>
+                         )}
+                         
+                         {updateLogs && (
+                             <div className="space-y-2 mt-4">
+                                 <div className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                                     <span>GÜNCELLEME LOGLARI</span>
+                                     <span className={`text-[10px] px-2 py-0.5 rounded ${
+                                         updateLogs.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                                     }`}>
+                                         {updateLogs.success ? 'KABUL EDİLDİ / BAŞARILI' : 'BAĞLANTI VEYA DERLEME HATASI'}
+                                     </span>
+                                 </div>
+                                 <div className="bg-black/80 font-mono text-xs text-slate-300 p-4 rounded-lg border border-slate-800 overflow-x-auto max-h-60 custom-scrollbar space-y-1">
+                                     {updateLogs.stdout && (
+                                         <div>
+                                             <span className="text-green-500 font-bold">[Komut Çıktısı]:</span>
+                                             <pre className="whitespace-pre-wrap mt-1 opacity-70">{updateLogs.stdout}</pre>
+                                         </div>
+                                     )}
+                                     {updateLogs.stderr && (
+                                         <div className="mt-2 pt-2 border-t border-slate-900">
+                                             <span className="text-cyan-500 font-bold">[Bildirimler / Günlükler]:</span>
+                                             <pre className="whitespace-pre-wrap mt-1 text-red-400 opacity-90">{updateLogs.stderr}</pre>
+                                         </div>
+                                     )}
+                                 </div>
+                             </div>
+                         )}
+                     </div>
+                 </div>
+
+                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+                     <h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white">
+                         <Github className="text-white" /> Hakkında & GitHub
+                     </h2>
+                     <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex items-start gap-4">
+                         <div className="p-3 bg-slate-800 rounded-full">
+                             <Monitor size={24} className="text-slate-400" />
+                         </div>
+                         <div className="flex-1">
+                             <h3 className="font-bold text-white text-lg">
+                                 ProCertify Studio <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full ml-2">{APP_VERSION}</span>
+                             </h3>
+                             <p className="text-sm text-slate-400 mt-1 mb-4">
+                                 Açık kaynak kodlu, profesyonel sertifika tasarım ve yönetim aracı. Projeyi GitHub üzerinde destekleyebilir hoặc katkıda bulunabilirsiniz.
+                             </p>
+                             <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-white bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg transition border border-slate-600">
+                                 <Github size={16} /> GitHub Deposuna Git
+                             </a>
+                         </div>
+                     </div>
+                   </div>
              </div>
           </div>
         )}
