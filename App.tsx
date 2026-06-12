@@ -113,6 +113,45 @@ const getApiUrl = (endpoint: string) => {
   return `${base}${endpoint}`;
 };
 
+const downloadFile = async (blob: Blob | ArrayBuffer, defaultFilename: string, mimeType: string) => {
+  if ('showSaveFilePicker' in window) {
+    try {
+      const ext = defaultFilename.split('.').pop() || '';
+      const handle = await (window as any).showSaveFilePicker({
+        suggestedName: defaultFilename,
+        types: [{
+          description: ext.toUpperCase() + ' Dosyası',
+          accept: {
+            [mimeType]: [`.${ext}`]
+          }
+        }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return true;
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+         // Kullanıcı kaydetmeyi iptal etti
+         return false;
+      }
+      console.warn("showSaveFilePicker failed, falling back to standard download...", err);
+    }
+  }
+
+  // Fallback to standard <a> tag click
+  const fileBlob = blob instanceof Blob ? blob : new Blob([blob], { type: mimeType });
+  const url = URL.createObjectURL(fileBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = defaultFilename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  return true;
+};
+
 const App = () => {
   const [projectFrontSelections, setProjectFrontSelections] = useState<Record<string, string>>({});
   const [projectBackSelections, setProjectBackSelections] = useState<Record<string, string>>({});
@@ -1053,14 +1092,7 @@ const App = () => {
   const handleSaveTemplateAsHTML = async () => {
      const json = JSON.stringify(activeProject, null, 2);
      const blob = new Blob([json], { type: 'application/json' });
-     const url = URL.createObjectURL(blob);
-     const a = document.createElement('a');
-     a.href = url;
-     a.download = `Sertifika_Sablon_${activeProject.name.replace(/\s+/g, '_')}.json`;
-     document.body.appendChild(a);
-     a.click();
-     document.body.removeChild(a);
-     URL.revokeObjectURL(url);
+     await downloadFile(blob, `Sertifika_Sablon_${activeProject.name.replace(/\s+/g, '_')}.json`, 'application/json');
   };
 
   const handleImportHTMLTemplate = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1085,7 +1117,7 @@ const App = () => {
   };
 
   // FULL SYSTEM BACKUP EXPORT
-  const handleExportBackup = () => {
+  const handleExportBackup = async () => {
     try {
         const backupData = {
             version: APP_VERSION,
@@ -1096,18 +1128,10 @@ const App = () => {
         };
         const dataStr = JSON.stringify(backupData, null, 2);
         const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
         
-        const a = document.createElement('a');
-        a.href = url;
         // Fix filename to be safe for Windows filesystems (no colons)
         const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
-        a.download = `ProCertify_Yedek_${dateStr}.json`;
-        
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        await downloadFile(blob, `ProCertify_Yedek_${dateStr}.json`, 'application/json');
     } catch (error) {
         console.error("Yedekleme hatası:", error);
         alert("Yedek dosyası oluşturulurken bir hata oluştu.");
@@ -1427,7 +1451,8 @@ const App = () => {
                 }
             }
             
-            pdf.save(filename);
+            const pdfBlob = pdf.output('blob');
+            await downloadFile(pdfBlob, filename, 'application/pdf');
 
         } else {
             const zip = new JSZip();
@@ -1498,14 +1523,7 @@ const App = () => {
 
             setProgress(99); // Generating zip
             const zipBlob = await zip.generateAsync({ type: 'blob' });
-            const zipUrl = URL.createObjectURL(zipBlob);
-            const a = document.createElement('a');
-            a.href = zipUrl;
-            a.download = `Sertifikalar_${new Date().getTime()}.zip`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(zipUrl);
+            await downloadFile(zipBlob, `Sertifikalar_${new Date().getTime()}.zip`, 'application/zip');
 
             alert(`${savedCount} adet dosya başarıyla ZIP olarak indirildi!`);
         }
