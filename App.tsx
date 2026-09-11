@@ -80,7 +80,7 @@ type ExportMode = 'single' | 'separate';
 
 const DEFAULT_WIDTH = 2000;
 const DEFAULT_HEIGHT = 1414;
-const APP_VERSION = "v1.5.0-vps"; 
+const APP_VERSION = "v1.6.0-vps"; 
 const GITHUB_URL = "https://github.com/szgnemin1/ProCertify";
 
 const createNewProject = (name: string): CertificateProject => {
@@ -257,6 +257,7 @@ const App = () => {
   const [serverSettings, setServerSettings] = useState<{rootPath: string, allowedFolders: string[], scannedRootFolders?: string[], lastSavePath?: {allowedFolder: string, subFolder: string}}>({ rootPath: 'D:\\Arsiv', allowedFolders: [], scannedRootFolders: [] });
   const [availableRootFolders, setAvailableRootFolders] = useState<string[]>([]);
   const [isScanningRoots, setIsScanningRoots] = useState(false);
+  const [folderSearchTerm, setFolderSearchTerm] = useState('');
   
   // When serverSettings loads from API, populate availableRootFolders with cached scanned folders and currently allowed folders
   useEffect(() => {
@@ -2520,38 +2521,59 @@ const App = () => {
                                 </button>
                             </div>
                             
-                            <div className="mt-4 border border-slate-700 rounded-lg p-4 bg-slate-900/50 max-h-60 overflow-y-auto custom-scrollbar">
+                            <div className="mt-4 border border-slate-700 rounded-lg p-4 bg-slate-900/50">
                                 {availableRootFolders.length === 0 ? (
                                     <div className="text-center text-slate-500 text-sm py-4 space-y-2">
                                         <FolderOpen size={24} className="mx-auto text-slate-600" />
                                         <p>Klasörleri görmek için "Dizini Tara" butonuna tıklayın.</p>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                        {availableRootFolders.map((folder, idx) => {
-                                            const isSelected = serverSettings.allowedFolders.includes(folder);
-                                            return (
-                                                <label key={idx} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer border transition ${isSelected ? 'bg-indigo-900/30 border-indigo-500' : 'bg-slate-800 border-slate-700 hover:border-slate-600'}`}>
-                                                    <input 
-                                                        type="checkbox" 
-                                                        className="hidden"
-                                                        checked={isSelected}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setServerSettings({...serverSettings, allowedFolders: [...serverSettings.allowedFolders, folder]});
-                                                            } else {
-                                                                setServerSettings({...serverSettings, allowedFolders: serverSettings.allowedFolders.filter(f => f !== folder)});
-                                                            }
-                                                        }}
-                                                    />
-                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition ${isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-500'}`}>
-                                                        {isSelected && <Check size={12} className="text-white" />}
-                                                    </div>
-                                                    <Folder size={16} className={isSelected ? "text-indigo-400" : "text-slate-400"} />
-                                                    <span className={`text-sm ${isSelected ? 'text-indigo-100' : 'text-slate-300'}`}>{folder}</span>
-                                                </label>
-                                            );
-                                        })}
+                                    <div className="space-y-4">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Klasörlerde ara..." 
+                                            value={folderSearchTerm}
+                                            onChange={e => setFolderSearchTerm(e.target.value)}
+                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white outline-none focus:border-indigo-500 text-sm"
+                                        />
+                                        <div className="max-h-60 overflow-y-auto custom-scrollbar pr-2">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                {availableRootFolders
+                                                    .filter(f => f.toLowerCase().includes(folderSearchTerm.toLowerCase()) || serverSettings.allowedFolders.includes(f))
+                                                    .sort((a, b) => {
+                                                        const aSel = serverSettings.allowedFolders.includes(a);
+                                                        const bSel = serverSettings.allowedFolders.includes(b);
+                                                        if (aSel && !bSel) return -1;
+                                                        if (!aSel && bSel) return 1;
+                                                        return a.localeCompare(b);
+                                                    })
+                                                    .slice(0, 200) // Render optimization
+                                                    .map((folder, idx) => {
+                                                    const isSelected = serverSettings.allowedFolders.includes(folder);
+                                                    return (
+                                                        <label key={idx} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer border transition ${isSelected ? 'bg-indigo-900/30 border-indigo-500' : 'bg-slate-800 border-slate-700 hover:border-slate-600'}`}>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="hidden"
+                                                                checked={isSelected}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) {
+                                                                        setServerSettings({...serverSettings, allowedFolders: [...serverSettings.allowedFolders, folder]});
+                                                                    } else {
+                                                                        setServerSettings({...serverSettings, allowedFolders: serverSettings.allowedFolders.filter(f => f !== folder)});
+                                                                    }
+                                                                }}
+                                                            />
+                                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition ${isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-500'}`}>
+                                                                {isSelected && <Check size={12} className="text-white" />}
+                                                            </div>
+                                                            <Folder size={16} className={isSelected ? "text-indigo-400" : "text-slate-400"} />
+                                                            <span className={`text-sm truncate max-w-[150px] ${isSelected ? 'text-indigo-100' : 'text-slate-300'}`} title={folder}>{folder}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>

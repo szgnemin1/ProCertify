@@ -33,10 +33,10 @@ async function startServer() {
   };
 
   // API Route to GET data
-  app.get('/api/data', verifyToken, (req, res) => {
+  app.get('/api/data', verifyToken, async (req, res) => {
     try {
       if (fs.existsSync(DATA_FILE)) {
-        const data = fs.readFileSync(DATA_FILE, 'utf-8');
+        const data = await fs.promises.readFile(DATA_FILE, 'utf-8');
         const parsed = JSON.parse(data);
         // Remove password from exported data for safety
         if (parsed.appPassword) delete parsed.appPassword;
@@ -51,14 +51,14 @@ async function startServer() {
   });
 
   // API Route to POST data
-  app.post('/api/data', verifyToken, (req, res) => {
+  app.post('/api/data', verifyToken, async (req, res) => {
     try {
       let dataToSave = req.body;
       
       // Preserve existing password
       if (fs.existsSync(DATA_FILE)) {
         try {
-           const existingData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+           const existingData = JSON.parse(await fs.promises.readFile(DATA_FILE, 'utf-8'));
            if (existingData.appPassword) {
               dataToSave.appPassword = existingData.appPassword;
            }
@@ -67,7 +67,7 @@ async function startServer() {
         }
       }
 
-      fs.writeFileSync(DATA_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
+      await fs.promises.writeFile(DATA_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
       res.json({ success: true });
     } catch (error) {
       console.error("Data write error:", error);
@@ -76,12 +76,12 @@ async function startServer() {
   });
 
   // API Route to Login
-  app.post('/api/login', (req, res) => {
+  app.post('/api/login', async (req, res) => {
     try {
       const { password } = req.body;
       let currentPassword = 'admin5555'; // Default password
       if (fs.existsSync(DATA_FILE)) {
-         const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+         const data = JSON.parse(await fs.promises.readFile(DATA_FILE, 'utf-8'));
          if (data.appPassword) currentPassword = data.appPassword;
       }
       
@@ -97,15 +97,15 @@ async function startServer() {
   });
 
   // API Route to Change Password
-  app.post('/api/change-password', verifyToken, (req, res) => {
+  app.post('/api/change-password', verifyToken, async (req, res) => {
     try {
       const { newPassword } = req.body;
       let data: any = {};
       if (fs.existsSync(DATA_FILE)) {
-         data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+         data = JSON.parse(await fs.promises.readFile(DATA_FILE, 'utf-8'));
       }
       data.appPassword = newPassword;
-      fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+      await fs.promises.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
       res.json({ success: true });
     } catch(error) {
       res.status(500).json({ error: "Şifre değiştirilemedi" });
@@ -185,7 +185,7 @@ async function startServer() {
     return name.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\-\. _]/gi, '_');
   };
 
-  app.get('/api/server-folders/available-roots', verifyToken, (req, res) => {
+  app.get('/api/server-folders/available-roots', verifyToken, async (req, res) => {
     try {
       const settings = getServerSettings();
       const rootPath = settings.rootPath;
@@ -194,7 +194,7 @@ async function startServer() {
         return res.json({ folders: [] }); // Dizin yoksa boş liste dön (hata verme)
       }
 
-      const items = fs.readdirSync(rootPath, { withFileTypes: true });
+      const items = await fs.promises.readdir(rootPath, { withFileTypes: true });
       const folders = items.filter(item => item.isDirectory()).map(item => item.name);
       
       res.json({ folders });
@@ -204,7 +204,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/server-folders/subfolders', verifyToken, (req, res) => {
+  app.get('/api/server-folders/subfolders', verifyToken, async (req, res) => {
     try {
       const allowedFolder = req.query.allowedFolder as string;
       if (!allowedFolder) return res.status(400).json({ error: "Eksik parametre" });
@@ -219,7 +219,7 @@ async function startServer() {
         fs.mkdirSync(targetPath, { recursive: true });
       }
 
-      const items = fs.readdirSync(targetPath, { withFileTypes: true });
+      const items = await fs.promises.readdir(targetPath, { withFileTypes: true });
       const subfolders = items.filter(item => item.isDirectory()).map(item => item.name);
       
       res.json({ subfolders });
@@ -229,7 +229,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/server-folders/create', verifyToken, (req, res) => {
+  app.post('/api/server-folders/create', verifyToken, async (req, res) => {
     try {
       const { allowedFolder, newFolderName } = req.body;
       const settings = getServerSettings();
@@ -241,7 +241,7 @@ async function startServer() {
       const targetPath = path.join(settings.rootPath, allowedFolder, sanitizedNewFolder);
       
       if (!fs.existsSync(targetPath)) {
-        fs.mkdirSync(targetPath, { recursive: true });
+        await fs.promises.mkdir(targetPath, { recursive: true });
         res.json({ success: true, folderName: sanitizedNewFolder });
       } else {
         res.status(400).json({ error: "Bu klasör zaten var." });
@@ -252,7 +252,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/server-folders/save-file', verifyToken, (req, res) => {
+  app.post('/api/server-folders/save-file', verifyToken, async (req, res) => {
     try {
       const { allowedFolder, subFolder, filename, fileBase64 } = req.body;
       const settings = getServerSettings();
@@ -271,7 +271,7 @@ async function startServer() {
       }
 
       if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
+        await fs.promises.mkdir(targetDir, { recursive: true });
       }
 
       const targetPath = path.join(targetDir, safeFilename);
@@ -290,7 +290,7 @@ async function startServer() {
         counter++;
       }
 
-      fs.writeFileSync(finalPath, Buffer.from(base64Data, 'base64'));
+      await fs.promises.writeFile(finalPath, Buffer.from(base64Data, 'base64'));
 
       res.json({ success: true, savedPath: finalPath });
     } catch (error: any) {
