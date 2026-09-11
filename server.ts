@@ -168,6 +168,139 @@ async function startServer() {
     }
   });
 
+  // --- NEW ROUTES FOR SERVER FILE SAVING ---
+
+  const getServerSettings = () => {
+    try {
+      if (fs.existsSync(DATA_FILE)) {
+        const data = fs.readFileSync(DATA_FILE, 'utf-8');
+        const parsed = JSON.parse(data);
+        return parsed.serverSettings || { rootPath: 'D:\\Arsiv', allowedFolders: [] };
+      }
+    } catch(e) {}
+    return { rootPath: 'D:\\Arsiv', allowedFolders: [] };
+  };
+
+  const sanitizePath = (name: string) => {
+    return name.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\-\. _]/gi, '_');
+  };
+
+  app.get('/api/server-folders/available-roots', verifyToken, (req, res) => {
+    try {
+      const settings = getServerSettings();
+      const rootPath = settings.rootPath;
+      
+      if (!fs.existsSync(rootPath)) {
+        return res.json({ folders: [] }); // Dizin yoksa boş liste dön (hata verme)
+      }
+
+      const items = fs.readdirSync(rootPath, { withFileTypes: true });
+      const folders = items.filter(item => item.isDirectory()).map(item => item.name);
+      
+      res.json({ folders });
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/server-folders/subfolders', verifyToken, (req, res) => {
+    try {
+      const allowedFolder = req.query.allowedFolder as string;
+      if (!allowedFolder) return res.status(400).json({ error: "Eksik parametre" });
+      
+      const settings = getServerSettings();
+      if (!settings.allowedFolders.includes(allowedFolder)) {
+        return res.status(403).json({ error: "Bu klasöre erişim izni yok." });
+      }
+
+      const targetPath = path.join(settings.rootPath, allowedFolder);
+      if (!fs.existsSync(targetPath)) {
+        fs.mkdirSync(targetPath, { recursive: true });
+      }
+
+      const items = fs.readdirSync(targetPath, { withFileTypes: true });
+      const subfolders = items.filter(item => item.isDirectory()).map(item => item.name);
+      
+      res.json({ subfolders });
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/server-folders/create', verifyToken, (req, res) => {
+    try {
+      const { allowedFolder, newFolderName } = req.body;
+      const settings = getServerSettings();
+      if (!settings.allowedFolders.includes(allowedFolder)) {
+        return res.status(403).json({ error: "Bu klasöre erişim izni yok." });
+      }
+
+      const sanitizedNewFolder = sanitizePath(newFolderName);
+      const targetPath = path.join(settings.rootPath, allowedFolder, sanitizedNewFolder);
+      
+      if (!fs.existsSync(targetPath)) {
+        fs.mkdirSync(targetPath, { recursive: true });
+        res.json({ success: true, folderName: sanitizedNewFolder });
+      } else {
+        res.status(400).json({ error: "Bu klasör zaten var." });
+      }
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/server-folders/save-file', verifyToken, (req, res) => {
+    try {
+      const { allowedFolder, subFolder, filename, fileBase64 } = req.body;
+      const settings = getServerSettings();
+      if (!settings.allowedFolders.includes(allowedFolder)) {
+        return res.status(403).json({ error: "Bu klasöre erişim izni yok." });
+      }
+
+      const safeFilename = sanitizePath(filename);
+      // Clean base64 prefix
+      const base64Data = fileBase64.replace(/^data:(.*,)?/, "");
+
+      // target directory
+      let targetDir = path.join(settings.rootPath, allowedFolder);
+      if (subFolder) {
+        targetDir = path.join(targetDir, sanitizePath(subFolder));
+      }
+
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+
+      const targetPath = path.join(targetDir, safeFilename);
+
+      // check if exists and avoid overwrite
+      let finalPath = targetPath;
+      let finalFilename = safeFilename;
+      let counter = 1;
+      const extMatch = safeFilename.match(/(\.[^.]+)$/);
+      const ext = extMatch ? extMatch[1] : '';
+      const baseName = extMatch ? safeFilename.substring(0, safeFilename.length - ext.length) : safeFilename;
+
+      while (fs.existsSync(finalPath)) {
+        finalFilename = `${baseName}_${counter}${ext}`;
+        finalPath = path.join(targetDir, finalFilename);
+        counter++;
+      }
+
+      fs.writeFileSync(finalPath, Buffer.from(base64Data, 'base64'));
+
+      res.json({ success: true, savedPath: finalPath });
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- END OF NEW ROUTES ---
+
   // API Route to Self-Update via GitHub in PM2/VPS environment
   app.post('/api/update-app', verifyToken, (req, res) => {
     console.log("GitHub güncelleme tetiklendi...");
