@@ -91,4 +91,5 @@ export interface SavedSignature {
   id: string;
   name: string;
   url: string;
+  mappedFolder?: string;
 }

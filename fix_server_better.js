@@ -1,4 +1,6 @@
-import express from "express"
+const fs = require('fs');
+
+const serverContent = `import express from "express"
 import path from "path"
 import fs from "fs"
 import jwt from "jsonwebtoken"
@@ -22,7 +24,7 @@ async function startServer() {
   // Initialize SQLite Database
   const db = new Database(DB_FILE)
 
-  db.exec(`
+  db.exec(\`
     CREATE TABLE IF NOT EXISTS store (
       key TEXT PRIMARY KEY,
       value TEXT
@@ -31,7 +33,7 @@ async function startServer() {
       serialNo TEXT PRIMARY KEY,
       record TEXT
     );
-  `)
+  \`)
 
   // Migrate JSON to SQLite if necessary
   try {
@@ -151,13 +153,13 @@ async function startServer() {
   })
 
   const sanitizePath = (name: string) => {
-    return name.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\-\. _]/gi, '_')
+    return name.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\\-\\. _]/gi, '_')
   }
 
   app.get('/api/server-folders/browse', verifyToken, async (req, res) => {
     try {
       const dir = (req.query.dir as string) || ''
-      const safeDir = dir.replace(/\.\./g, '')
+      const safeDir = dir.replace(/\\.\\./g, '')
       const rootDir = process.env.ARCHIVE_ROOT || path.join(process.cwd(), 'archive')
       const targetPath = path.join(rootDir, safeDir)
       
@@ -186,10 +188,10 @@ async function startServer() {
       const { targetDir, newFolderName } = req.body
       if (!newFolderName) return res.status(400).json({ error: "Klasör adı gerekli" })
       
-      const safeNewFolder = newFolderName.replace(/[^a-zA-Z0-9_ \-]/g, '')
+      const safeNewFolder = newFolderName.replace(/[^a-zA-Z0-9_ \\-]/g, '')
       if (!safeNewFolder) return res.status(400).json({ error: "Geçersiz klasör adı" })
 
-      const safeTargetDir = (targetDir || '').replace(/\.\./g, '')
+      const safeTargetDir = (targetDir || '').replace(/\\.\\./g, '')
       const rootDir = process.env.ARCHIVE_ROOT || path.join(process.cwd(), 'archive')
       const targetPath = path.join(rootDir, safeTargetDir, safeNewFolder)
 
@@ -215,7 +217,7 @@ async function startServer() {
           return res.status(400).json({ error: "Eksik parametre" })
       }
 
-      const safeTargetDir = (targetDir || '').replace(/\.\./g, '')
+      const safeTargetDir = (targetDir || '').replace(/\\.\\./g, '')
       const rootDir = process.env.ARCHIVE_ROOT || path.join(process.cwd(), 'archive')
       const targetPath = path.join(rootDir, safeTargetDir)
 
@@ -308,8 +310,10 @@ async function startServer() {
   }
 
   app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`Sunucu http://0.0.0.0:${PORT} adresinde çalışıyor`)
+    console.log(\`Sunucu http://0.0.0.0:\${PORT} adresinde çalışıyor\`)
   })
 }
 
 startServer()
+`
+fs.writeFileSync('server.ts', serverContent)

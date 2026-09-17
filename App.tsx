@@ -80,7 +80,7 @@ type ExportMode = 'single' | 'separate';
 
 const DEFAULT_WIDTH = 2000;
 const DEFAULT_HEIGHT = 1414;
-const APP_VERSION = "v1.6.0-vps"; 
+const APP_VERSION = "v1.7.0"; 
 const GITHUB_URL = "https://github.com/szgnemin1/ProCertify";
 
 const createNewProject = (name: string): CertificateProject => {
@@ -252,26 +252,19 @@ const App = () => {
   // Settings - QR Code Base URL State
   const [qrBaseUrl, setQrBaseUrl] = useState(() => localStorage.getItem('vps_qr_base_url') || (window.location.origin + '/dogrula.html'));
 
-
   // Settings - Server Folders State
-  const [serverSettings, setServerSettings] = useState<{rootPath: string, allowedFolders: string[], scannedRootFolders?: string[], lastSavePath?: {allowedFolder: string, subFolder: string}}>({ rootPath: 'D:\\Arsiv', allowedFolders: [], scannedRootFolders: [] });
-  const [availableRootFolders, setAvailableRootFolders] = useState<string[]>([]);
-  const [isScanningRoots, setIsScanningRoots] = useState(false);
+  const [serverSettings, setServerSettings] = useState<{rootPath: string, scannedRootFolders?: string[], lastSavePath?: {targetDir: string}}>({ rootPath: 'D:\\Arsiv', scannedRootFolders: [] });
+
+
   const [folderSearchTerm, setFolderSearchTerm] = useState('');
   
-  // When serverSettings loads from API, populate availableRootFolders with cached scanned folders and currently allowed folders
-  useEffect(() => {
-      const cachedFolders = serverSettings.scannedRootFolders || [];
-      const allowed = serverSettings.allowedFolders || [];
-      const merged = Array.from(new Set([...cachedFolders, ...allowed]));
-      if (merged.length > 0 && availableRootFolders.length === 0) {
-          setAvailableRootFolders(merged);
-      }
-  }, [serverSettings]);
+
   const [tempAllowedFolderInput, setTempAllowedFolderInput] = useState('');
   const [showServerSaveModal, setShowServerSaveModal] = useState(false);
-  const [serverSaveState, setServerSaveState] = useState<{ allowedFolder: string; subFolder: string; newSubFolder: string }>({ allowedFolder: '', subFolder: '', newSubFolder: '' });
-  const [serverSubfoldersList, setServerSubfoldersList] = useState<string[]>([]);
+  const [browsePath, setBrowsePath] = useState('');
+  const [browseFolders, setBrowseFolders] = useState<string[]>([]);
+  const [isBrowsing, setIsBrowsing] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
   const [isServerSaving, setIsServerSaving] = useState(false);
 
   // --- Editor State ---
@@ -478,7 +471,6 @@ const App = () => {
     window.addEventListener('resize', debouncedResize);
     return () => window.removeEventListener('resize', debouncedResize);
   }, [activeProject?.width, activeProject?.height, currentView]);
-
 
   // --- Functions ---
   const normalizeKey = (key: string) => {
@@ -1599,7 +1591,7 @@ const App = () => {
                                 projects: [proj.name],
                                 date: new Date().toISOString(),
                                 image: certImage
-                            })
+                              })
                         });
                     } catch (e) {
                        console.error("Backend issue error", e);
@@ -1664,7 +1656,7 @@ const App = () => {
                                 projects: [proj.name],
                                 date: new Date().toISOString(),
                                 image: certImage
-                            })
+                              })
                         });
                     } catch (e) {
                        console.error("Backend issue error", e);
@@ -1728,7 +1720,7 @@ const App = () => {
           if (res.ok) {
               const data = await res.json();
               // Tarama sonucunda gelen klasörleri ve önceden seçilmiş olanları birleştir (tekrar etmeden)
-              const mergedFolders = Array.from(new Set([...(data.folders || []), ...serverSettings.allowedFolders]));
+              const mergedFolders = Array.from(new Set([...(data.folders || []), ...(serverSettings as any).allowedFolders || []]));
               setAvailableRootFolders(mergedFolders);
               setServerSettings(prev => ({ ...prev, scannedRootFolders: data.folders || [] }));
               if (data.folders?.length === 0) {
@@ -1745,37 +1737,42 @@ const App = () => {
       }
   };
 
-  const loadServerSubfolders = async (allowedFolder: string) => {
+  const loadBrowseFolders = async (path: string) => {
+      setIsBrowsing(true);
       try {
           const token = localStorage.getItem('vps_session_token');
-          const res = await fetch(getApiUrl(`/api/server-folders/subfolders?allowedFolder=${encodeURIComponent(allowedFolder)}`), {
+          const res = await fetch(getApiUrl(`/api/server-folders/browse?dir=${encodeURIComponent(path)}`), {
               headers: { 'Authorization': `Bearer ${token}` }
           });
           if (res.ok) {
               const data = await res.json();
-              setServerSubfoldersList(data.subfolders || []);
+              setBrowseFolders(data.folders || []);
           }
       } catch (err) {
-          console.error("Alt klasörler alınamadı", err);
+          console.error(err);
+      } finally {
+          setIsBrowsing(false);
       }
   };
 
   const createServerSubfolder = async () => {
-      if (!serverSaveState.allowedFolder || !serverSaveState.newSubFolder.trim()) return;
+      if (!newFolderName.trim()) return;
       try {
           const token = localStorage.getItem('vps_session_token');
           const res = await fetch(getApiUrl('/api/server-folders/create'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({
-                  allowedFolder: serverSaveState.allowedFolder,
-                  newFolderName: serverSaveState.newSubFolder.trim()
+                  targetDir: browsePath,
+                  newFolderName: newFolderName.trim()
               })
           });
           if (res.ok) {
               const data = await res.json();
-              setServerSubfoldersList([...serverSubfoldersList, data.folderName]);
-              setServerSaveState({...serverSaveState, subFolder: data.folderName, newSubFolder: ''});
+              setBrowseFolders([...browseFolders, data.folderName]);
+              setBrowsePath(browsePath ? `${browsePath}/${data.folderName}` : data.folderName);
+              loadBrowseFolders(browsePath ? `${browsePath}/${data.folderName}` : data.folderName);
+              setNewFolderName('');
           } else {
               const err = await res.json();
               alert("Klasör oluşturulamadı: " + err.error);
@@ -1786,25 +1783,26 @@ const App = () => {
   };
 
   const handleOpenServerModal = () => {
-      if (serverSettings.lastSavePath) {
-          setServerSaveState({
-              allowedFolder: serverSettings.lastSavePath.allowedFolder || '',
-              subFolder: serverSettings.lastSavePath.subFolder || '',
-              newSubFolder: ''
-          });
-          if (serverSettings.lastSavePath.allowedFolder) {
-              loadServerSubfolders(serverSettings.lastSavePath.allowedFolder);
+      let autoFolder = '';
+      for (const key of Object.keys(fillValues)) {
+          const val = fillValues[key];
+          const matchingSig = signatures.find(s => s.url === val && s.mappedFolder);
+          if (matchingSig) {
+              autoFolder = matchingSig.mappedFolder;
+              break;
           }
       }
+
+      const startPath = autoFolder || serverSettings.lastSavePath?.targetDir || '';
+      setBrowsePath(startPath);
+      loadBrowseFolders(startPath);
+      setNewFolderName('');
       setShowServerSaveModal(true);
   };
 
   const exportToServer = async () => {
       if (isServerSaving) return;
-      if (!serverSaveState.allowedFolder) {
-          alert("Lütfen bir ana klasör seçin.");
-          return;
-      }
+
 
       const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
       if (targetProjects.length === 0) return;
@@ -1855,7 +1853,7 @@ const App = () => {
                                   serialNo, company: companyVal,
                                   fields: getVerificationPayload(activeValues),
                                   projects: [proj.name], date: new Date().toISOString(),
-                                  image: pdf.output('datauristring')
+                                image: pdf.output('datauristring')
                               })
                           });
                       } catch (e) {}
@@ -1926,31 +1924,22 @@ const App = () => {
           const res = await fetch(getApiUrl('/api/server-folders/save-file'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({
-                  allowedFolder: serverSaveState.allowedFolder,
-                  subFolder: serverSaveState.subFolder,
-                  filename,
-                  fileBase64
-              })
+              body: JSON.stringify({ targetDir: browsePath, filename, fileBase64 })
           });
 
           if (res.ok) {
               const data = await res.json();
               
-              // Seçilen yolları bir dahaki sefere hatırlamak için serverSettings'e kaydet ve sunucuya gönder
               const newSettings = {
-                  ...serverSettings, 
-                  lastSavePath: {
-                      allowedFolder: serverSaveState.allowedFolder,
-                      subFolder: serverSaveState.subFolder
-                  }
+                  ...serverSettings,
+                  lastSavePath: { targetDir: browsePath } as any
               };
               setServerSettings(newSettings);
               fetch(getApiUrl('/api/data'), {
                  method: 'POST',
                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                  body: JSON.stringify({ projects, signatures, companies, serverSettings: newSettings })
-              }).catch(e => console.warn(e));
+             }).catch(e => console.warn(e));
 
               alert(`Dosya sunucuya başarıyla kaydedildi:\n${data.savedPath}`);
               setShowServerSaveModal(false);
@@ -1995,67 +1984,105 @@ const App = () => {
       {/* SERVER SAVE MODAL */}
       {showServerSaveModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-              <div className="bg-slate-800 border border-slate-600 rounded-2xl p-6 w-full max-w-md shadow-2xl relative">
+              <div className="bg-slate-800 border border-slate-600 rounded-2xl p-6 w-full max-w-xl shadow-2xl relative">
                   <button onClick={() => setShowServerSaveModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-900 p-1 rounded-md"><X size={20}/></button>
                   <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-4"><Folder size={24} className="text-indigo-500"/> Sunucuya Kaydet</h2>
                   
                   <div className="space-y-4">
-                      <div>
-                          <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">1. Ana Klasör (Kişi/Birim Seçimi)</label>
-                          <select 
-                              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-indigo-500"
-                              value={serverSaveState.allowedFolder}
-                              onChange={(e) => {
-                                  const val = e.target.value;
-                                  setServerSaveState({...serverSaveState, allowedFolder: val, subFolder: ''});
-                                  if (val) loadServerSubfolders(val);
-                              }}
+                      {/* BREADCRUMB */}
+                      <div className="bg-slate-900 border border-slate-700 p-2 rounded-lg flex items-center gap-2 text-sm text-slate-300 overflow-x-auto whitespace-nowrap hide-scrollbar">
+                          <button 
+                             onClick={() => { setBrowsePath(''); loadBrowseFolders(''); }}
+                             className="hover:text-indigo-400 font-medium"
                           >
-                              <option value="">-- Ana Klasör Seçin --</option>
-                              {serverSettings.allowedFolders.map(f => (
-                                  <option key={f} value={f}>{f}</option>
-                              ))}
-                          </select>
+                              Ana Dizin
+                          </button>
+                          {browsePath.split('/').filter(Boolean).map((part, i, arr) => {
+                              const pathSoFar = arr.slice(0, i + 1).join('/');
+                              return (
+                                  <div key={i} className="flex items-center gap-2">
+                                      <span className="text-slate-600">/</span>
+                                      <button 
+                                          onClick={() => { setBrowsePath(pathSoFar); loadBrowseFolders(pathSoFar); }}
+                                          className="hover:text-indigo-400 font-medium"
+                                      >
+                                          {part}
+                                      </button>
+                                  </div>
+                              );
+                          })}
                       </div>
 
-                      {serverSaveState.allowedFolder && (
-                          <div className="animate-in fade-in slide-in-from-top-2">
-                              <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">2. Alt Klasör (Firma Seçimi)</label>
-                              <div className="space-y-2">
-                                  <select 
-                                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-indigo-500"
-                                      value={serverSaveState.subFolder}
-                                      onChange={(e) => setServerSaveState({...serverSaveState, subFolder: e.target.value})}
-                                  >
-                                      <option value="">Klasör Kök Dizini</option>
-                                      {serverSubfoldersList.map(f => (
-                                          <option key={f} value={f}>{f}</option>
-                                      ))}
-                                  </select>
-
-                                  <div className="flex gap-2 items-center">
-                                      <input 
-                                          type="text" 
-                                          placeholder="Veya yeni firma/klasör ekle"
-                                          className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white outline-none focus:border-indigo-500 text-sm"
-                                          value={serverSaveState.newSubFolder}
-                                          onChange={e => setServerSaveState({...serverSaveState, newSubFolder: e.target.value})}
-                                      />
+                      {/* BROWSER VIEW */}
+                      <div className="bg-slate-900 border border-slate-700 rounded-lg p-2 h-48 overflow-y-auto">
+                          {isBrowsing ? (
+                              <div className="flex justify-center items-center h-full text-slate-500">Yükleniyor...</div>
+                          ) : (
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                  {browsePath && (
                                       <button 
-                                          onClick={createServerSubfolder}
-                                          className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition"
-                                      >Ekle</button>
-                                  </div>
+                                         onClick={() => {
+                                            const parts = browsePath.split('/');
+                                            parts.pop();
+                                            const parent = parts.join('/');
+                                            setBrowsePath(parent);
+                                            loadBrowseFolders(parent);
+                                         }}
+                                         className="flex items-center gap-2 p-2 rounded hover:bg-slate-800 text-slate-400 text-sm text-left"
+                                      >
+                                          <div className="text-indigo-400">..</div> (Üst Klasör)
+                                      </button>
+                                  )}
+                                  {browseFolders.map(f => (
+                                      <button 
+                                         key={f}
+                                         onClick={() => {
+                                            const newPath = browsePath ? `${browsePath}/${f}` : f;
+                                            setBrowsePath(newPath);
+                                            loadBrowseFolders(newPath);
+                                         }}
+                                         className="flex items-center gap-2 p-2 rounded hover:bg-slate-800 text-slate-300 text-sm text-left border border-transparent hover:border-slate-700 truncate"
+                                      >
+                                          <Folder size={16} className="text-indigo-400 shrink-0" />
+                                          <span className="truncate">{f}</span>
+                                      </button>
+                                  ))}
+                                  {browseFolders.length === 0 && !browsePath && (
+                                      <div className="col-span-full text-center text-slate-500 text-sm py-4">Ana dizin boş. Yeni klasör oluşturun.</div>
+                                  )}
+                                  {browseFolders.length === 0 && browsePath && (
+                                      <div className="col-span-full text-center text-slate-500 text-sm py-4">Bu klasör boş.</div>
+                                  )}
                               </div>
-                          </div>
-                      )}
+                          )}
+                      </div>
 
+                      {/* CREATE NEW FOLDER */}
+                      <div className="flex gap-2">
+                          <input 
+                              type="text" 
+                              placeholder="Buraya yeni klasör oluştur..." 
+                              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white outline-none focus:border-indigo-500"
+                              value={newFolderName}
+                              onChange={(e) => setNewFolderName(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && createServerSubfolder()}
+                          />
+                          <button 
+                              onClick={createServerSubfolder}
+                              disabled={!newFolderName.trim()}
+                              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap"
+                          >
+                              Klasör Oluştur
+                          </button>
+                      </div>
+
+                      <hr className="border-slate-700" />
                       <button 
                           onClick={exportToServer}
-                          disabled={!serverSaveState.allowedFolder || isServerSaving}
-                          className={`w-full py-3 mt-4 rounded-xl font-bold flex items-center justify-center gap-2 transition ${!serverSaveState.allowedFolder || isServerSaving ? 'bg-indigo-600/50 text-indigo-200 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20'}`}
+                          disabled={isServerSaving}
+                          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white p-3 rounded-lg font-bold flex items-center justify-center gap-2 transition disabled:opacity-50"
                       >
-                          {isServerSaving ? 'Kaydediliyor...' : 'Sunucuya Kaydet'}
+                          {isServerSaving ? 'Kaydediliyor...' : `Şu anki konuma KAYDET (${browsePath || 'Ana Dizin'})`}
                       </button>
                   </div>
               </div>
@@ -2466,7 +2493,55 @@ const App = () => {
                     </div>
                   </div>
                 </div>
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700"><div className="flex justify-between items-center mb-6"><h2 className="text-xl font-semibold flex items-center gap-2 text-white"><PenTool className="text-amber-500" /> Kayıtlı İmzalar</h2><div className="flex gap-2"><button onClick={() => setShowSignaturePad(true)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition shadow-sm border border-slate-600"><PenLine size={18} /> İmza Çiz</button><label className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium transition shadow-lg shadow-amber-900/20 active:scale-95 transform"><Plus size={18} /> İmza Yükle<input type="file" accept="image/*" multiple className="hidden" onChange={handleSignatureUpload} /></label></div></div>{signatures.length === 0 ? (<div className="text-center py-10 border-2 border-dashed border-slate-700 rounded-xl bg-slate-800/50"><Upload className="mx-auto text-slate-600 mb-4" size={40} /><p className="text-slate-500 text-sm">Henüz hiç imza yüklenmemiş.</p></div>) : (<div className="grid grid-cols-2 md:grid-cols-4 gap-4">{signatures.map(sig => (<div key={sig.id} className="group relative bg-white rounded-xl p-4 flex items-center justify-center h-32 shadow-sm border border-slate-600 transition hover:border-amber-500/50"><img src={sig.url} alt={sig.name} className="max-h-full max-w-full object-contain" /><div className="absolute inset-0 bg-black/60 opacity-60 group-hover:opacity-100 transition flex items-center justify-center rounded-xl backdrop-blur-sm"><button onClick={() => deleteSignature(sig.id)} className="bg-red-500 p-2 rounded-full text-white hover:bg-red-600 shadow-lg transform active:scale-95 transition"><Trash2 size={20} /></button></div><div className="absolute bottom-2 left-2 right-2 text-center"><span className="text-[10px] bg-slate-900/90 text-white px-2 py-1 rounded truncate block border border-slate-700 shadow-sm">{sig.name}</span></div></div>))}</div>)}</div>
+                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><PenTool className="text-amber-500" /> Kayıtlı İmzalar</h2>
+                        <div className="flex gap-2">
+                            <button onClick={() => setShowSignaturePad(true)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition shadow-sm border border-slate-600"><PenLine size={18} /> İmza Çiz</button>
+                            <label className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium transition shadow-lg shadow-amber-900/20 active:scale-95 transform">
+                                <Plus size={18} /> İmza Yükle
+                                <input type="file" accept="image/*" multiple className="hidden" onChange={handleSignatureUpload} />
+                            </label>
+                        </div>
+                    </div>
+                    {signatures.length === 0 ? (
+                        <div className="text-center py-10 border-2 border-dashed border-slate-700 rounded-xl bg-slate-800/50">
+                            <Upload className="mx-auto text-slate-600 mb-4" size={40} />
+                            <p className="text-slate-500 text-sm">Henüz hiç imza yüklenmemiş.</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {signatures.map(sig => (
+                                <div key={sig.id} className="group relative bg-white rounded-xl p-4 flex flex-col items-center justify-between min-h-[160px] shadow-sm border border-slate-600 transition hover:border-amber-500/50 overflow-hidden">
+                                    <div className="h-16 w-full flex items-center justify-center mb-2 z-10 relative">
+                                        <img src={sig.url} alt={sig.name} className="max-h-full max-w-full object-contain" />
+                                    </div>
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm z-20">
+                                        <button onClick={() => deleteSignature(sig.id)} className="bg-red-500 p-2 rounded-full text-white hover:bg-red-600 shadow-lg transform active:scale-95 transition">
+                                            <Trash2 size={20} />
+                                        </button>
+                                    </div>
+                                    <div className="w-full bg-slate-900 rounded-lg p-2 border border-slate-700 z-10 relative">
+                                        <span className="text-[10px] text-white truncate block text-center mb-1">{sig.name}</span>
+                                        <select 
+                                            className="w-full text-[10px] bg-slate-800 text-white border border-slate-600 rounded p-1 outline-none"
+                                            value={sig.mappedFolder || ''}
+                                            onChange={e => {
+                                                const newSigs = signatures.map(s => s.id === sig.id ? {...s, mappedFolder: e.target.value} : s);
+                                                setSignatures(newSigs);
+                                            }}
+                                        >
+                                            <option value="">-- Klasör Eşleştir --</option>
+                                            {(serverSettings as any).allowedFolders || [].map(f => (
+                                                <option key={f} value={f}>{f}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><QrCode className="text-teal-500" /> Doğrulama ve QR Ayarları</h2>
@@ -2493,7 +2568,7 @@ const App = () => {
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><Folder className="text-indigo-500" /> Sunucu Arşiv Ayarları</h2>
                     </div>
-                    <p className="text-sm text-slate-400 mb-4">Sunucu üzerinde dosyaların kaydedileceği ana dizini ve içerisine kaydedilebilecek izinli klasörleri (Örn: Eğitim türü veya Eğitmen adı) tanımlayabilirsiniz.</p>
+                    <p className="text-sm text-slate-400 mb-4">Sunucu üzerinde dosyaların kaydedileceği ana dizini (klasörü) tanımlayabilirsiniz. Kayıt sırasında bu dizinin alt klasörlerinde dinamik olarak gezinebilirsiniz.</p>
                     
                     <div className="space-y-6">
                         <div className="space-y-2">
@@ -2505,84 +2580,13 @@ const App = () => {
                                 className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-indigo-500 outline-none font-mono text-sm"
                                 placeholder="Örn: D:\Arsiv"
                             />
-                            <p className="text-[10px] text-slate-500">Tüm dosyalar bu dizinin altındaki izinli klasörlere kaydedilecektir.</p>
+                            <p className="text-[10px] text-slate-500">Tüm dosyalar bu ana dizin altında sizin belirleyeceğiniz veya uygulamanın otomatik önereceği (imzadan) klasörlere kaydedilecektir.</p>
                         </div>
 
                         <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                                <label className="text-xs font-bold text-slate-500 uppercase block">İzinli Ana Klasörler</label>
-                                <button 
-                                    onClick={scanRootFolders}
-                                    disabled={isScanningRoots || !serverSettings.rootPath}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-2"
-                                >
-                                    <FolderOpen size={14} />
-                                    {isScanningRoots ? 'Taranıyor...' : 'Dizini Tara'}
-                                </button>
-                            </div>
+
                             
-                            <div className="mt-4 border border-slate-700 rounded-lg p-4 bg-slate-900/50">
-                                {availableRootFolders.length === 0 ? (
-                                    <div className="text-center text-slate-500 text-sm py-4 space-y-2">
-                                        <FolderOpen size={24} className="mx-auto text-slate-600" />
-                                        <p>Klasörleri görmek için "Dizini Tara" butonuna tıklayın.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-4">
-                                        <input 
-                                            type="text" 
-                                            placeholder="Klasörlerde ara..." 
-                                            value={folderSearchTerm}
-                                            onChange={e => setFolderSearchTerm(e.target.value)}
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white outline-none focus:border-indigo-500 text-sm"
-                                        />
-                                        <div className="max-h-60 overflow-y-auto custom-scrollbar pr-2">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                                {availableRootFolders
-                                                    .filter(f => f.toLowerCase().includes(folderSearchTerm.toLowerCase()) || serverSettings.allowedFolders.includes(f))
-                                                    .sort((a, b) => {
-                                                        const aSel = serverSettings.allowedFolders.includes(a);
-                                                        const bSel = serverSettings.allowedFolders.includes(b);
-                                                        if (aSel && !bSel) return -1;
-                                                        if (!aSel && bSel) return 1;
-                                                        return a.localeCompare(b);
-                                                    })
-                                                    .slice(0, 200) // Render optimization
-                                                    .map((folder, idx) => {
-                                                    const isSelected = serverSettings.allowedFolders.includes(folder);
-                                                    return (
-                                                        <label key={idx} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer border transition ${isSelected ? 'bg-indigo-900/30 border-indigo-500' : 'bg-slate-800 border-slate-700 hover:border-slate-600'}`}>
-                                                            <input 
-                                                                type="checkbox" 
-                                                                className="hidden"
-                                                                checked={isSelected}
-                                                                onChange={(e) => {
-                                                                    if (e.target.checked) {
-                                                                        setServerSettings({...serverSettings, allowedFolders: [...serverSettings.allowedFolders, folder]});
-                                                                    } else {
-                                                                        setServerSettings({...serverSettings, allowedFolders: serverSettings.allowedFolders.filter(f => f !== folder)});
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition ${isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-500'}`}>
-                                                                {isSelected && <Check size={12} className="text-white" />}
-                                                            </div>
-                                                            <Folder size={16} className={isSelected ? "text-indigo-400" : "text-slate-400"} />
-                                                            <span className={`text-sm truncate max-w-[150px] ${isSelected ? 'text-indigo-100' : 'text-slate-300'}`} title={folder}>{folder}</span>
-                                                        </label>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                            
-                            {serverSettings.allowedFolders.length > 0 && (
-                                <div className="mt-2 text-xs text-slate-500">
-                                    Seçilen klasör sayısı: <span className="text-indigo-400 font-bold">{serverSettings.allowedFolders.length}</span>
-                                </div>
-                            )}
+
                         </div>
                     </div>
                 </div>
@@ -2811,7 +2815,7 @@ const App = () => {
                                   </div>
                               </div>
                           )
-                       })
+         })
                      )}
                   </div>
               </div>
@@ -2989,7 +2993,7 @@ const App = () => {
                                            );
                                          }
                                          return days;
-                                       })()}
+                         })()}
                                      </div>
                                    </div>
                                  )}
@@ -3061,7 +3065,7 @@ const App = () => {
                                    )}
                                  </div>
                                );
-                             })()}
+               })()}
                             {field.type === ElementType.SIGNATURE && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">İmza Seçiniz...</option>{signatures.filter(sig => !field.allowedSignatureIds || field.allowedSignatureIds.length === 0 || field.allowedSignatureIds.includes(sig.id)).map(sig => (<option key={sig.id} value={sig.url}>{sig.name}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>{field.allowedSignatureIds && field.allowedSignatureIds.length > 0 && (<div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1"><Filter size={10} /> Bu alan için {field.allowedSignatureIds.length} adet imza tanımlı.</div>)}</div>)}
                          </div>
                         ))}
@@ -3171,7 +3175,7 @@ const App = () => {
                             <div className={`rounded-lg overflow-hidden border-4 shadow-2xl transition-colors ${activeProjectId === p.id ? 'border-amber-500/50' : 'border-slate-800'} ${hasBack ? 'hover:border-slate-600' : ''}`}><CanvasEditor elements={getPreviewElements(p, side)} width={p.width} height={p.height} bgUrl={activeSideData?.bgUrl || ''} selectedId={null} onSelect={() => {}} onUpdateElement={() => {}} onDeleteElement={() => {}} scale={calcScale} readOnly={true} /></div>
                         </div>
                     );
-                })}
+  })}
                 </div>
                 {selectedFillProjectIds.length === 0 && (<div className="flex flex-col items-center justify-center h-full text-slate-500 select-none"><LayoutTemplate size={48} className="mb-4 opacity-20" /><p>Önizleme için soldan proje seçiniz.</p></div>)}
               </div>
