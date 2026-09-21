@@ -80,7 +80,7 @@ type ExportMode = 'single' | 'separate';
 
 const DEFAULT_WIDTH = 2000;
 const DEFAULT_HEIGHT = 1414;
-const APP_VERSION = "v1.7.0"; 
+const APP_VERSION = "v1.7.1"; 
 const GITHUB_URL = "https://github.com/szgnemin1/ProCertify";
 
 const createNewProject = (name: string): CertificateProject => {
@@ -253,19 +253,10 @@ const App = () => {
   const [qrBaseUrl, setQrBaseUrl] = useState(() => localStorage.getItem('vps_qr_base_url') || (window.location.origin + '/dogrula.html'));
 
   // Settings - Server Folders State
-  const [serverSettings, setServerSettings] = useState<{rootPath: string, scannedRootFolders?: string[], lastSavePath?: {targetDir: string}}>({ rootPath: 'D:\\Arsiv', scannedRootFolders: [] });
 
 
-  const [folderSearchTerm, setFolderSearchTerm] = useState('');
   
 
-  const [tempAllowedFolderInput, setTempAllowedFolderInput] = useState('');
-  const [showServerSaveModal, setShowServerSaveModal] = useState(false);
-  const [browsePath, setBrowsePath] = useState('');
-  const [browseFolders, setBrowseFolders] = useState<string[]>([]);
-  const [isBrowsing, setIsBrowsing] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [isServerSaving, setIsServerSaving] = useState(false);
 
   // --- Editor State ---
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -395,8 +386,7 @@ const App = () => {
           
           if (data.signatures) setSignatures(data.signatures);
           if (data.companies) setCompanies(data.companies);
-          if (data.serverSettings) setServerSettings(data.serverSettings);
-      } else if (!isNetworkError) {
+                } else if (!isNetworkError) {
           console.log("Data completely invalid or empty, creating new default project");
           const newP = createNewProject('Yeni Sertifika Projesi');
           setProjects([newP]);
@@ -412,7 +402,7 @@ const App = () => {
     if (!isDataLoaded || apiFetchFailed) return;
 
     const saveData = async () => {
-      const dataObj = { projects, signatures, companies, serverSettings };
+      const dataObj = { projects, signatures, companies };
       console.log("SAVING DATA TO API:", dataObj);
       
       try {
@@ -1269,8 +1259,7 @@ const App = () => {
                 projects: data.projects,
                 signatures: data.signatures || [],
                 companies: data.companies || [],
-                serverSettings: data.serverSettings || serverSettings
-            };
+                            };
 
             // Save to API backend if available
             try {
@@ -1703,257 +1692,8 @@ const App = () => {
     }
   };
 
-  const scanRootFolders = async () => {
-      setIsScanningRoots(true);
-      try {
-          // Önce güncel rootPath değerini sunucuya kaydedelim ki, sunucu en güncel yoldan arama yapsın
-          await fetch(getApiUrl('/api/data'), {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('vps_session_token')}` },
-             body: JSON.stringify({ projects, signatures, companies, serverSettings })
-          });
 
-          const token = localStorage.getItem('vps_session_token');
-          const res = await fetch(getApiUrl(`/api/server-folders/available-roots`), {
-              headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (res.ok) {
-              const data = await res.json();
-              // Tarama sonucunda gelen klasörleri ve önceden seçilmiş olanları birleştir (tekrar etmeden)
-              const mergedFolders = Array.from(new Set([...(data.folders || []), ...(serverSettings as any).allowedFolders || []]));
-              setAvailableRootFolders(mergedFolders);
-              setServerSettings(prev => ({ ...prev, scannedRootFolders: data.folders || [] }));
-              if (data.folders?.length === 0) {
-                  alert("Belirtilen dizinde klasör bulunamadı veya dizin mevcut değil.");
-              }
-          } else {
-              const err = await res.json();
-              alert("Klasörler taranamadı: " + err.error);
-          }
-      } catch (err) {
-          alert("Ağ hatası.");
-      } finally {
-          setIsScanningRoots(false);
-      }
-  };
-
-  const loadBrowseFolders = async (path: string) => {
-      setIsBrowsing(true);
-      try {
-          const token = localStorage.getItem('vps_session_token');
-          const res = await fetch(getApiUrl(`/api/server-folders/browse?dir=${encodeURIComponent(path)}`), {
-              headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (res.ok) {
-              const data = await res.json();
-              setBrowseFolders(data.folders || []);
-          }
-      } catch (err) {
-          console.error(err);
-      } finally {
-          setIsBrowsing(false);
-      }
-  };
-
-  const createServerSubfolder = async () => {
-      if (!newFolderName.trim()) return;
-      try {
-          const token = localStorage.getItem('vps_session_token');
-          const res = await fetch(getApiUrl('/api/server-folders/create'), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({
-                  targetDir: browsePath,
-                  newFolderName: newFolderName.trim()
-              })
-          });
-          if (res.ok) {
-              const data = await res.json();
-              setBrowseFolders([...browseFolders, data.folderName]);
-              setBrowsePath(browsePath ? `${browsePath}/${data.folderName}` : data.folderName);
-              loadBrowseFolders(browsePath ? `${browsePath}/${data.folderName}` : data.folderName);
-              setNewFolderName('');
-          } else {
-              const err = await res.json();
-              alert("Klasör oluşturulamadı: " + err.error);
-          }
-      } catch (err) {
-          alert("Ağ hatası.");
-      }
-  };
-
-  const handleOpenServerModal = () => {
-      let autoFolder = '';
-      for (const key of Object.keys(fillValues)) {
-          const val = fillValues[key];
-          const matchingSig = signatures.find(s => s.url === val && s.mappedFolder);
-          if (matchingSig) {
-              autoFolder = matchingSig.mappedFolder;
-              break;
-          }
-      }
-
-      const startPath = autoFolder || serverSettings.lastSavePath?.targetDir || '';
-      setBrowsePath(startPath);
-      loadBrowseFolders(startPath);
-      setNewFolderName('');
-      setShowServerSaveModal(true);
-  };
-
-  const exportToServer = async () => {
-      if (isServerSaving) return;
-
-
-      const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
-      if (targetProjects.length === 0) return;
-
-      setIsServerSaving(true);
-      try {
-          let fileBase64 = '';
-          let filename = '';
-          
-          if (exportMode === 'single') {
-              const firstProj = targetProjects[0];
-              filename = generateFilename(firstProj.filenamePattern || 'Sertifikalar_Birlestirilmis', fillValues);
-              if (!filename.toLowerCase().endsWith('.pdf')) filename += '.pdf';
-              
-              const pdf = new jsPDF({
-                  orientation: firstProj.width > firstProj.height ? 'landscape' : 'portrait',
-                  unit: 'px',
-                  format: [firstProj.width, firstProj.height]
-              });
-
-              for (let i = 0; i < targetProjects.length; i++) {
-                  const proj = targetProjects[i];
-                  const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
-                  const serialNo = `PRC-${baseSerial}`;
-                  const activeValues = { ...fillValues, 'seri no': serialNo, 'seri numarasi': serialNo, 'sertifika no': serialNo };
-
-                  await renderProjectToPDF(pdf, proj, i === 0, activeValues);
-                  
-                  // Verification logging
-                  if (localStorage.getItem('vps_session') === 'authenticated') {
-                      try {
-                          let companyVal = '';
-                          for (const [k, v] of Object.entries(activeValues)) {
-                              if (v && typeof v === 'string') {
-                                  const lk = k.toLowerCase();
-                                  if (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('company')) {
-                                      companyVal = v;
-                                      break;
-                                  }
-                              }
-                          }
-
-                          const token = localStorage.getItem('vps_session_token');
-                          await fetch(getApiUrl('/api/issue'), {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                              body: JSON.stringify({
-                                  serialNo, company: companyVal,
-                                  fields: getVerificationPayload(activeValues),
-                                  projects: [proj.name], date: new Date().toISOString(),
-                                image: pdf.output('datauristring')
-                              })
-                          });
-                      } catch (e) {}
-                  }
-              }
-              fileBase64 = pdf.output('datauristring');
-          } else {
-              filename = `Sertifikalar_${new Date().getTime()}.zip`;
-              const zip = new JSZip();
-              const usedNames = new Set<string>();
-
-              for (const proj of targetProjects) {
-                  const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
-                  const serialNo = `PRC-${baseSerial}`;
-                  const activeValues = { ...fillValues, 'seri no': serialNo, 'seri numarasi': serialNo, 'sertifika no': serialNo };
-
-                  const pdf = new jsPDF({
-                      orientation: proj.width > proj.height ? 'landscape' : 'portrait',
-                      unit: 'px',
-                      format: [proj.width, proj.height]
-                  });
-
-                  const certImage = await renderProjectToPDF(pdf, proj, true, activeValues);
-
-                  // Verification logging
-                  if (localStorage.getItem('vps_session') === 'authenticated') {
-                      try {
-                          let companyVal = '';
-                          for (const [k, v] of Object.entries(activeValues)) {
-                              if (v && typeof v === 'string') {
-                                  const lk = k.toLowerCase();
-                                  if (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('company')) {
-                                      companyVal = v;
-                                      break;
-                                  }
-                              }
-                          }
-                          const token = localStorage.getItem('vps_session_token');
-                          await fetch(getApiUrl('/api/issue'), {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                              body: JSON.stringify({
-                                  serialNo, company: companyVal,
-                                  fields: getVerificationPayload(activeValues),
-                                  projects: [proj.name], date: new Date().toISOString(),
-                                  image: certImage
-                              })
-                          });
-                      } catch (e) {}
-                  }
-
-                  let rawName = generateFilename(proj.filenamePattern || `Sertifika-${proj.name}`, activeValues);
-                  let baseName = rawName.replace(/\.pdf$/i, '').replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\-\. _]/gi, '_');
-                  let uniqueName = `${baseName}.pdf`;
-                  let counter = 1;
-                  while (usedNames.has(uniqueName)) {
-                      uniqueName = `${baseName}_${counter}.pdf`;
-                      counter++;
-                  }
-                  usedNames.add(uniqueName);
-                  zip.file(uniqueName, pdf.output('arraybuffer'));
-              }
-              const zipBase64 = await zip.generateAsync({ type: 'base64' });
-              fileBase64 = "data:application/zip;base64," + zipBase64;
-          }
-
-          const token = localStorage.getItem('vps_session_token');
-          const res = await fetch(getApiUrl('/api/server-folders/save-file'), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ targetDir: browsePath, filename, fileBase64 })
-          });
-
-          if (res.ok) {
-              const data = await res.json();
-              
-              const newSettings = {
-                  ...serverSettings,
-                  lastSavePath: { targetDir: browsePath } as any
-              };
-              setServerSettings(newSettings);
-              fetch(getApiUrl('/api/data'), {
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                 body: JSON.stringify({ projects, signatures, companies, serverSettings: newSettings })
-             }).catch(e => console.warn(e));
-
-              alert(`Dosya sunucuya başarıyla kaydedildi:\n${data.savedPath}`);
-              setShowServerSaveModal(false);
-          } else {
-              const err = await res.json();
-              alert("Sunucuya kaydedilirken hata: " + err.error);
-          }
-      } catch (e: any) {
-          console.error("Server save failed", e);
-          alert("Hata oluştu: " + String(e));
-      } finally {
-          setIsServerSaving(false);
-      }
-  };
+  
 
   const currentSideData = getActiveSideData(activeProject, activeSide);
   const currentSideElements = currentSideData?.elements || [];
@@ -1982,112 +1722,7 @@ const App = () => {
     <div className="flex flex-col md:flex-row h-[100dvh] bg-slate-900 text-slate-200 overflow-hidden font-sans selection:bg-amber-500/30 w-full relative">
       
       {/* SERVER SAVE MODAL */}
-      {showServerSaveModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-              <div className="bg-slate-800 border border-slate-600 rounded-2xl p-6 w-full max-w-xl shadow-2xl relative">
-                  <button onClick={() => setShowServerSaveModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-900 p-1 rounded-md"><X size={20}/></button>
-                  <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-4"><Folder size={24} className="text-indigo-500"/> Sunucuya Kaydet</h2>
-                  
-                  <div className="space-y-4">
-                      {/* BREADCRUMB */}
-                      <div className="bg-slate-900 border border-slate-700 p-2 rounded-lg flex items-center gap-2 text-sm text-slate-300 overflow-x-auto whitespace-nowrap hide-scrollbar">
-                          <button 
-                             onClick={() => { setBrowsePath(''); loadBrowseFolders(''); }}
-                             className="hover:text-indigo-400 font-medium"
-                          >
-                              Ana Dizin
-                          </button>
-                          {browsePath.split('/').filter(Boolean).map((part, i, arr) => {
-                              const pathSoFar = arr.slice(0, i + 1).join('/');
-                              return (
-                                  <div key={i} className="flex items-center gap-2">
-                                      <span className="text-slate-600">/</span>
-                                      <button 
-                                          onClick={() => { setBrowsePath(pathSoFar); loadBrowseFolders(pathSoFar); }}
-                                          className="hover:text-indigo-400 font-medium"
-                                      >
-                                          {part}
-                                      </button>
-                                  </div>
-                              );
-                          })}
-                      </div>
-
-                      {/* BROWSER VIEW */}
-                      <div className="bg-slate-900 border border-slate-700 rounded-lg p-2 h-48 overflow-y-auto">
-                          {isBrowsing ? (
-                              <div className="flex justify-center items-center h-full text-slate-500">Yükleniyor...</div>
-                          ) : (
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                                  {browsePath && (
-                                      <button 
-                                         onClick={() => {
-                                            const parts = browsePath.split('/');
-                                            parts.pop();
-                                            const parent = parts.join('/');
-                                            setBrowsePath(parent);
-                                            loadBrowseFolders(parent);
-                                         }}
-                                         className="flex items-center gap-2 p-2 rounded hover:bg-slate-800 text-slate-400 text-sm text-left"
-                                      >
-                                          <div className="text-indigo-400">..</div> (Üst Klasör)
-                                      </button>
-                                  )}
-                                  {browseFolders.map(f => (
-                                      <button 
-                                         key={f}
-                                         onClick={() => {
-                                            const newPath = browsePath ? `${browsePath}/${f}` : f;
-                                            setBrowsePath(newPath);
-                                            loadBrowseFolders(newPath);
-                                         }}
-                                         className="flex items-center gap-2 p-2 rounded hover:bg-slate-800 text-slate-300 text-sm text-left border border-transparent hover:border-slate-700 truncate"
-                                      >
-                                          <Folder size={16} className="text-indigo-400 shrink-0" />
-                                          <span className="truncate">{f}</span>
-                                      </button>
-                                  ))}
-                                  {browseFolders.length === 0 && !browsePath && (
-                                      <div className="col-span-full text-center text-slate-500 text-sm py-4">Ana dizin boş. Yeni klasör oluşturun.</div>
-                                  )}
-                                  {browseFolders.length === 0 && browsePath && (
-                                      <div className="col-span-full text-center text-slate-500 text-sm py-4">Bu klasör boş.</div>
-                                  )}
-                              </div>
-                          )}
-                      </div>
-
-                      {/* CREATE NEW FOLDER */}
-                      <div className="flex gap-2">
-                          <input 
-                              type="text" 
-                              placeholder="Buraya yeni klasör oluştur..." 
-                              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white outline-none focus:border-indigo-500"
-                              value={newFolderName}
-                              onChange={(e) => setNewFolderName(e.target.value)}
-                              onKeyDown={(e) => e.key === 'Enter' && createServerSubfolder()}
-                          />
-                          <button 
-                              onClick={createServerSubfolder}
-                              disabled={!newFolderName.trim()}
-                              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap"
-                          >
-                              Klasör Oluştur
-                          </button>
-                      </div>
-
-                      <hr className="border-slate-700" />
-                      <button 
-                          onClick={exportToServer}
-                          disabled={isServerSaving}
-                          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white p-3 rounded-lg font-bold flex items-center justify-center gap-2 transition disabled:opacity-50"
-                      >
-                          {isServerSaving ? 'Kaydediliyor...' : `Şu anki konuma KAYDET (${browsePath || 'Ana Dizin'})`}
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
+      
 
       {/* MOBILE HEADER */}
       <div className="md:hidden flex items-center justify-between p-4 bg-slate-950 border-b border-slate-800 shrink-0 z-40 w-full">
@@ -2523,19 +2158,7 @@ const App = () => {
                                     </div>
                                     <div className="w-full bg-slate-900 rounded-lg p-2 border border-slate-700 z-10 relative">
                                         <span className="text-[10px] text-white truncate block text-center mb-1">{sig.name}</span>
-                                        <select 
-                                            className="w-full text-[10px] bg-slate-800 text-white border border-slate-600 rounded p-1 outline-none"
-                                            value={sig.mappedFolder || ''}
-                                            onChange={e => {
-                                                const newSigs = signatures.map(s => s.id === sig.id ? {...s, mappedFolder: e.target.value} : s);
-                                                setSignatures(newSigs);
-                                            }}
-                                        >
-                                            <option value="">-- Klasör Eşleştir --</option>
-                                            {(serverSettings as any).allowedFolders || [].map(f => (
-                                                <option key={f} value={f}>{f}</option>
-                                            ))}
-                                        </select>
+                                        
                                     </div>
                                 </div>
                             ))}
@@ -2564,32 +2187,6 @@ const App = () => {
                     </div>
                 </div>
 
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><Folder className="text-indigo-500" /> Sunucu Arşiv Ayarları</h2>
-                    </div>
-                    <p className="text-sm text-slate-400 mb-4">Sunucu üzerinde dosyaların kaydedileceği ana dizini (klasörü) tanımlayabilirsiniz. Kayıt sırasında bu dizinin alt klasörlerinde dinamik olarak gezinebilirsiniz.</p>
-                    
-                    <div className="space-y-6">
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase">Ana Arşiv Dizini (Sunucu)</label>
-                            <input 
-                                type="text"
-                                value={serverSettings.rootPath}
-                                onChange={(e) => setServerSettings({...serverSettings, rootPath: e.target.value})}
-                                className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-indigo-500 outline-none font-mono text-sm"
-                                placeholder="Örn: D:\Arsiv"
-                            />
-                            <p className="text-[10px] text-slate-500">Tüm dosyalar bu ana dizin altında sizin belirleyeceğiniz veya uygulamanın otomatik önereceği (imzadan) klasörlere kaydedilecektir.</p>
-                        </div>
-
-                        <div className="space-y-2">
-
-                            
-
-                        </div>
-                    </div>
-                </div>
 
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
                     <div className="flex justify-between items-center mb-6">
@@ -3116,14 +2713,7 @@ const App = () => {
                          )}
                          {isGenerating ? 'Kaydediliyor...' : `BİLGİSAYARA İNDİR (${selectedFillProjectIds.length})`}
                        </button>
-                       <button 
-                         onClick={handleOpenServerModal}
-                         disabled={isGenerating || isServerSaving || selectedFillProjectIds.length === 0}
-                         className={`w-full py-4 mt-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 transition active:scale-95 transform ${(isGenerating || isServerSaving) ? 'opacity-70 cursor-wait' : ''}`}
-                       >
-                         <Folder size={22} />
-                         SUNUCUYA KAYDET
-                       </button>
+
                        {exportMode === 'separate' && selectedFillProjectIds.length > 1 && (
                            <p className="text-[10px] text-slate-500 text-center">Seçilen klasöre tüm sertifikalar ayrı ayrı kaydedilecektir.</p>
                        )}
@@ -3145,14 +2735,7 @@ const App = () => {
                          {isGenerating ? (<div className="flex items-center gap-2"><div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />{progress > 0 && <span className="text-xs">{progress}%</span>}</div>) : (<Download size={22} />)}
                          {isGenerating ? 'Kaydediliyor...' : `BİLGİSAYARA İNDİR (${selectedFillProjectIds.length})`}
                        </button>
-                       <button 
-                         onClick={handleOpenServerModal}
-                         disabled={isGenerating || isServerSaving || selectedFillProjectIds.length === 0}
-                         className={`w-full py-3 mt-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 transition active:scale-95 transform ${(isGenerating || isServerSaving) ? 'opacity-70 cursor-wait' : ''}`}
-                       >
-                         <Folder size={22} />
-                         SUNUCUYA KAYDET
-                       </button>
+
                     </div>
                 </div>
 

@@ -9,7 +9,7 @@ const JWT_SECRET = "procertify-super-secret-key-2024-static"
 
 async function startServer() {
   const app = express()
-  const PORT = process.env.PORT || 3000
+  const PORT = 3000
 
   app.use(express.json({ limit: '200mb' }))
   
@@ -147,96 +147,6 @@ async function startServer() {
     } catch (e) {
       console.error(e)
       res.status(500).json({ error: "Failed to issue certificates" })
-    }
-  })
-
-  const sanitizePath = (name: string) => {
-    return name.replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ\-\. _]/gi, '_')
-  }
-
-  app.get('/api/server-folders/browse', verifyToken, async (req, res) => {
-    try {
-      const dir = (req.query.dir as string) || ''
-      const safeDir = dir.replace(/\.\./g, '')
-      const rootDir = process.env.ARCHIVE_ROOT || path.join(process.cwd(), 'archive')
-      const targetPath = path.join(rootDir, safeDir)
-      
-      if (!targetPath.startsWith(rootDir)) {
-         return res.status(403).json({ error: "Geçersiz dizin erişimi" })
-      }
-
-      if (!fs.existsSync(targetPath)) {
-          return res.json({ folders: [] })
-      }
-
-      const dirents = await fs.promises.readdir(targetPath, { withFileTypes: true })
-      const folders = dirents
-          .filter(dirent => dirent.isDirectory())
-          .map(dirent => dirent.name)
-
-      res.json({ folders })
-    } catch (e) {
-      console.error(e)
-      res.status(500).json({ error: "Klasörler okunamadı" })
-    }
-  })
-
-  app.post('/api/server-folders/create', verifyToken, async (req, res) => {
-    try {
-      const { targetDir, newFolderName } = req.body
-      if (!newFolderName) return res.status(400).json({ error: "Klasör adı gerekli" })
-      
-      const safeNewFolder = newFolderName.replace(/[^a-zA-Z0-9_ \-]/g, '')
-      if (!safeNewFolder) return res.status(400).json({ error: "Geçersiz klasör adı" })
-
-      const safeTargetDir = (targetDir || '').replace(/\.\./g, '')
-      const rootDir = process.env.ARCHIVE_ROOT || path.join(process.cwd(), 'archive')
-      const targetPath = path.join(rootDir, safeTargetDir, safeNewFolder)
-
-      if (!targetPath.startsWith(rootDir)) {
-          return res.status(403).json({ error: "Geçersiz dizin erişimi" })
-      }
-      
-      if (!fs.existsSync(targetPath)) {
-          await fs.promises.mkdir(targetPath, { recursive: true })
-      }
-      
-      res.json({ success: true, folderName: safeNewFolder })
-    } catch (e) {
-      res.status(500).json({ error: "Klasör oluşturulamadı" })
-    }
-  })
-
-  app.post('/api/server-folders/save-file', verifyToken, async (req, res) => {
-    try {
-      const { targetDir, filename, fileBase64 } = req.body
-      
-      if (!filename || !fileBase64) {
-          return res.status(400).json({ error: "Eksik parametre" })
-      }
-
-      const safeTargetDir = (targetDir || '').replace(/\.\./g, '')
-      const rootDir = process.env.ARCHIVE_ROOT || path.join(process.cwd(), 'archive')
-      const targetPath = path.join(rootDir, safeTargetDir)
-
-      if (!targetPath.startsWith(rootDir)) {
-          return res.status(403).json({ error: "Geçersiz dizin erişimi" })
-      }
-
-      if (!fs.existsSync(targetPath)) {
-          await fs.promises.mkdir(targetPath, { recursive: true })
-      }
-
-      const safeFilename = sanitizePath(filename)
-      const filePath = path.join(targetPath, safeFilename)
-
-      const base64Data = fileBase64.replace(/^data:([A-Za-z-+/]+);base64,/, '')
-      await fs.promises.writeFile(filePath, base64Data, 'base64')
-
-      res.json({ success: true, savedPath: filePath })
-    } catch (e: any) {
-      console.error(e)
-      res.status(500).json({ error: e.message || "Dosya kaydedilemedi" })
     }
   })
 

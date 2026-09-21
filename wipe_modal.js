@@ -1,11 +1,8 @@
 const fs = require('fs');
 let c = fs.readFileSync('App.tsx', 'utf-8');
-
-const startMatch = "const loadBrowseFolders = async (path: string) => {";
-const endMatch = `      } finally {
-          setIsServerSaving(false);
-      }
-  };`;
+const startMatch = `{showServerSaveModal && (`;
+const endMatch = `          </div>
+      )}`;
 
 const startIndex = c.indexOf(startMatch);
 if (startIndex !== -1) {
@@ -13,8 +10,6 @@ if (startIndex !== -1) {
     if (endIndex > startIndex) {
         c = c.substring(0, startIndex) + c.substring(endIndex);
         fs.writeFileSync('App.tsx', c);
-        console.log("Functions removed");
+        console.log("Modal removed");
     }
-} else {
-    console.log("Start not found");
 }
