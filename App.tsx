@@ -56,7 +56,11 @@ import {
   Send,
   Calendar,
   Menu,
-  Folder
+  Folder,
+  Lock,
+  Unlock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
@@ -80,7 +84,7 @@ type ExportMode = 'single' | 'separate';
 
 const DEFAULT_WIDTH = 2000;
 const DEFAULT_HEIGHT = 1414;
-const APP_VERSION = "v1.7.1"; 
+const APP_VERSION = "v1.7.2"; 
 const GITHUB_URL = "https://github.com/szgnemin1/ProCertify";
 
 const createNewProject = (name: string): CertificateProject => {
@@ -186,10 +190,10 @@ const App = () => {
     let bgUrl = sideData.bgUrl;
     let name = sideData.name;
 
-    if (selectedId && variants && variants.length > 0) {
+    if (selectedId && selectedId !== 'DEFAULT' && variants && variants.length > 0) {
         const variant = variants.find(v => v.id === selectedId);
         if (variant) {
-            bgUrl = variant.bgUrl;
+            bgUrl = variant.bgUrl || (variant as any).url || sideData.bgUrl;
             name = variant.name;
         }
     }
@@ -231,6 +235,75 @@ const App = () => {
   const [tempOptionInput, setTempOptionInput] = useState(''); 
   const [isEditingName, setIsEditingName] = useState(false); 
   const [showChoiceFields, setShowChoiceFields] = useState(false);
+  
+  // Admin Authentication State (Separate access for Projeler, Şablon, Ayarlar)
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('vps_session') === 'authenticated' && !!localStorage.getItem('vps_session_token');
+  });
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
+  const [adminTargetView, setAdminTargetView] = useState<ViewMode>('projects');
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [adminLoginError, setAdminLoginError] = useState('');
+  const [isAdminLoggingIn, setIsAdminLoggingIn] = useState(false);
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  useEffect(() => {
+    if (!isAdminAuthenticated && currentView !== 'fill') {
+      setCurrentView('fill');
+    }
+  }, [isAdminAuthenticated, currentView]);
+
+  const handleRequestAdminView = (view: ViewMode) => {
+    if (isAdminAuthenticated) {
+      setCurrentView(view);
+      setIsMobileNavOpen(false);
+    } else {
+      setAdminTargetView(view);
+      setAdminPasswordInput('');
+      setAdminLoginError('');
+      setShowAdminLoginModal(true);
+      setIsMobileNavOpen(false);
+    }
+  };
+
+  const handleAdminLoginSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!adminPasswordInput.trim()) {
+      setAdminLoginError('Lütfen şifrenizi girin.');
+      return;
+    }
+    setIsAdminLoggingIn(true);
+    setAdminLoginError('');
+    try {
+      const res = await fetch(getApiUrl('/api/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: adminPasswordInput })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.token) {
+        localStorage.setItem('vps_session', 'authenticated');
+        localStorage.setItem('vps_session_token', data.token);
+        setIsAdminAuthenticated(true);
+        setShowAdminLoginModal(false);
+        setAdminPasswordInput('');
+        setCurrentView(adminTargetView);
+      } else {
+        setAdminLoginError(data.error || 'Hatalı şifre. Lütfen tekrar deneyin.');
+      }
+    } catch (err) {
+      setAdminLoginError('Sunucu ile iletişim kurulamadı.');
+    } finally {
+      setIsAdminLoggingIn(false);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem('vps_session');
+    localStorage.removeItem('vps_session_token');
+    setIsAdminAuthenticated(false);
+    setCurrentView('fill');
+  };
   
   // Signatures State
   const [signatures, setSignatures] = useState<SavedSignature[]>([]);
@@ -345,20 +418,12 @@ const App = () => {
       let isNetworkError = false;
       try {
         const token = localStorage.getItem('vps_session_token');
-        const res = await fetch(getApiUrl('/api/data'), {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(getApiUrl('/api/data'), { headers });
         if (res.ok) {
           data = await res.json();
           console.log("FETCHED DATA FROM API:", data);
-        } else if (res.status === 401) {
-          console.warn("Token expired or invalid. Logging out.");
-          localStorage.removeItem('vps_session');
-          localStorage.removeItem('vps_session_token');
-          window.location.reload();
-          return;
         } else {
           isNetworkError = true;
           console.warn("API responded with not ok:", res.status);
@@ -402,11 +467,13 @@ const App = () => {
     if (!isDataLoaded || apiFetchFailed) return;
 
     const saveData = async () => {
+      const token = localStorage.getItem('vps_session_token');
+      if (!token) return; // Only admin changes are saved to server
+
       const dataObj = { projects, signatures, companies };
       console.log("SAVING DATA TO API:", dataObj);
       
       try {
-        const token = localStorage.getItem('vps_session_token');
         const result = await fetch(getApiUrl('/api/data'), {
           method: 'POST',
           headers: { 
@@ -418,7 +485,7 @@ const App = () => {
         if (result.status === 401) {
           localStorage.removeItem('vps_session');
           localStorage.removeItem('vps_session_token');
-          window.location.reload();
+          setIsAdminAuthenticated(false);
           return;
         }
         console.log("SAVE DATA RESULT:", await result.text());
@@ -831,14 +898,63 @@ const App = () => {
   // --- Unified Fill Logic ---
   const getUnifiedFillFields = () => {
     const fields: Record<string, { 
-        type: ElementType, 
+        type: ElementType | 'bg_front' | 'bg_back', 
         label: string, 
         displayLabel: string, 
+        projectId?: string,
+        side?: 'front' | 'back',
+        variantOptions?: { id: string; name: string }[],
         allowedSignatureIds?: string[],
         options?: string[],
         defaultValue?: string
     }> = {};
     const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
+
+    // 1. Arka Plan / Tasarım Soruları (Birden fazla arkaplanı olan projeler için doğrudan soru olarak eklenir)
+    targetProjects.forEach(proj => {
+        if (proj.frontVariants && proj.frontVariants.length > 0) {
+            const key = `bg_front_${proj.id}`;
+            const displayLabel = targetProjects.length > 1 
+                ? `${proj.name} Ön Yüz Tasarımı / Arkaplanı` 
+                : 'Ön Yüz Tasarımı / Arkaplanı';
+            const variantOptions = [
+                { id: 'DEFAULT', name: 'Varsayılan Tasarım' },
+                ...proj.frontVariants.map(v => ({ id: v.id, name: v.name }))
+            ];
+            fields[key] = {
+                type: 'bg_front',
+                label: key,
+                displayLabel: displayLabel,
+                projectId: proj.id,
+                side: 'front',
+                variantOptions: variantOptions,
+                options: variantOptions.map(v => v.name),
+                defaultValue: projectFrontSelections[proj.id] || 'DEFAULT'
+            };
+        }
+        if (proj.backVariants && proj.backVariants.length > 0) {
+            const key = `bg_back_${proj.id}`;
+            const displayLabel = targetProjects.length > 1 
+                ? `${proj.name} Arka Yüz Tasarımı / Arkaplanı` 
+                : 'Arka Yüz Tasarımı / Arkaplanı';
+            const variantOptions = [
+                { id: 'DEFAULT', name: 'Varsayılan Arka Tasarım' },
+                ...proj.backVariants.map(v => ({ id: v.id, name: v.name }))
+            ];
+            fields[key] = {
+                type: 'bg_back',
+                label: key,
+                displayLabel: displayLabel,
+                projectId: proj.id,
+                side: 'back',
+                variantOptions: variantOptions,
+                options: variantOptions.map(v => v.name),
+                defaultValue: projectBackSelections[proj.id] || 'DEFAULT'
+            };
+        }
+    });
+
+    // 2. Sertifika Üzerindeki Dinamik Alanlar
     targetProjects.forEach(proj => {
         const activeBack = getActiveSideData(proj, 'back');
         [proj.front, activeBack].forEach(side => {
@@ -891,7 +1007,7 @@ const App = () => {
       const isInitial = !unifiedFieldsRef.current;
       unifiedFieldsRef.current = fieldsKey;
       if (fields.length === 0) {
-        setChatHistory([{ id: Date.now().toString(), sender: 'bot', text: 'Lütfen doldurmak için sol üstten proje seçin.' }]);
+        setChatHistory([{ id: Date.now().toString(), sender: 'bot', text: 'Lütfen doldurmak için sol panelden sertifika seçin.' }]);
         setCurrentChatStep(0);
       } else {
         setFillValues(prevFill => {
@@ -903,10 +1019,22 @@ const App = () => {
             
             setChatHistory(prevHistory => {
                const newHistory = isInitial ? [] : [...prevHistory];
+               const firstField = fields[0];
+               const isFirstChoiceOrBg = firstField && (firstField.type === 'bg_front' || firstField.type === 'bg_back' || firstField.type === ElementType.DROPDOWN || firstField.type === ElementType.CHOICE_BOX);
                if (isInitial && nextIndex === 0) {
-                   newHistory.push({ id: Date.now().toString(), sender: 'bot', text: `Merhaba! Seçili projeler için ${fields.length} adet bilgiye ihtiyacım var. İlk olarak, lütfen **${fields[0].displayLabel}** giriniz.` });
+                   newHistory.push({ 
+                     id: Date.now().toString(), 
+                     sender: 'bot', 
+                     text: `Merhaba! Seçili sertifika için ${fields.length} soruluk doldurma işlemine başlayalım. İlk olarak, lütfen **${firstField.displayLabel}** ${isFirstChoiceOrBg ? 'seçiniz:' : 'giriniz:'}` 
+                   });
                } else if (nextIndex < fields.length) {
-                   newHistory.push({ id: Date.now().toString(), sender: 'bot', text: `Yeni alanlar eklendi. Lütfen **${fields[nextIndex].displayLabel}** giriniz.` });
+                   const curr = fields[nextIndex];
+                   const isCurrChoiceOrBg = curr.type === 'bg_front' || curr.type === 'bg_back' || curr.type === ElementType.DROPDOWN || curr.type === ElementType.CHOICE_BOX;
+                   newHistory.push({ 
+                     id: Date.now().toString(), 
+                     sender: 'bot', 
+                     text: `Lütfen **${curr.displayLabel}** ${isCurrChoiceOrBg ? 'seçiniz:' : 'giriniz:'}` 
+                   });
                } else {
                    newHistory.push({ id: Date.now().toString(), sender: 'bot', text: `Tüm gerekli bilgileri girdiniz. Sağ alt köşeden PDF oluşturabilirsiniz.` });
                }
@@ -930,11 +1058,45 @@ const App = () => {
     const currentField = fields[currentChatStep];
     if (!currentField) return;
 
-    const userText = isSkip ? "(Cevapsız Bırakıldı)" : (displayLabel || value);
+    let actualValue = value;
+    let userDisplay = displayLabel || value;
+
+    // Arkaplan seçimi sorusu ise state'leri ve seçimi senkronize et
+    if ((currentField.type === 'bg_front' || currentField.type === 'bg_back') && currentField.variantOptions) {
+        if (!displayLabel) {
+            const raw = value.trim();
+            const matched = currentField.variantOptions.find(vo => 
+                vo.id === raw || turkishToLower(vo.name) === turkishToLower(raw)
+            );
+            if (matched) {
+                actualValue = matched.id;
+                userDisplay = matched.name;
+            } else if (turkishToLower(raw).includes('varsay') || turkishToLower(raw).includes('standart') || turkishToLower(raw).includes('normal') || turkishToLower(raw).includes('default')) {
+                actualValue = 'DEFAULT';
+                userDisplay = currentField.variantOptions[0]?.name || 'Varsayılan Tasarım';
+            } else {
+                const partial = currentField.variantOptions.find(vo => 
+                    turkishToLower(vo.name).includes(turkishToLower(raw))
+                );
+                if (partial) {
+                    actualValue = partial.id;
+                    userDisplay = partial.name;
+                }
+            }
+        }
+        if (currentField.type === 'bg_front' && currentField.projectId) {
+            setProjectFrontSelections(prev => ({ ...prev, [currentField.projectId!]: actualValue }));
+        }
+        if (currentField.type === 'bg_back' && currentField.projectId) {
+            setProjectBackSelections(prev => ({ ...prev, [currentField.projectId!]: actualValue }));
+        }
+    }
+
+    const userText = isSkip ? "(Cevapsız Bırakıldı)" : userDisplay;
     const newHistory = [...chatHistory, { id: Date.now().toString(), sender: 'user' as const, text: userText }];
 
     if (!isSkip) {
-      setFillValues(prev => ({ ...prev, [currentField.label]: value }));
+      setFillValues(prev => ({ ...prev, [currentField.label]: actualValue }));
     } else {
       setFillValues(prev => ({ ...prev, [currentField.label]: '' }));
     }
@@ -944,7 +1106,12 @@ const App = () => {
 
     if (nextStep < fields.length) {
       const nextField = fields[nextStep];
-      newHistory.push({ id: (Date.now() + 1).toString(), sender: 'bot' as const, text: `Teşekkürler. Şimdi lütfen **${nextField.displayLabel}** giriniz.` });
+      const isChoiceOrBg = nextField.type === 'bg_front' || nextField.type === 'bg_back' || nextField.type === ElementType.DROPDOWN || nextField.type === ElementType.CHOICE_BOX;
+      newHistory.push({ 
+        id: (Date.now() + 1).toString(), 
+        sender: 'bot' as const, 
+        text: `Teşekkürler. Şimdi lütfen **${nextField.displayLabel}** ${isChoiceOrBg ? 'seçiniz:' : 'giriniz:'}` 
+      });
     } else {
       newHistory.push({ id: (Date.now() + 1).toString(), sender: 'bot' as const, text: `Harika! Tüm bilgileri aldım. Sağ alt köşeden PDF oluşturabilirsiniz.` });
     }
@@ -963,11 +1130,26 @@ const App = () => {
     
     const fields = getUnifiedFillFields();
     if (fields[prevStep]) {
+      const prevField = fields[prevStep];
       setFillValues(prev => {
         const next = { ...prev };
-        delete next[fields[prevStep].label];
+        delete next[prevField.label];
         return next;
       });
+      if (prevField.type === 'bg_front' && prevField.projectId) {
+        setProjectFrontSelections(prev => {
+            const next = { ...prev };
+            delete next[prevField.projectId!];
+            return next;
+        });
+      }
+      if (prevField.type === 'bg_back' && prevField.projectId) {
+        setProjectBackSelections(prev => {
+            const next = { ...prev };
+            delete next[prevField.projectId!];
+            return next;
+        });
+      }
     }
     setChatInputValue('');
     setChatOptionSearch('');
@@ -1564,27 +1746,24 @@ const App = () => {
                     }
                 }
 
-                if (localStorage.getItem('vps_session') === 'authenticated') {
-                    try {
-                        const token = localStorage.getItem('vps_session_token');
-                        await fetch(getApiUrl('/api/issue'), {
-                            method: 'POST',
-                            headers: { 
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${token}`
-                            },
-                            body: JSON.stringify({
-                                serialNo,
-                                company: companyVal,
-                                fields: getVerificationPayload(activeValues),
-                                projects: [proj.name],
-                                date: new Date().toISOString(),
-                                image: certImage
-                              })
-                        });
-                    } catch (e) {
-                       console.error("Backend issue error", e);
-                    }
+                try {
+                    const token = localStorage.getItem('vps_session_token');
+                    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
+                    await fetch(getApiUrl('/api/issue'), {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({
+                            serialNo,
+                            company: companyVal,
+                            fields: getVerificationPayload(activeValues),
+                            projects: [proj.name],
+                            date: new Date().toISOString(),
+                            image: certImage
+                          })
+                    });
+                } catch (e) {
+                   console.error("Backend issue error", e);
                 }
                 
                 // Important yield for UI responsiveness
@@ -1629,27 +1808,24 @@ const App = () => {
                 }
 
                 // Save to verification system
-                if (localStorage.getItem('vps_session') === 'authenticated') {
-                    try {
-                        const token = localStorage.getItem('vps_session_token');
-                        await fetch(getApiUrl('/api/issue'), {
-                            method: 'POST',
-                            headers: { 
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${token}`
-                            },
-                            body: JSON.stringify({
-                                serialNo,
-                                company: companyVal,
-                                fields: getVerificationPayload(activeValues),
-                                projects: [proj.name],
-                                date: new Date().toISOString(),
-                                image: certImage
-                              })
-                        });
-                    } catch (e) {
-                       console.error("Backend issue error", e);
-                    }
+                try {
+                    const token = localStorage.getItem('vps_session_token');
+                    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
+                    await fetch(getApiUrl('/api/issue'), {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({
+                            serialNo,
+                            company: companyVal,
+                            fields: getVerificationPayload(activeValues),
+                            projects: [proj.name],
+                            date: new Date().toISOString(),
+                            image: certImage
+                          })
+                    });
+                } catch (e) {
+                   console.error("Backend issue error", e);
                 }
                 // Generate base filename
                 let rawName = generateFilename(proj.filenamePattern || `Sertifika-${proj.name}`, activeValues);
@@ -1766,10 +1942,81 @@ const App = () => {
         </div>
         
         <div className="flex flex-col w-full gap-2 flex-1 justify-start">
-           <button onClick={() => { setCurrentView('projects'); setIsMobileNavOpen(false); }} className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'projects' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900 md:hover:bg-transparent'}`}><FolderOpen size={20} className="md:w-6 md:h-6 shrink-0" /><span className="text-sm md:text-[10px] font-medium block">Projeler</span>{currentView === 'projects' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}</button>
-           <button onClick={() => { setCurrentView('template'); setIsMobileNavOpen(false); }} className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'template' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900 md:hover:bg-transparent'}`}><LayoutTemplate size={20} className="md:w-6 md:h-6 shrink-0" /><span className="text-sm md:text-[10px] font-medium block">Şablon</span>{currentView === 'template' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}</button>
-           <button onClick={() => { setCurrentView('settings'); setIsMobileNavOpen(false); }} className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'settings' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900 md:hover:bg-transparent'}`}><Settings size={20} className="md:w-6 md:h-6 shrink-0" /><span className="text-sm md:text-[10px] font-medium block">Ayarlar</span>{currentView === 'settings' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}</button>
-           <button onClick={() => { setCurrentView('fill'); setIsMobileNavOpen(false); }} className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'fill' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900 md:hover:bg-transparent'}`}><PenTool size={20} className="md:w-6 md:h-6 shrink-0" /><span className="text-sm md:text-[10px] font-medium block">Doldur</span>{currentView === 'fill' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}</button>
+           {/* Doldur Tab - Always available */}
+           <button 
+             onClick={() => { setCurrentView('fill'); setIsMobileNavOpen(false); }} 
+             className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'fill' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 md:hover:bg-transparent'}`}
+             title="Sertifika Doldurma Modu"
+           >
+             <PenTool size={20} className="md:w-6 md:h-6 shrink-0" />
+             <span className="text-sm md:text-[10px] font-medium block">Doldur</span>
+             {currentView === 'fill' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}
+           </button>
+
+           {/* Separate Entrance for Other Sections (Projeler, Şablon, Ayarlar) */}
+           {!isAdminAuthenticated ? (
+             <div className="pt-3 border-t border-slate-800/80 w-full mt-2">
+               <button 
+                 onClick={() => handleRequestAdminView('projects')} 
+                 className="p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 transition-all rounded-lg md:rounded-none group"
+                 title="Yönetim & Tasarım Paneli (Şifre Korumalı)"
+               >
+                 <div className="relative">
+                   <Lock size={18} className="md:w-5 md:h-5 shrink-0 text-amber-500 group-hover:scale-110 transition-transform" />
+                 </div>
+                 <span className="text-sm md:text-[9px] font-medium block text-center leading-tight">Yönetici Paneli</span>
+               </button>
+             </div>
+           ) : (
+             <div className="pt-3 border-t border-slate-800/80 w-full mt-2 flex flex-col gap-1.5">
+               <div className="hidden md:flex px-1 py-0.5 justify-center">
+                 <span className="text-[8px] uppercase tracking-wider text-amber-400 font-bold bg-amber-500/10 px-1 rounded border border-amber-500/20">Yönetim</span>
+               </div>
+               <div className="md:hidden px-3 py-1 flex items-center justify-between">
+                 <span className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">Yönetim Paneli</span>
+                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
+               </div>
+
+               <button 
+                 onClick={() => { setCurrentView('projects'); setIsMobileNavOpen(false); }} 
+                 className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'projects' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 md:hover:bg-transparent'}`}
+                 title="Projelerim"
+               >
+                 <FolderOpen size={20} className="md:w-6 md:h-6 shrink-0" />
+                 <span className="text-sm md:text-[10px] font-medium block">Projeler</span>
+                 {currentView === 'projects' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}
+               </button>
+
+               <button 
+                 onClick={() => { setCurrentView('template'); setIsMobileNavOpen(false); }} 
+                 className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'template' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 md:hover:bg-transparent'}`}
+                 title="Şablon Tasarımı"
+               >
+                 <LayoutTemplate size={20} className="md:w-6 md:h-6 shrink-0" />
+                 <span className="text-sm md:text-[10px] font-medium block">Şablon</span>
+                 {currentView === 'template' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}
+               </button>
+
+               <button 
+                 onClick={() => { setCurrentView('settings'); setIsMobileNavOpen(false); }} 
+                 className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'settings' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 md:hover:bg-transparent'}`}
+                 title="Ayarlar & Varlıklar"
+               >
+                 <Settings size={20} className="md:w-6 md:h-6 shrink-0" />
+                 <span className="text-sm md:text-[10px] font-medium block">Ayarlar</span>
+                 {currentView === 'settings' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}
+               </button>
+
+               <button 
+                 onClick={handleAdminLogout} 
+                 className="p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-all rounded-lg md:rounded-none mt-2" 
+                 title="Yönetici Oturumunu Kilitle"
+               >
+                 <Lock size={16} className="md:w-5 md:h-5 shrink-0" />
+                 <span className="text-sm md:text-[9px] font-medium block">Kilitle</span>
+               </button>
+             </div>
+           )}
         </div>
         <div className="flex flex-col items-center gap-2 pb-2 mt-auto"><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:text-white transition flex items-center md:block gap-2"><Github size={20} className="md:hidden"/><span className="md:hidden text-xs">GitHub'da Görüntüle</span></a><span className="text-[9px] text-slate-600 font-mono">{APP_VERSION}</span></div>
       </div>
@@ -1782,12 +2029,28 @@ const App = () => {
              <div className="flex-1 bg-slate-900 p-4 md:p-10 overflow-y-auto">
                 {/* ... existing project list UI ... */}
                 <div className="max-w-6xl mx-auto">
-                    <div className="flex justify-between items-center mb-8">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                         <div>
                             <h1 className="text-3xl font-bold mb-1 text-white">Projelerim</h1>
                             <p className="text-slate-400">Tüm sertifika çalışmalarınız burada.</p>
                         </div>
-                        <button onClick={handleCreateProject} className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-3 rounded-lg flex items-center gap-2 font-bold transition shadow-lg shadow-amber-900/20 active:scale-95 transform"><Plus size={20} /> Yeni Proje</button>
+                        <div className="flex items-center gap-3">
+                            <button 
+                                onClick={() => setCurrentView('fill')} 
+                                className="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 hover:border-amber-500/50 px-4 py-2.5 rounded-lg flex items-center gap-2 font-medium text-sm transition"
+                                title="Sertifika Doldurma Ekranına Dön"
+                            >
+                                <PenTool size={16} /> Doldur Moduna Dön
+                            </button>
+                            <button 
+                                onClick={handleAdminLogout} 
+                                className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3.5 py-2.5 rounded-lg flex items-center gap-2 font-medium text-sm transition"
+                                title="Yönetici Oturumunu Kilitle"
+                            >
+                                <Lock size={16} /> Kilitle
+                            </button>
+                            <button onClick={handleCreateProject} className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-bold transition shadow-lg shadow-amber-900/20 active:scale-95 transform"><Plus size={18} /> Yeni Proje</button>
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                         {projects.map(p => (
@@ -1988,7 +2251,14 @@ const App = () => {
                     </>
                     ) : <span className="text-sm text-slate-500">Özellikler için bileşen seçin</span>}
                  </div>
-                 <div className="flex flex-col gap-2">
+                 <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setCurrentView('fill')} 
+                      className="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition shrink-0"
+                      title="Sertifika Doldurma Ekranına Dön"
+                    >
+                      <PenTool size={13} /> Doldur'a Dön
+                    </button>
                     <div className="flex bg-slate-900 p-1 rounded-lg shrink-0">
                         <button onClick={() => { setActiveSide('front'); setSelectedId(null); }} className={`flex-1 px-4 py-1.5 text-xs rounded-md transition font-medium ${activeSide === 'front' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Ön Yüz</button>
                         <button onClick={() => { setActiveSide('back'); setSelectedId(null); }} className={`flex-1 px-4 py-1.5 text-xs rounded-md transition font-medium ${activeSide === 'back' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Arka Yüz</button>
@@ -2037,7 +2307,28 @@ const App = () => {
         {currentView === 'settings' && (
           <div className="flex-1 bg-slate-900 p-4 md:p-10 overflow-y-auto custom-scrollbar">
              <div className="max-w-4xl mx-auto space-y-8">
-                <div><h1 className="text-3xl font-bold mb-2 text-white">Ayarlar & Varlıklar</h1><p className="text-slate-400">Uygulama genel ayarları ve varlık yönetimi.</p></div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h1 className="text-3xl font-bold mb-2 text-white">Ayarlar & Varlıklar</h1>
+                    <p className="text-slate-400">Uygulama genel ayarları ve varlık yönetimi.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => setCurrentView('fill')} 
+                      className="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 hover:border-amber-500/50 px-4 py-2 rounded-lg flex items-center gap-2 font-medium text-sm transition"
+                      title="Sertifika Doldurma Ekranına Dön"
+                    >
+                      <PenTool size={16} /> Doldur Moduna Dön
+                    </button>
+                    <button 
+                      onClick={handleAdminLogout} 
+                      className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3.5 py-2 rounded-lg flex items-center gap-2 font-medium text-sm transition"
+                      title="Yönetici Oturumunu Kilitle"
+                    >
+                      <Lock size={16} /> Oturumu Kilitle
+                    </button>
+                  </div>
+                </div>
                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
                   <h2 className="text-xl font-semibold flex items-center gap-2 text-white mb-6">
                     <FileText className="text-blue-500" /> Aktif Proje Yönetimi
@@ -2213,13 +2504,10 @@ const App = () => {
                     </div>
                     <div className="mt-6 pt-4 border-t border-slate-700">
                          <button 
-                            onClick={() => {
-                                localStorage.removeItem('vps_session');
-                                window.location.reload();
-                            }}
-                            className="text-sm text-slate-400 hover:text-white underline decoration-slate-600 underline-offset-4"
+                            onClick={handleAdminLogout}
+                            className="text-sm text-amber-500 hover:text-amber-400 flex items-center gap-2 font-medium transition"
                         >
-                            Oturumu Kapat (Şifre Ekranına Dön)
+                            <Lock size={15} /> Yönetici Oturumunu Kapat ve Kilitle (Doldur Ekranına Dön)
                         </button>
                     </div>
                     {passwordMessage && (
@@ -2378,36 +2666,11 @@ const App = () => {
                                     {isSelected && <Check size={10} className="text-slate-900 font-bold" />}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                      <span className="truncate block">{p.name}</span>
-                                      {isSelected && (
-                                          <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
-                                              <div className="flex flex-col gap-1">
-                                                  <label className="text-[9px] text-slate-500 uppercase font-bold">Ön Varyant</label>
-                                                  <select 
-                                                    value={projectFrontSelections[p.id] !== undefined ? projectFrontSelections[p.id] : (p.selectedFrontId || '')} 
-                                                    onChange={(e) => setProjectFrontSelections(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                                    className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-amber-400 outline-none focus:border-amber-500"
-                                                  >
-                                                      <option value="">Varsayılan Arkaplan</option>
-                                                      {p.frontVariants && p.frontVariants.map(v => (
-                                                          <option key={v.id} value={v.id}>{v.name}</option>
-                                                      ))}
-                                                  </select>
-                                              </div>
-                                              <div className="flex flex-col gap-1">
-                                                  <label className="text-[9px] text-slate-500 uppercase font-bold">Arka Varyant</label>
-                                                  <select 
-                                                    value={projectBackSelections[p.id] !== undefined ? projectBackSelections[p.id] : (p.selectedBackId || '')} 
-                                                    onChange={(e) => setProjectBackSelections(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                                    className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-amber-400 outline-none focus:border-amber-500"
-                                                  >
-                                                      <option value="">Varsayılan Arkaplan</option>
-                                                      {p.backVariants && p.backVariants.map(v => (
-                                                          <option key={v.id} value={v.id}>{v.name}</option>
-                                                      ))}
-                                                  </select>
-                                              </div>
-                                          </div>
+                                      <span className="truncate block font-medium">{p.name}</span>
+                                      {((p.frontVariants && p.frontVariants.length > 0) || (p.backVariants && p.backVariants.length > 0)) && (
+                                          <span className="text-[9px] text-amber-500/80 block mt-0.5 font-mono">
+                                            {((p.frontVariants?.length || 0) + (p.backVariants?.length || 0))} varyant
+                                          </span>
                                       )}
                                   </div>
                               </div>
@@ -2439,7 +2702,7 @@ const App = () => {
 
                  {isChatMode ? (
                    <div className="flex-1 flex flex-col overflow-hidden p-4">
-                     {/* Chat Messages */}
+                    {/* Chat Messages */}
                      <div ref={chatScrollRef} className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2 pb-4">
                        {chatHistory.map(msg => (
                          <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -2458,7 +2721,10 @@ const App = () => {
                          {(() => {
                             const field = getUnifiedFillFields()[currentChatStep];
                             let options: {label: string, value: string}[] = [];
-                            if (field.type === ElementType.DROPDOWN || field.type === ElementType.CHOICE_BOX) {
+                            const isBg = (field.type as any) === "bg_front" || (field.type as any) === "bg_back";
+                            if (isBg) {
+                              options = (field.variantOptions || []).map(v => ({label: v.name, value: v.id}));
+                            } else if (field.type === ElementType.DROPDOWN || field.type === ElementType.CHOICE_BOX) {
                               options = (field.options || []).map(o => ({label: o, value: o}));
                             } else if (field.type === ElementType.COMPANY) {
                               options = companies.map(c => ({label: c.name, value: c.name}));
@@ -2467,22 +2733,34 @@ const App = () => {
                             }
 
                             if (options.length > 0) {
-                              const isSearchEmpty = chatInputValue.trim() === '';
+                              const isSearchEmpty = chatInputValue.trim() === "";
                               const filteredOptions = isSearchEmpty ? options : options.filter(opt => turkishToLower(opt.label).includes(turkishToLower(chatInputValue)));
-                              
-                              const shouldShowOptions = options.length <= 4 || !isSearchEmpty || field.type === ElementType.COMPANY;
-                              
-                              const displayMax = field.type === ElementType.COMPANY ? 6 : 999;
+                              const shouldShowOptions = isBg || options.length <= 6 || !isSearchEmpty || field.type === ElementType.COMPANY;
+                              const displayMax = isBg ? 20 : (field.type === ElementType.COMPANY ? 6 : 999);
                               const displayedOptions = filteredOptions.slice(0, displayMax);
 
                               if (!shouldShowOptions) return null;
 
                               return (
                                 <div className="mb-2 space-y-2">
-                                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar">
+                                  {isBg && (
+                                    <div className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5 mb-1.5">
+                                      <ImageIcon size={14} className="text-amber-500" />
+                                      <span>Aşağıdaki seçeneklerden birine dokunun:</span>
+                                    </div>
+                                  )}
+                                  <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto custom-scrollbar">
                                     {displayedOptions.length > 0 ? displayedOptions.map((opt, i) => (
-                                      <button key={i} onClick={() => handleChatSubmit(opt.value, opt.label)} className="bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-full transition border border-slate-600 shadow-sm">
-                                        {opt.label}
+                                      <button 
+                                        key={i} 
+                                        onClick={() => handleChatSubmit(opt.value, opt.label)} 
+                                        className={isBg 
+                                          ? "bg-slate-800 hover:bg-amber-600 text-xs text-amber-200 hover:text-white px-3.5 py-2 rounded-xl transition border border-amber-500/40 hover:border-amber-400 shadow-md flex items-center gap-1.5 active:scale-95 cursor-pointer font-medium" 
+                                          : "bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-full transition border border-slate-600 shadow-sm"
+                                        }
+                                      >
+                                        {isBg && <ImageIcon size={12} className="text-amber-400" />}
+                                        <span>{opt.label}</span>
                                       </button>
                                     )) : (
                                       <span className="text-xs text-slate-500">Sonuç bulunamadı.</span>
@@ -2521,7 +2799,7 @@ const App = () => {
                                    window.scrollTo(0, document.body.scrollHeight);
                                  }, 300);
                                }}
-                               placeholder={`${getUnifiedFillFields()[currentChatStep]?.displayLabel} girin...`}
+                               placeholder={(getUnifiedFillFields()[currentChatStep]?.type as any) === "bg_front" || (getUnifiedFillFields()[currentChatStep]?.type as any) === "bg_back" ? "Aşağıdaki seçeneklerden birini seçin veya yazın..." : `${getUnifiedFillFields()[currentChatStep]?.displayLabel} girin...`}
                                className="w-full bg-slate-900 border border-slate-600 rounded-full pl-4 pr-20 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-500 transition text-sm shadow-inner"
                              />
                              <div className="absolute right-2 flex items-center gap-1">
@@ -2614,8 +2892,8 @@ const App = () => {
                              <ChevronLeft size={16} /> Son Adıma Geri Dön
                            </button>
                            <button onClick={() => {
-                             setCurrentChatStep(0);
-                             setChatHistory([{ id: Date.now().toString(), sender: 'bot', text: `Baştan başlıyoruz. Lütfen **${getUnifiedFillFields()[0].displayLabel}** giriniz.` }]);
+                              setCurrentChatStep(0); setFillValues({}); setProjectFrontSelections({}); setProjectBackSelections({}); const first = getUnifiedFillFields()[0]; const isChoiceOrBg = first && (first.type === "bg_front" || first.type === "bg_back" || first.type === ElementType.DROPDOWN || first.type === ElementType.CHOICE_BOX);
+                              setChatHistory([{ id: Date.now().toString(), sender: "bot", text: `Baştan başlıyoruz. Lütfen **${first?.displayLabel || "bilgileri"}** ${isChoiceOrBg ? "seçiniz:" : "giriniz:"}` }]);
                            }} className="w-full py-2.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-500 rounded-xl text-sm transition flex items-center justify-center gap-2 border border-amber-500/20">
                              <RotateCcw size={16} /> Formu Sıfırla
                            </button>
@@ -2624,7 +2902,7 @@ const App = () => {
                    </div>
                  ) : (
                    <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-6 custom-scrollbar">
-                      {getUnifiedFillFields().length === 0 ? (
+                    {getUnifiedFillFields().length === 0 ? (
                         <div className="text-slate-500 text-center py-10 select-none">
                           Seçili projelerde doldurulacak ortak alan bulunamadı veya seçim yapmadınız.
                         </div>
@@ -2632,6 +2910,57 @@ const App = () => {
                           <>
                           {getUnifiedFillFields().filter(f => f.type !== ElementType.CHOICE_BOX).map((field, idx) => (
                          <div key={idx} className="space-y-2">
+                            {((field.type as any) === "bg_front" || (field.type as any) === "bg_back") ? (
+                              <div className="space-y-2.5 bg-slate-900/80 p-4 rounded-xl border border-slate-700/80 shadow-md">
+                                <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+                                  <label className="text-sm font-semibold text-amber-400 flex items-center gap-2 select-none">
+                                    <ImageIcon size={15} className="text-amber-500" />
+                                    <span>{field.displayLabel}</span>
+                                  </label>
+                                  <span className="text-[10px] bg-slate-800 text-amber-400 px-2 py-0.5 rounded font-mono uppercase font-bold">
+                                    ARKAPLAN SEÇİMİ
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                  {field.variantOptions?.map((opt) => {
+                                    const currentSelected = (field.type as any) === "bg_front"
+                                      ? (projectFrontSelections[field.projectId!] !== undefined ? projectFrontSelections[field.projectId!] : (projects.find(p => p.id === field.projectId)?.selectedFrontId || "DEFAULT"))
+                                      : (projectBackSelections[field.projectId!] !== undefined ? projectBackSelections[field.projectId!] : (projects.find(p => p.id === field.projectId)?.selectedBackId || "DEFAULT"));
+                                    const isChosen = currentSelected === opt.id || (!currentSelected && opt.id === "DEFAULT");
+                                    return (
+                                      <button
+                                        type="button"
+                                        key={opt.id}
+                                        onClick={() => {
+                                          if ((field.type as any) === "bg_front") {
+                                            setProjectFrontSelections(prev => ({ ...prev, [field.projectId!]: opt.id }));
+                                          } else {
+                                            setProjectBackSelections(prev => ({ ...prev, [field.projectId!]: opt.id }));
+                                          }
+                                          setFillValues(prev => ({ ...prev, [field.label]: opt.id }));
+                                        }}
+                                        className={`p-3 rounded-lg border text-left text-xs transition flex items-center justify-between cursor-pointer ${
+                                          isChosen 
+                                            ? "bg-amber-500/15 border-amber-500 text-amber-200 font-bold shadow-md shadow-amber-900/20" 
+                                            : "bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-900"
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2 truncate">
+                                          <ImageIcon size={13} className={isChosen ? "text-amber-400" : "text-slate-500"} />
+                                          <span className="truncate">{opt.name}</span>
+                                        </div>
+                                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ml-2 ${
+                                          isChosen ? "border-amber-500 bg-amber-500" : "border-slate-600"
+                                        }`}>
+                                          {isChosen && <div className="w-1.5 h-1.5 rounded-full bg-slate-950 font-bold" />}
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : (
+                              <>
                             <label className="text-sm font-medium text-amber-500 flex justify-between select-none">
                               <span className="truncate pr-2">{field.displayLabel}</span>
                               <span className="text-slate-500 text-[10px] bg-slate-900 px-2 rounded uppercase shrink-0">{field.type === ElementType.DROPDOWN ? 'SEÇENEK' : (field.type === ElementType.COMPANY ? 'FİRMA' : (field.type === ElementType.TCKN ? 'TC NO' : (field.type === ElementType.QRCODE ? 'QR VERİSİ' : field.type)))}</span>
@@ -2664,6 +2993,8 @@ const App = () => {
                                );
                })()}
                             {field.type === ElementType.SIGNATURE && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">İmza Seçiniz...</option>{signatures.filter(sig => !field.allowedSignatureIds || field.allowedSignatureIds.length === 0 || field.allowedSignatureIds.includes(sig.id)).map(sig => (<option key={sig.id} value={sig.url}>{sig.name}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>{field.allowedSignatureIds && field.allowedSignatureIds.length > 0 && (<div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1"><Filter size={10} /> Bu alan için {field.allowedSignatureIds.length} adet imza tanımlı.</div>)}</div>)}
+                              </>
+                            )}
                          </div>
                         ))}
                         {getUnifiedFillFields().some(f => f.type === ElementType.CHOICE_BOX) && (
@@ -2767,82 +3098,80 @@ const App = () => {
         )}
       </div>
       {showSignaturePad && (<SignaturePad onSave={handleSignatureDrawSave} onClose={() => setShowSignaturePad(false)} />)}
-    </div>
-  );
-};
 
-const ProtectedApp = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+      {/* ADMIN PASSWORD MODAL */}
+      {showAdminLoginModal && (
+        <div className="fixed inset-0 z-[200] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-6 sm:p-8 w-full max-w-sm shadow-2xl relative select-none">
+            <button 
+              onClick={() => setShowAdminLoginModal(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+              title="Kapat"
+            >
+              <X size={18} />
+            </button>
 
-  useEffect(() => {
-    const session = localStorage.getItem('vps_session');
-    const token = localStorage.getItem('vps_session_token');
-    if (session === 'authenticated' && token) {
-      setIsAuthenticated(true);
-    }
-  }, []);
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-900/40 mb-3">
+                <Lock className="text-white" size={26} />
+              </div>
+              <h3 className="text-xl font-bold text-white">Yönetici Girişi</h3>
+              <p className="text-xs text-slate-400 mt-1 max-w-[260px]">
+                Projeler, Şablon Tasarımı ve Ayarlar için şifrenizi girin.
+              </p>
+            </div>
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(getApiUrl('/api/login'), {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ password })
-      });
-      const data = await res.json();
-      if (res.ok && data.success && data.token) {
-        localStorage.setItem('vps_session', 'authenticated');
-        localStorage.setItem('vps_session_token', data.token);
-        setIsAuthenticated(true);
-      } else {
-        setError(data.error || 'Hatalı şifre. Lütfen tekrar deneyin.');
-      }
-    } catch (error) {
-      setError('Sunucu ile iletişim kurulamadı.');
-    }
-  };
+            <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1.5">Şifre</label>
+                <div className="relative">
+                  <input 
+                    type={showAdminPassword ? "text" : "password"} 
+                    value={adminPasswordInput}
+                    onChange={(e) => setAdminPasswordInput(e.target.value)}
+                    placeholder="Şifrenizi girin..."
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-4 pr-11 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-sm shadow-inner"
+                    autoFocus
+                  />
+                  <button 
+                    type="button" 
+                    onClick={() => setShowAdminPassword(!showAdminPassword)} 
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1 transition"
+                  >
+                    {showAdminPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
 
-  if (isAuthenticated) {
-    return <App />;
-  }
+              {adminLoginError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0" />
+                  <span>{adminLoginError}</span>
+                </div>
+              )}
 
-  return (
-    <div className="flex h-[100dvh] bg-slate-950 items-center justify-center font-sans text-slate-200 selection:bg-amber-500/30">
-      <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-2xl w-full max-w-sm flex flex-col items-center">
-        <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-900/40 mb-6">
-           <FileText className="text-white" size={32} />
-        </div>
-        <h1 className="text-2xl font-bold text-white mb-2 text-center">ProCertify <span className="text-amber-500">Studio</span></h1>
-        <p className="text-slate-500 text-sm mb-6 text-center">Devam etmek için yönetici şifrenizi girin.</p>
-
-        <form onSubmit={handleLogin} className="w-full space-y-4">
-          <div>
-            <input 
-              type="password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Şifre"
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition shadow-inner"
-              autoFocus
-            />
+              <div className="flex gap-2.5 pt-1">
+                <button 
+                  type="button" 
+                  onClick={() => setShowAdminLoginModal(false)}
+                  className="flex-1 py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-sm transition"
+                >
+                  İptal
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isAdminLoggingIn}
+                  className="flex-1 py-3 px-4 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm shadow-lg shadow-amber-900/20 transition active:scale-95 flex items-center justify-center gap-2"
+                >
+                  {isAdminLoggingIn ? 'Kontrol...' : 'Giriş Yap'}
+                </button>
+              </div>
+            </form>
           </div>
-          {error && <p className="text-red-500 text-xs text-center">{error}</p>}
-          <button 
-            type="submit" 
-            className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-amber-900/20 transition active:scale-95"
-          >
-            Giriş Yap
-          </button>
-        </form>
-        <div className="mt-8 text-[10px] text-slate-600 font-mono text-center">
-          <p>Güvenli Erişim Sistemi</p>
         </div>
-      </div>
+      )}
     </div>
   );
 };
 
-export default ProtectedApp;
+export default App;

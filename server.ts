@@ -3,7 +3,6 @@ import path from "path"
 import fs from "fs"
 import jwt from "jsonwebtoken"
 import { exec } from "child_process"
-import Database from "better-sqlite3"
 
 const JWT_SECRET = "procertify-super-secret-key-2024-static"
 
@@ -13,54 +12,40 @@ async function startServer() {
 
   app.use(express.json({ limit: '200mb' }))
   
-  const DB_FILE = path.join(process.cwd(), 'database.sqlite')
-  const OLD_DATA_FILE = path.join(process.cwd(), 'data.json')
-  const OLD_CERT_FILE = path.join(process.cwd(), 'certificates.json')
+  const DATA_FILE = path.join(process.cwd(), 'data.json')
+  const CERT_FILE = path.join(process.cwd(), 'certificates.json')
   
   const isProduction = process.env.NODE_ENV === "production"
 
-  // Initialize SQLite Database
-  const db = new Database(DB_FILE)
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS store (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    );
-    CREATE TABLE IF NOT EXISTS certificates (
-      serialNo TEXT PRIMARY KEY,
-      record TEXT
-    );
-  `)
-
-  // Migrate JSON to SQLite if necessary
-  try {
-    const row = db.prepare('SELECT COUNT(*) as count FROM store').get() as {count: number}
-    if (row.count === 0 && fs.existsSync(OLD_DATA_FILE)) {
-       console.log("Migrating data.json to SQLite...")
-       const data = JSON.parse(await fs.promises.readFile(OLD_DATA_FILE, 'utf-8'))
-       const stmt = db.prepare('INSERT INTO store (key, value) VALUES (?, ?)')
-       if (data.projects) stmt.run('projects', JSON.stringify(data.projects))
-       if (data.signatures) stmt.run('signatures', JSON.stringify(data.signatures))
-       if (data.companies) stmt.run('companies', JSON.stringify(data.companies))
-       if (data.serverSettings) stmt.run('serverSettings', JSON.stringify(data.serverSettings))
-       console.log("data.json migrated successfully.")
-       fs.renameSync(OLD_DATA_FILE, OLD_DATA_FILE + '.backup')
+  // Helper functions for reading and writing JSON storage safely
+  const readJsonFile = <T>(filePath: string, defaultValue: T): T => {
+    try {
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, 'utf-8')
+        return JSON.parse(content) as T
+      }
+    } catch (err) {
+      console.error(`Error reading ${filePath}:`, err)
     }
+    return defaultValue
+  }
 
-    const certRow = db.prepare('SELECT COUNT(*) as count FROM certificates').get() as {count: number}
-    if (certRow.count === 0 && fs.existsSync(OLD_CERT_FILE)) {
-       console.log("Migrating certificates.json to SQLite...")
-       const certs = JSON.parse(await fs.promises.readFile(OLD_CERT_FILE, 'utf-8'))
-       const stmt = db.prepare('INSERT INTO certificates (serialNo, record) VALUES (?, ?)')
-       for (const serialNo of Object.keys(certs)) {
-          stmt.run(serialNo, JSON.stringify(certs[serialNo]))
-       }
-       console.log("certificates.json migrated successfully.")
-       fs.renameSync(OLD_CERT_FILE, OLD_CERT_FILE + '.backup')
+  const writeJsonFile = (filePath: string, data: any): void => {
+    try {
+      const tempPath = `${filePath}.tmp`
+      fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8')
+      fs.renameSync(tempPath, filePath)
+    } catch (err) {
+      console.error(`Error writing ${filePath}:`, err)
     }
-  } catch (err) {
-    console.error("Migration error:", err)
+  }
+
+  // Ensure initial data files exist if not present
+  if (!fs.existsSync(DATA_FILE)) {
+    writeJsonFile(DATA_FILE, { projects: [], signatures: [], companies: [], serverSettings: {} })
+  }
+  if (!fs.existsSync(CERT_FILE)) {
+    writeJsonFile(CERT_FILE, {})
   }
 
   const verifyToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -80,13 +65,9 @@ async function startServer() {
     }
   }
 
-  app.get('/api/data', verifyToken, async (req, res) => {
+  app.get('/api/data', async (req, res) => {
     try {
-      const rows = db.prepare('SELECT key, value FROM store').all() as {key: string, value: string}[]
-      const data: any = { projects: [], signatures: [], companies: [], serverSettings: {} }
-      rows.forEach(row => {
-         data[row.key] = JSON.parse(row.value)
-      })
+      const data = readJsonFile(DATA_FILE, { projects: [], signatures: [], companies: [], serverSettings: {} })
       res.json(data)
     } catch (error) {
       console.error("Error reading data:", error)
@@ -97,11 +78,12 @@ async function startServer() {
   app.post('/api/data', verifyToken, async (req, res) => {
     try {
       const { projects, signatures, companies, serverSettings } = req.body
-      const stmt = db.prepare('INSERT OR REPLACE INTO store (key, value) VALUES (?, ?)')
-      if (projects) stmt.run('projects', JSON.stringify(projects))
-      if (signatures) stmt.run('signatures', JSON.stringify(signatures))
-      if (companies) stmt.run('companies', JSON.stringify(companies))
-      if (serverSettings) stmt.run('serverSettings', JSON.stringify(serverSettings))
+      const current = readJsonFile<any>(DATA_FILE, { projects: [], signatures: [], companies: [], serverSettings: {} })
+      if (projects !== undefined) current.projects = projects
+      if (signatures !== undefined) current.signatures = signatures
+      if (companies !== undefined) current.companies = companies
+      if (serverSettings !== undefined) current.serverSettings = serverSettings
+      writeJsonFile(DATA_FILE, current)
       res.json({ success: true })
     } catch (error) {
       console.error("Error writing data:", error)
@@ -111,7 +93,9 @@ async function startServer() {
 
   app.post('/api/login', (req, res) => {
     const { password } = req.body
-    if (password === "159357Vp!!") {
+    const data = readJsonFile<any>(DATA_FILE, { serverSettings: {} })
+    const validPassword = data?.serverSettings?.adminPassword || "159357Vp!!"
+    if (password === validPassword) {
       const token = jwt.sign({ user: "admin" }, JWT_SECRET, { expiresIn: "24h" })
       res.json({ success: true, token })
     } else {
@@ -119,30 +103,51 @@ async function startServer() {
     }
   })
 
+  app.post('/api/change-password', verifyToken, (req, res) => {
+    try {
+      const { newPassword } = req.body
+      if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length === 0) {
+        return res.status(400).json({ success: false, error: "Lütfen geçerli bir şifre girin." })
+      }
+      const data = readJsonFile<any>(DATA_FILE, { projects: [], signatures: [], companies: [], serverSettings: {} })
+      if (!data.serverSettings) data.serverSettings = {}
+      data.serverSettings.adminPassword = newPassword.trim()
+      writeJsonFile(DATA_FILE, data)
+      res.json({ success: true, message: "Şifre başarıyla güncellendi!" })
+    } catch (error) {
+      console.error("Error changing password:", error)
+      res.status(500).json({ success: false, error: "Şifre değiştirilirken hata oluştu." })
+    }
+  })
+
   app.get('/api/verify/:id', async (req, res) => {
     try {
-      const cert = db.prepare('SELECT record FROM certificates WHERE serialNo = ?').get(req.params.id) as {record: string} | undefined
-      if (cert && cert.record) {
-         res.json(JSON.parse(cert.record))
+      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
+      const record = certs[req.params.id]
+      if (record) {
+        res.json(record)
       } else {
-         res.status(404).json({ error: "Certificate not found" })
+        res.status(404).json({ error: "Certificate not found" })
       }
     } catch (err) {
       res.status(500).json({ error: "Database error" })
     }
   })
 
-  app.post('/api/issue', verifyToken, async (req, res) => {
+  app.post('/api/issue', async (req, res) => {
     try {
       const records = req.body
-      const stmt = db.prepare('INSERT OR REPLACE INTO certificates (serialNo, record) VALUES (?, ?)')
+      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
       if (Array.isArray(records)) {
-         for (const r of records) {
-            stmt.run(r.serialNo, JSON.stringify(r))
-         }
-      } else {
-         stmt.run(records.serialNo, JSON.stringify(records))
+        for (const r of records) {
+          if (r && r.serialNo) {
+            certs[r.serialNo] = r
+          }
+        }
+      } else if (records && records.serialNo) {
+        certs[records.serialNo] = records
       }
+      writeJsonFile(CERT_FILE, certs)
       res.json({ success: true })
     } catch (e) {
       console.error(e)
