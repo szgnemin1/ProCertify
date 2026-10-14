@@ -84,7 +84,7 @@ type ExportMode = 'single' | 'separate';
 
 const DEFAULT_WIDTH = 2000;
 const DEFAULT_HEIGHT = 1414;
-const APP_VERSION = "v1.7.2"; 
+const APP_VERSION = "v1.7.3"; 
 const GITHUB_URL = "https://github.com/szgnemin1/ProCertify";
 
 const createNewProject = (name: string): CertificateProject => {
@@ -94,6 +94,7 @@ const createNewProject = (name: string): CertificateProject => {
     width: DEFAULT_WIDTH,
     height: DEFAULT_HEIGHT,
     createdAt: Date.now(),
+    isActive: true,
     filenamePattern: 'Sertifika-{Ad Soyad}', 
     front: {
       id: `front-${Date.now()}`,
@@ -215,13 +216,25 @@ const App = () => {
   const [exportMode, setExportMode] = useState<ExportMode>('single');
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [projectStatusFilter, setProjectStatusFilter] = useState<'all' | 'active' | 'passive'>('all');
 
-  // Initialize selectedFillProjectIds if empty and active project exists
+  // Initialize selectedFillProjectIds: only include active projects (isActive !== false)
   useEffect(() => {
-    if (activeProjectId && selectedFillProjectIds.length === 0) {
-        setSelectedFillProjectIds([activeProjectId]);
+    const activeProjects = projects.filter(p => p.isActive !== false);
+    if (activeProjects.length > 0) {
+      const valid = selectedFillProjectIds.filter(id => activeProjects.some(p => p.id === id));
+      if (valid.length === 0) {
+        const defaultPick = activeProjects.find(p => p.id === activeProjectId) || activeProjects[0];
+        setSelectedFillProjectIds([defaultPick.id]);
+      } else if (valid.length !== selectedFillProjectIds.length) {
+        setSelectedFillProjectIds(valid);
+      }
+    } else {
+      if (selectedFillProjectIds.length > 0) {
+        setSelectedFillProjectIds([]);
+      }
     }
-  }, [activeProjectId]);
+  }, [projects, activeProjectId]);
 
   const activeProject = projects.find(p => p.id === activeProjectId);
 
@@ -703,9 +716,23 @@ const App = () => {
           ...JSON.parse(JSON.stringify(projectToClone)),
           id: Date.now().toString(),
           name: `${projectToClone.name} (Kopya)`,
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          isActive: true
       };
       setProjects(prev => [...prev, newProject]);
+  };
+
+  const handleToggleProjectActive = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setProjects(prev => prev.map(p => {
+      if (p.id === id) {
+        const nextActive = p.isActive === false ? true : false;
+        return { ...p, isActive: nextActive };
+      }
+      return p;
+    }));
+    // If the project is set to passive, remove it from fill selections immediately
+    setSelectedFillProjectIds(prev => prev.filter(pid => pid !== id));
   };
 
   const handleDeleteProject = (id: string, e?: React.MouseEvent) => {
@@ -2052,26 +2079,131 @@ const App = () => {
                             <button onClick={handleCreateProject} className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-bold transition shadow-lg shadow-amber-900/20 active:scale-95 transform"><Plus size={18} /> Yeni Proje</button>
                         </div>
                     </div>
+                    {/* Filter Tabs & Info */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-6 bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs text-slate-400 font-medium mr-1">Filtre:</span>
+                            <button
+                                type="button"
+                                onClick={() => setProjectStatusFilter('all')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${projectStatusFilter === 'all' ? 'bg-amber-500 text-slate-900 shadow-sm' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}
+                            >
+                                Tümü ({projects.length})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setProjectStatusFilter('active')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${projectStatusFilter === 'active' ? 'bg-emerald-500 text-slate-900 shadow-sm' : 'bg-slate-800 text-slate-400 hover:text-emerald-400 border border-slate-700'}`}
+                            >
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+                                Aktif ({projects.filter(p => p.isActive !== false).length})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setProjectStatusFilter('passive')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${projectStatusFilter === 'passive' ? 'bg-slate-600 text-white shadow-sm' : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'}`}
+                            >
+                                <EyeOff size={13} />
+                                Pasif ({projects.filter(p => p.isActive === false).length})
+                            </button>
+                        </div>
+                        <div className="text-xs text-slate-400 flex items-center gap-1.5">
+                            <span className="text-amber-400">💡</span> 
+                            <span><strong className="text-slate-200">Pasife alınan</strong> projeler silinmez; yalnızca sertifika doldurma listesinde gizlenir.</span>
+                        </div>
+                    </div>
+
+                    {/* Project Cards Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {projects.map(p => (
-                            <div key={p.id} onClick={() => { setActiveProjectId(p.id); setCurrentView('template'); }} className={`bg-slate-800 border-2 rounded-xl p-5 cursor-pointer transition group hover:shadow-xl hover:-translate-y-1 relative overflow-hidden ${activeProjectId === p.id ? 'border-amber-500 ring-2 ring-amber-500/20' : 'border-slate-700 hover:border-slate-500'}`}>
-                                <div className="h-40 bg-slate-900/50 rounded-lg mb-4 flex items-center justify-center overflow-hidden relative">
-                                    {p.front.bgUrl ? <img src={p.front.bgUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition duration-500" /> : <FileText size={40} className="text-slate-700" />}
-                                    <div className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded text-[10px] text-white backdrop-blur">Ön Yüz</div>
-                                </div>
-                                <div className="flex justify-between items-start">
-                                    <div className="flex-1 min-w-0 pr-2">
-                                        <h3 className="font-bold text-lg text-slate-100 group-hover:text-amber-500 transition truncate">{p.name}</h3>
-                                        <p className="text-xs text-slate-500 mt-1">{new Date(p.createdAt).toLocaleDateString()}</p>
-                                    </div>
-                                    <div className="flex flex-col gap-1">
-                                        <button onClick={(e) => handleDuplicateProject(p.id, e)} className="p-2 text-slate-500 hover:text-blue-500 hover:bg-blue-500/10 rounded-full transition shrink-0"><Copy size={18} /></button>
-                                        <button onClick={(e) => handleDeleteProject(p.id, e)} className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition shrink-0"><Trash2 size={18} /></button>
-                                    </div>
-                                </div>
-                                {activeProjectId === p.id && <div className="absolute top-0 right-0 bg-amber-500 text-black text-[10px] font-bold px-2 py-1 rounded-bl-lg shadow-sm">AKTİF</div>}
+                        {projects.filter(p => {
+                            if (projectStatusFilter === 'active') return p.isActive !== false;
+                            if (projectStatusFilter === 'passive') return p.isActive === false;
+                            return true;
+                        }).length === 0 ? (
+                            <div className="col-span-full py-16 text-center bg-slate-800/40 rounded-2xl border border-slate-700 border-dashed">
+                                <FolderOpen size={40} className="mx-auto text-slate-600 mb-3" />
+                                <p className="text-slate-300 font-medium">Bu filtreye ait proje bulunamadı.</p>
+                                <p className="text-xs text-slate-500 mt-1">Filtreyi 'Tümü' olarak değiştirin veya yeni bir proje oluşturun.</p>
                             </div>
-                        ))}
+                        ) : (
+                          projects.filter(p => {
+                            if (projectStatusFilter === 'active') return p.isActive !== false;
+                            if (projectStatusFilter === 'passive') return p.isActive === false;
+                            return true;
+                          }).map(p => {
+                            const isProjectActive = p.isActive !== false;
+                            return (
+                             <div 
+                                key={p.id} 
+                                onClick={() => { setActiveProjectId(p.id); setCurrentView('template'); }} 
+                                className={`bg-slate-800 border-2 rounded-xl p-5 cursor-pointer transition group hover:shadow-xl hover:-translate-y-1 relative overflow-hidden flex flex-col justify-between ${!isProjectActive ? 'opacity-85 border-slate-700 hover:border-slate-600 bg-slate-800/70' : (activeProjectId === p.id ? 'border-amber-500 ring-2 ring-amber-500/20' : 'border-slate-700 hover:border-slate-500')}`}
+                             >
+                                <div>
+                                    <div className="h-40 bg-slate-900/50 rounded-lg mb-4 flex items-center justify-center overflow-hidden relative">
+                                        {p.front.bgUrl ? (
+                                          <img src={p.front.bgUrl} className={`w-full h-full object-cover transition duration-500 ${!isProjectActive ? 'opacity-40 grayscale group-hover:grayscale-0 group-hover:opacity-80' : 'opacity-60 group-hover:opacity-100'}`} />
+                                        ) : (
+                                          <FileText size={40} className="text-slate-700" />
+                                        )}
+                                        <div className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded text-[10px] text-white backdrop-blur">Ön Yüz</div>
+                                        
+                                        {/* Status Tag on Image */}
+                                        <div className="absolute top-2 left-2">
+                                          {isProjectActive ? (
+                                            <span className="bg-emerald-950/85 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 backdrop-blur shadow-sm">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> AKTİF
+                                            </span>
+                                          ) : (
+                                            <span className="bg-slate-900/90 border border-slate-600 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 backdrop-blur shadow-sm">
+                                              <EyeOff size={11} className="text-amber-400" /> PASİF (GİZLİ)
+                                            </span>
+                                          )}
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex-1 min-w-0 pr-2">
+                                            <h3 className={`font-bold text-lg transition truncate ${!isProjectActive ? 'text-slate-300 group-hover:text-amber-400' : 'text-slate-100 group-hover:text-amber-500'}`}>{p.name}</h3>
+                                            <p className="text-xs text-slate-500 mt-1">{new Date(p.createdAt).toLocaleDateString()}</p>
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <button 
+                                              type="button"
+                                              onClick={(e) => handleToggleProjectActive(p.id, e)} 
+                                              className={`p-2 rounded-full transition shrink-0 ${isProjectActive ? 'text-slate-400 hover:text-amber-400 hover:bg-amber-500/10' : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10'}`}
+                                              title={isProjectActive ? "Projeyi Pasife Al (Sertifika listesinde gizle)" : "Projeyi Aktif Et (Sertifika listesinde göster)"}
+                                            >
+                                              {isProjectActive ? <EyeOff size={18} /> : <Eye size={18} />}
+                                            </button>
+                                            <button onClick={(e) => handleDuplicateProject(p.id, e)} className="p-2 text-slate-500 hover:text-blue-500 hover:bg-blue-500/10 rounded-full transition shrink-0" title="Kopyasını Oluştur"><Copy size={18} /></button>
+                                            <button onClick={(e) => handleDeleteProject(p.id, e)} className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition shrink-0" title="Projeyi Sil"><Trash2 size={18} /></button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Active / Passive Status Toggle Button */}
+                                <div className="mt-4 pt-3 border-t border-slate-700/60 flex items-center justify-between text-xs">
+                                    <span className="text-[11px] text-slate-400">Sertifika Listesi:</span>
+                                    <button 
+                                        type="button"
+                                        onClick={(e) => handleToggleProjectActive(p.id, e)}
+                                        className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition flex items-center gap-1.5 border ${
+                                          isProjectActive 
+                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20' 
+                                            : 'bg-slate-700/60 text-slate-300 border-slate-600 hover:bg-slate-700 hover:text-white'
+                                        }`}
+                                        title={isProjectActive ? "Tıklayarak pasife alın (sertifika listesinde gizlenir)" : "Tıklayarak aktif edin (sertifika listesinde görünür)"}
+                                    >
+                                        {isProjectActive ? (
+                                            <><Check size={12} className="text-emerald-400" /> Listede Görünür</>
+                                        ) : (
+                                            <><EyeOff size={12} className="text-amber-400" /> Pasif (Gizlendi)</>
+                                        )}
+                                    </button>
+                                </div>
+                             </div>
+                            );
+                          })
+                        )}
                     </div>
                 </div>
              </div>
@@ -2090,6 +2222,26 @@ const App = () => {
                          <Edit2 size={14} className="text-slate-500 opacity-0 group-hover:opacity-100 transition" />
                      </div>
                  )}
+                 {/* Status Indicator */}
+                 <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-slate-700/60 text-xs">
+                    <span className="text-[11px] text-slate-400">Sertifika Listesi:</span>
+                    <button
+                       type="button"
+                       onClick={(e) => handleToggleProjectActive(activeProject.id, e)}
+                       className={`px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 transition border ${
+                         activeProject.isActive !== false
+                           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                           : 'bg-slate-700 text-slate-300 border-slate-600 hover:bg-slate-600'
+                       }`}
+                       title={activeProject.isActive !== false ? "Pasife alarak sertifika listesinde gizleyin" : "Aktif ederek sertifika listesinde gösterin"}
+                    >
+                       {activeProject.isActive !== false ? (
+                          <><Check size={11} className="text-emerald-400" /> Aktif (Görünür)</>
+                       ) : (
+                          <><EyeOff size={11} className="text-amber-400" /> Pasif (Gizli)</>
+                       )}
+                    </button>
+                 </div>
                </div>
                
                <div className="p-4 space-y-6 overflow-y-auto custom-scrollbar">
@@ -2651,10 +2803,14 @@ const App = () => {
                     <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sertifikalar</h2>
                   </div>
                   <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar min-w-[192px]">
-                     {projects.length === 0 ? (
-                       <div className="text-[10px] text-slate-600 text-center py-4 italic">Proje bulunamadı.</div>
+                     {projects.filter(p => p.isActive !== false).length === 0 ? (
+                       <div className="text-[11px] text-slate-500 text-center py-8 px-2 space-y-2">
+                          <EyeOff size={22} className="mx-auto text-slate-600" />
+                          <p className="font-semibold text-slate-400">Aktif sertifika yok</p>
+                          <p className="text-[10px] text-slate-500 leading-normal">Tüm projeler pasife alınmış. Projeler menüsünden şablonları aktif edebilirsiniz.</p>
+                       </div>
                      ) : (
-                       projects.map(p => {
+                       projects.filter(p => p.isActive !== false).map(p => {
                           const isSelected = selectedFillProjectIds.includes(p.id);
                           return (
                               <div 
@@ -2675,7 +2831,7 @@ const App = () => {
                                   </div>
                               </div>
                           )
-         })
+                       })
                      )}
                   </div>
               </div>

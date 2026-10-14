@@ -69,6 +69,7 @@ export interface CertificateProject {
   selectedBackId?: string;  
   createdAt: number;
   filenamePattern?: string; 
+  isActive?: boolean; // When false, project is inactive and hidden from the certificate issuance list
 }
 
 export interface Company {
