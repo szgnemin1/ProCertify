@@ -14,6 +14,11 @@ async function startServer() {
   
   const DATA_FILE = path.join(process.cwd(), 'data.json')
   const CERT_FILE = path.join(process.cwd(), 'certificates.json')
+  const CERTS_DIR = path.join(process.cwd(), 'storage', 'certs')
+
+  if (!fs.existsSync(CERTS_DIR)) {
+    try { fs.mkdirSync(CERTS_DIR, { recursive: true }) } catch (e) { /* ignore */ }
+  }
   
   const isProduction = process.env.NODE_ENV === "production"
 
@@ -120,6 +125,37 @@ async function startServer() {
     }
   })
 
+  const saveCertImageIfBase64 = (record: any) => {
+    if (!record || !record.serialNo || !record.image) return
+    const imgStr = record.image
+    if (typeof imgStr === 'string' && imgStr.startsWith('data:image/')) {
+      try {
+        const safeSerial = record.serialNo.replace(/[^a-zA-Z0-9_\-]/g, '')
+        const isPng = imgStr.startsWith('data:image/png')
+        const ext = isPng ? 'png' : 'jpg'
+        const base64Data = imgStr.replace(/^data:image\/\w+;base64,/, '')
+        const filePath = path.join(CERTS_DIR, `${safeSerial}.${ext}`)
+        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'))
+        record.image = `/api/cert-image/${safeSerial}`
+      } catch (err) {
+        console.error("Error offloading certificate image to disk:", err)
+      }
+    }
+  }
+
+  app.get('/api/cert-image/:id', (req, res) => {
+    const safeSerial = req.params.id.replace(/[^a-zA-Z0-9_\-]/g, '')
+    const jpgPath = path.join(CERTS_DIR, `${safeSerial}.jpg`)
+    const pngPath = path.join(CERTS_DIR, `${safeSerial}.png`)
+    const targetPath = fs.existsSync(jpgPath) ? jpgPath : (fs.existsSync(pngPath) ? pngPath : null)
+    if (targetPath) {
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      res.sendFile(targetPath)
+    } else {
+      res.status(404).send('Sertifika görseli bulunamadı.')
+    }
+  })
+
   app.get('/api/verify/:id', async (req, res) => {
     try {
       const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
@@ -141,10 +177,12 @@ async function startServer() {
       if (Array.isArray(records)) {
         for (const r of records) {
           if (r && r.serialNo) {
+            saveCertImageIfBase64(r)
             certs[r.serialNo] = r
           }
         }
       } else if (records && records.serialNo) {
+        saveCertImageIfBase64(records)
         certs[records.serialNo] = records
       }
       writeJsonFile(CERT_FILE, certs)
