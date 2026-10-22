@@ -375,8 +375,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 left: el.x,
                 top: el.y,
                 width: el.width,
-                height: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) ? 'auto' : el.height,
-                minHeight: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) ? undefined : el.height,
+                height: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN || el.type === ElementType.DATE) ? 'auto' : el.height,
+                minHeight: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN || el.type === ElementType.DATE) ? undefined : el.height,
                 transform: 'translate(0, 0)', 
                 alignItems: el.textAlign === 'left' ? 'flex-start' : (el.textAlign === 'right' ? 'flex-end' : 'center')
             }}
@@ -408,8 +408,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 </>
             )}
 
-            {/* Content Rendering: TEXT, DROPDOWN, COMPANY, and TCKN */}
-            {(el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) && (
+            {/* Content Rendering: TEXT, DROPDOWN, COMPANY, TCKN, and DATE */}
+            {(el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN || el.type === ElementType.DATE) && (
                 <div
                 style={{
                     fontSize: `${el.fontSize}px`,
@@ -446,8 +446,15 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                         TC Kimlik No (Sansürlü)
                     </div>
                 )}
+
+                {/* Visual cue for DATE in Edit Mode */}
+                {!readOnly && el.type === ElementType.DATE && (
+                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] bg-amber-500 text-slate-950 font-bold px-2 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition">
+                        Tarih Alanı
+                    </div>
+                )}
                 
-                {el.content ? el.content : (readOnly ? '' : (el.type === ElementType.DROPDOWN ? '{Seçenek}' : (el.type === ElementType.COMPANY ? '{Firma}' : (el.type === ElementType.TCKN ? '12*******01' : '{Metin}'))))}
+                {el.content ? el.content : (readOnly ? '' : (el.type === ElementType.DROPDOWN ? '{Seçenek}' : (el.type === ElementType.COMPANY ? '{Firma}' : (el.type === ElementType.TCKN ? '12*******01' : (el.type === ElementType.DATE ? '{Tarih}' : '{Metin}')))))}
                 </div>
             )}
 

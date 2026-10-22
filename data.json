@@ -2,5 +2,15 @@
   "projects": [],
   "signatures": [],
   "companies": [],
-  "serverSettings": {}
+  "serverSettings": {},
+  "users": [
+    {
+      "id": "usr-1792673019850-j9wvy",
+      "username": "uzman_ahmet",
+      "password": "Password123!",
+      "name": "Ahmet Demir (ISG Uzmani)",
+      "role": "user",
+      "createdAt": 1792673019850
+    }
+  ]
 }
