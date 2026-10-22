@@ -155,6 +155,141 @@ async function startServer() {
     }
   })
 
+  // --- SERVER FOLDER & STORAGE MANAGEMENT ---
+  const getServerRootPath = (): string => {
+    const data = readJsonFile<any>(DATA_FILE, { serverSettings: {} })
+    const configuredPath = data?.serverSettings?.rootPath
+    if (configuredPath && typeof configuredPath === 'string' && configuredPath.trim().length > 0) {
+      const resolved = path.resolve(configuredPath.trim())
+      if (!fs.existsSync(resolved)) {
+        try { fs.mkdirSync(resolved, { recursive: true }) } catch (e) { /* ignore */ }
+      }
+      return resolved
+    }
+    const defaultArchive = path.join(process.cwd(), 'archive')
+    if (!fs.existsSync(defaultArchive)) {
+      try { fs.mkdirSync(defaultArchive, { recursive: true }) } catch (e) { /* ignore */ }
+    }
+    return defaultArchive
+  }
+
+  const sanitizePath = (name: string): string => {
+    return name.replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ\-\. _]/g, '_')
+  }
+
+  const isSafeSubPath = (baseDir: string, targetPath: string): boolean => {
+    const resolvedBase = path.resolve(baseDir)
+    const resolvedTarget = path.resolve(targetPath)
+    return resolvedTarget === resolvedBase || (resolvedTarget.startsWith(resolvedBase + path.sep) && !resolvedTarget.includes('..'))
+  }
+
+  app.get('/api/server-folders/available-roots', verifyToken, async (req, res) => {
+    try {
+      const rootPath = getServerRootPath()
+      res.json({ rootPath, exists: fs.existsSync(rootPath) })
+    } catch (err: any) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+
+  app.get('/api/server-folders/browse', verifyToken, async (req, res) => {
+    try {
+      const reqDir = (req.query.dir as string) || ''
+      const rootPath = getServerRootPath()
+      const targetPath = path.resolve(rootPath, reqDir)
+
+      if (!isSafeSubPath(rootPath, targetPath)) {
+        return res.status(403).json({ error: "Geçersiz veya yetkisiz dizin yolu." })
+      }
+
+      if (!fs.existsSync(targetPath)) {
+        return res.json({ folders: [] })
+      }
+
+      const items = await fs.promises.readdir(targetPath, { withFileTypes: true })
+      const folders = items.filter(item => item.isDirectory()).map(item => item.name)
+      res.json({ folders, currentPath: path.relative(rootPath, targetPath) })
+    } catch (error: any) {
+      console.error("Browse error:", error)
+      res.status(500).json({ error: error.message })
+    }
+  })
+
+  app.post('/api/server-folders/create', verifyToken, async (req, res) => {
+    try {
+      const { targetDir, newFolderName } = req.body
+      if (!newFolderName || typeof newFolderName !== 'string' || !newFolderName.trim()) {
+        return res.status(400).json({ error: "Klasör ismi boş olamaz." })
+      }
+
+      const rootPath = getServerRootPath()
+      const sanitized = sanitizePath(newFolderName.trim())
+      const targetDirResolved = path.resolve(rootPath, targetDir || '')
+
+      if (!isSafeSubPath(rootPath, targetDirResolved)) {
+        return res.status(403).json({ error: "Yetkisiz dizin yolu." })
+      }
+
+      const fullNewFolderPath = path.join(targetDirResolved, sanitized)
+      if (!isSafeSubPath(rootPath, fullNewFolderPath)) {
+        return res.status(403).json({ error: "Geçersiz klasör konumu." })
+      }
+
+      if (fs.existsSync(fullNewFolderPath)) {
+        return res.status(400).json({ error: "Bu isimde bir klasör zaten mevcut." })
+      }
+
+      await fs.promises.mkdir(fullNewFolderPath, { recursive: true })
+      res.json({ success: true, folderName: sanitized })
+    } catch (error: any) {
+      console.error("Folder create error:", error)
+      res.status(500).json({ error: error.message })
+    }
+  })
+
+  app.post('/api/server-folders/save-file', verifyToken, async (req, res) => {
+    try {
+      const { targetDir, filename, fileBase64 } = req.body
+      if (!filename || !fileBase64) {
+        return res.status(400).json({ error: "Dosya adı ve içeriği gereklidir." })
+      }
+
+      const rootPath = getServerRootPath()
+      const safeFilename = sanitizePath(filename)
+      const targetDirResolved = path.resolve(rootPath, targetDir || '')
+
+      if (!isSafeSubPath(rootPath, targetDirResolved)) {
+        return res.status(403).json({ error: "Yetkisiz dizin yolu." })
+      }
+
+      if (!fs.existsSync(targetDirResolved)) {
+        await fs.promises.mkdir(targetDirResolved, { recursive: true })
+      }
+
+      const base64Data = fileBase64.replace(/^data:(.*,)?/, "")
+      const buffer = Buffer.from(base64Data, 'base64')
+
+      let finalFilename = safeFilename
+      let finalPath = path.join(targetDirResolved, finalFilename)
+      let counter = 1
+      const extMatch = safeFilename.match(/(\.[^.]+)$/)
+      const ext = extMatch ? extMatch[1] : ''
+      const baseName = extMatch ? safeFilename.substring(0, safeFilename.length - ext.length) : safeFilename
+
+      while (fs.existsSync(finalPath)) {
+        finalFilename = `${baseName}_${counter}${ext}`
+        finalPath = path.join(targetDirResolved, finalFilename)
+        counter++
+      }
+
+      await fs.promises.writeFile(finalPath, buffer)
+      res.json({ success: true, savedPath: finalPath, filename: finalFilename })
+    } catch (error: any) {
+      console.error("File save error:", error)
+      res.status(500).json({ error: error.message })
+    }
+  })
+
   app.post('/api/update-app', verifyToken, (req, res) => {
     console.log("GitHub güncelleme tetiklendi...")
     const cmd = "git pull && npm run build"

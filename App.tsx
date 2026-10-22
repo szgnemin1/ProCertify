@@ -72,6 +72,7 @@ import {
   SavedSignature, 
   CertificateProject, 
   CertificateSide,
+  BackgroundVariant,
   Company 
 } from './types';
 import { TEMPLATES, FONTS, FONT_WEIGHTS } from './constants';

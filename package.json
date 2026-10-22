@@ -14,7 +14,7 @@
     "url": "https://github.com/szgnemin1/ProCertify.git"
   },
   "scripts": {
-    "dev": "tsx watch server.ts",
+    "dev": "tsx server.ts",
     "start": "node dist/server.cjs",
     "vps:dev": "vite --host 0.0.0.0 --port 5555",
     "vps:build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
@@ -23,6 +23,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/genai": "^2.30.0",
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
     "express": "^4.19.2",
