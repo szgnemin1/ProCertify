@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sertifika Doğrulama Sistemi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white max-w-2xl w-full rounded-2xl shadow-xl overflow-hidden border border-slate-100">
+        <!-- Header -->
+        <div id="main-header" class="bg-slate-600 p-6 text-center transition-colors duration-500">
+            <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg" id="icon-container">
+                <svg id="status-icon" class="w-8 h-8 text-slate-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"></path>
+                </svg>
+            </div>
+            <h1 id="header-title" class="text-2xl font-bold text-white">Sorgulanıyor...</h1>
+            <p id="header-subtitle" class="text-slate-100 text-sm mt-1 opacity-90">Sertifika bilgileri kontrol ediliyor</p>
+        </div>
+
+        <!-- Content -->
+        <div class="p-6 space-y-4" id="cert-details">
+            <div class="text-center py-8 text-slate-500 text-sm flex flex-col items-center">
+                <svg class="animate-spin h-8 w-8 text-slate-400 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Lütfen bekleyiniz...
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="bg-slate-50 p-4 text-center border-t border-slate-100 flex items-center justify-center gap-2">
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+            <p class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">ProCertify Doğrulama Altyapısı</p>
+        </div>
+    </div>
+
+    <script>
+        // Use URL query parameters to get data. e.g. ?id=PRC-12345
+        window.onload = async function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const container = document.getElementById('cert-details');
+            const mainHeader = document.getElementById('main-header');
+            const headerTitle = document.getElementById('header-title');
+            const headerSubtitle = document.getElementById('header-subtitle');
+            const statusIcon = document.getElementById('status-icon');
+            
+            let searchStr = decodeURIComponent(window.location.search.substring(1));
+            
+            // Basic HTML escape function to prevent XSS
+            function escapeHtml(unsafe) {
+                return (unsafe || "").toString()
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+            }
+
+            function setSuccessState() {
+                mainHeader.className = "bg-green-600 p-6 text-center transition-colors duration-500";
+                headerTitle.innerText = "Doğrulanmış Sertifika";
+                headerSubtitle.innerText = "Bu belgenin orijinalliği sistem tarafından onaylanmıştır.";
+                statusIcon.className = "w-8 h-8 text-green-600";
+                statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>';
+            }
+
+            function showError(title, message) {
+                mainHeader.className = "bg-red-600 p-6 text-center transition-colors duration-500";
+                headerTitle.innerText = "Geçersiz Belge";
+                headerSubtitle.innerText = "Bu belge sistem tarafından doğrulanamadı.";
+                statusIcon.className = "w-8 h-8 text-red-600";
+                statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>';
+                
+                container.innerHTML = `
+                    <div class="text-center py-6">
+                        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-50 mb-4">
+                            <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </div>
+                        <h2 class="text-lg font-bold text-slate-800">${title}</h2>
+                        <p class="text-sm text-slate-500 mt-2">${message}</p>
+                    </div>
+                `;
+            }
+
+            if (!searchStr) {
+                showError("Gecersiz Kod", "QR kod herhangi bir doğrulama verisi içermiyor.");
+                return;
+            }
+
+            function renderItems(fields) {
+                let htmlContent = '';
+                for (const [key, value] of Object.entries(fields)) {
+                    let safeKey = escapeHtml(key);
+                    const label = safeKey.charAt(0).toUpperCase() + safeKey.slice(1);
+                    const safeValue = escapeHtml(value);
+                    
+                    htmlContent += `
+                        <div class="flex flex-col border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">${label}</span>
+                            <span class="text-sm font-medium text-slate-800">${safeValue}</span>
+                        </div>
+                    `;
+                }
+                container.innerHTML = htmlContent;
+                setSuccessState();
+            }
+
+            // Check if it's an ID-based verification
+            let certId = urlParams.get('id');
+            if (!certId && !searchStr.includes('=') && (searchStr.startsWith('PRC-') || /^[^\s&]{5,20}$/.test(searchStr))) {
+                certId = searchStr;
+            }
+
+            if (certId) {
+                try {
+                    const res = await fetch('/api/verify/' + encodeURIComponent(certId));
+                    if (res.ok) {
+                        const data = await res.json();
+                        
+                        let companyName = data.company || '';
+                        if (!companyName && data.fields) {
+                            for (const [key, value] of Object.entries(data.fields)) {
+                                if (!value || typeof value !== 'string') continue;
+                                const lowerKey = key.toLowerCase();
+                                if (lowerKey.includes('firma') || lowerKey.includes('kurum') || lowerKey.includes('şirket') || lowerKey.includes('sirket') || lowerKey.includes('company')) {
+                                    companyName = value;
+                                    break;
+                                }
+                            }
+                        }
+
+                        let htmlContent = `
+                            <div class="grid grid-cols-1 ${companyName ? 'sm:grid-cols-2' : ''} gap-3 mb-6">
+                                <div class="bg-green-50 rounded-xl p-4 border border-green-100 text-center flex flex-col justify-center shadow-sm">
+                                    <span class="text-[10px] font-bold text-green-600 uppercase tracking-widest block mb-1">Sertifika Numarası</span>
+                                    <div class="text-lg font-mono text-green-800 font-bold tracking-wider">${escapeHtml(data.serialNo)}</div>
+                                </div>
+                                ${companyName ? `
+                                    <div class="bg-blue-50 rounded-xl p-4 border border-blue-100 text-center flex flex-col justify-center shadow-sm">
+                                        <span class="text-[10px] font-bold text-blue-600 uppercase tracking-widest block mb-1">Firma / Kurum Adı</span>
+                                        <div class="text-base font-bold text-blue-900 break-words">${escapeHtml(companyName)}</div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div class="space-y-4 relative">
+                        `;
+                        
+                        if (data.image) {
+                            htmlContent += `
+                                <div class="overflow-hidden rounded-xl border border-slate-200 shadow-md transition hover:shadow-lg bg-slate-50 p-2">
+                                    <a href="${data.image}" target="_blank" title="Yüksek çözünürlükte görüntülemek için tıklayın">
+                                        <img src="${data.image}" alt="Sertifika Görseli" class="w-full h-auto rounded-lg object-contain cursor-pointer hover:scale-[1.01] transition duration-300" />
+                                    </a>
+                                </div>
+                                <p class="text-[11px] text-center text-slate-400 font-medium">Büyük boyutta incelemek için görsele tıklayın.</p>
+                            `;
+                        } else {
+                            // Fallback for older records without stored image
+                            for (const [key, value] of Object.entries(data.fields || {})) {
+                                const lowerKey = key.toLowerCase();
+                                if (lowerKey === 'seri no' || lowerKey === 'seri numarasi' || lowerKey === 'sertifika no') continue;
+                                if (typeof value === 'string' && value.startsWith('data:image/')) continue;
+
+                                let safeKey = escapeHtml(key);
+                                const label = safeKey.charAt(0).toUpperCase() + safeKey.slice(1);
+                                const safeValue = escapeHtml(value);
+                                htmlContent += `
+                                    <div class="flex flex-col border-b border-slate-100 pb-3">
+                                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">${label}</span>
+                                        <span class="text-sm font-medium text-slate-800 leading-snug break-words">${safeValue}</span>
+                                    </div>
+                                `;
+                            }
+                        }
+                        
+                        if (data.projects && Array.isArray(data.projects) && data.projects.length > 0) {
+                            htmlContent += `
+                                <div class="flex flex-col pt-2 border-t border-slate-100 mt-2">
+                                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Geçerli Olduğu Eğitim/Belgeler</span>
+                                    <div class="flex flex-wrap gap-2">
+                                        ${data.projects.map(p => `<span class="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 font-medium">${escapeHtml(p)}</span>`).join('')}
+                                    </div>
+                                </div>
+                            `;
+                        }
+
+                        htmlContent += `</div>`;
+
+                        container.innerHTML = htmlContent;
+                        setSuccessState();
+                        return;
+                    } else {
+                        showError("Sertifika Bulunamadı", "Sistemde böyle bir sertifika kaydı bulunmamaktadır. Seri numarası geçersiz olabilir.");
+                        return;
+                    }
+                } catch (e) {
+                    showError("Bağlantı Hatası", "Sunucu ile iletişim kurulamadı. Lütfen daha sonra tekrar deneyin.");
+                    return;
+                }
+            }
+
+            // Legacy fallback for explicit parameters
+            if (searchStr.includes('=')) {
+                let fields = {};
+                for (const [key, value] of urlParams.entries()) {
+                    let safeKey = key;
+                    if (safeKey.endsWith(':')) safeKey = safeKey.slice(0, -1);
+                    fields[safeKey] = value;
+                }
+                renderItems(fields);
+            } else {
+                // Not standard "x=y" format. It's just a raw string payload.
+                const safePayload = escapeHtml(searchStr).replace(/\\n/g, '<br/>');
+                container.innerHTML = `
+                    <div class="flex flex-col">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">DOĞRULAMA BİLGİSİ</span>
+                        <div class="text-sm font-medium text-slate-800 bg-slate-50 p-4 rounded-lg border border-slate-100 leading-relaxed whitespace-pre-wrap">${safePayload}</div>
+                    </div>
+                `;
+                setSuccessState();
+            }
+        }
+    </script>
+</body>
+</html>
