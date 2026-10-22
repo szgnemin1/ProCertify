@@ -407,6 +407,7 @@ const App = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [tempCompanyInput, setTempCompanyInput] = useState('');
   const [companySearchQuery, setCompanySearchQuery] = useState('');
+  const [selectedDangerClassInput, setSelectedDangerClassInput] = useState<DangerClass>('cok_tehlikeli');
   
   // Settings - Password State
   const [newPassword, setNewPassword] = useState('');
@@ -1262,6 +1263,19 @@ const App = () => {
     setChatOptionSearch('');
   };
 
+  if (!isAuthenticated) {
+    return (
+      <LoginView 
+        onLoginSuccess={(user) => {
+          setSessionUser(user);
+          setCurrentView(user.role === 'admin' ? 'dashboard' : 'fill');
+          fetchCertificatesAndStats();
+        }}
+        getApiUrl={getApiUrl}
+      />
+    );
+  }
+
   if (!isDataLoaded) {
       return (
           <div className="flex items-center justify-center h-screen bg-slate-900 text-white">
@@ -1325,8 +1339,6 @@ const App = () => {
       const newOptions = element.options.filter((_, i) => i !== index);
       updateElement(elementId, { options: newOptions });
   };
-
-  const [selectedDangerClassInput, setSelectedDangerClassInput] = useState<DangerClass>('cok_tehlikeli');
 
   const addCompany = (input: string, defaultDanger: DangerClass = selectedDangerClassInput) => {
       if (!input.trim()) return;
@@ -2092,19 +2104,6 @@ const App = () => {
       return el; 
     });
   };
-
-  if (!isAuthenticated) {
-    return (
-      <LoginView 
-        onLoginSuccess={(user) => {
-          setSessionUser(user);
-          setCurrentView(user.role === 'admin' ? 'dashboard' : 'fill');
-          fetchCertificatesAndStats();
-        }}
-        getApiUrl={getApiUrl}
-      />
-    );
-  }
 
   return (
     <div className="flex flex-col md:flex-row h-[100dvh] bg-slate-900 text-slate-200 overflow-hidden font-sans selection:bg-amber-500/30 w-full relative">
