@@ -6,12 +6,13 @@ import {
   ExternalLink, 
   Calendar, 
   ShieldAlert, 
+  ShieldCheck,
   Clock, 
-  User, 
+  AlertTriangle,
   Award,
-  Filter,
-  CheckCircle2,
-  FileCheck2
+  FileCheck2,
+  Flame,
+  X
 } from 'lucide-react';
 import { Company, IssuedCertificate } from '../types';
 import { 
@@ -112,189 +113,249 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
     });
   }, [companyCertificates, statusFilter, searchTerm]);
 
-  return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-6 space-y-6 custom-scrollbar">
-      {/* Top Bar with Back Button */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold transition"
-        >
-          <ArrowLeft size={16} />
-          <span>Firmalara Dön</span>
-        </button>
-      </div>
+  // Monogram initials
+  const initials = company.shortName 
+    ? company.shortName.substring(0, 2).toUpperCase() 
+    : company.name.substring(0, 2).toUpperCase();
 
-      {/* Company Header Card */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-start gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700/80 flex items-center justify-center text-amber-400 font-black text-2xl shadow-lg shrink-0">
-              {company.shortName ? company.shortName.substring(0, 3).toUpperCase() : company.name.substring(0, 2).toUpperCase()}
+  const validityYearsText = company.dangerClass === 'az_tehlikeli' 
+    ? '3 Yıl' 
+    : company.dangerClass === 'tehlikeli' 
+    ? '2 Yıl' 
+    : '1 Yıl';
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-slate-950 p-3 sm:p-4 space-y-3 custom-scrollbar">
+      {/* Üst Başlık Kartı: Geri Dönüş, Firma Başlığı ve İşlem Butonu */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 sm:p-4 shadow-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Sol: Geri Dön Butonu + Firma Bilgileri */}
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={onBack}
+              title="Firmalar Listesine Dön"
+              className="p-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition shrink-0"
+            >
+              <ArrowLeft size={16} />
+            </button>
+
+            <div className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400 font-bold text-xs shrink-0">
+              {initials}
             </div>
 
-            <div>
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-2xl font-black text-white tracking-tight">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-base sm:text-lg font-black text-white tracking-tight truncate max-w-lg">
                   {company.name}
                 </h1>
-                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${getDangerClassBadgeClass(company.dangerClass)}`}>
-                  {getDangerClassLabel(company.dangerClass)}
+                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded ${getDangerClassBadgeClass(company.dangerClass)}`}>
+                  {company.dangerClass === 'cok_tehlikeli' && <Flame size={10} />}
+                  {company.dangerClass === 'tehlikeli' && <ShieldAlert size={10} />}
+                  {company.dangerClass === 'az_tehlikeli' && <ShieldCheck size={10} />}
+                  <span>{getDangerClassLabel(company.dangerClass)}</span>
                 </span>
               </div>
 
-              <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-slate-400">
+              <div className="flex flex-wrap items-center gap-3 mt-0.5 text-[11px] text-slate-400">
                 {company.shortName && (
-                  <span className="font-mono bg-slate-800/80 px-2 py-0.5 rounded text-slate-300 border border-slate-700/60">
-                    Kısa Kod: {company.shortName}
+                  <span className="font-mono text-amber-300/80 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.2 rounded">
+                    Kod: {company.shortName}
                   </span>
                 )}
-                <span>Geçerlilik Periyodu: <strong className="text-white">{company.dangerClass === 'az_tehlikeli' ? '3 Yıl' : company.dangerClass === 'tehlikeli' ? '2 Yıl' : '1 Yıl'}</strong></span>
+                <span>Geçerlilik: <strong className="text-slate-200">{validityYearsText}</strong></span>
                 <span>Toplam Sertifika: <strong className="text-white">{companyStats.total}</strong></span>
               </div>
             </div>
           </div>
 
+          {/* Sağ: Yeni Sertifika Butonu */}
           <button
             onClick={() => onNavigateToFillWithCompany(company.name)}
-            className="self-start md:self-auto flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 text-xs transition"
+            className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs shadow-md shadow-amber-500/20 transition shrink-0 self-start sm:self-auto"
           >
-            <FileCheck2 size={16} />
-            <span>Bu Firma İçin Sertifika Üret</span>
-          </button>
-        </div>
-
-        {/* Mini Status Breakdown Pills */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-slate-800/80 text-xs">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`p-3 rounded-xl border text-left transition ${
-              statusFilter === 'all' ? 'bg-slate-800 border-blue-500/40 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-800/60'
-            }`}
-          >
-            <div className="text-[10px] uppercase font-bold text-slate-400">Toplam Sertifika</div>
-            <div className="text-xl font-black text-white mt-0.5">{companyStats.total}</div>
-          </button>
-
-          <button
-            onClick={() => setStatusFilter('valid')}
-            className={`p-3 rounded-xl border text-left transition ${
-              statusFilter === 'valid' ? 'bg-emerald-950/40 border-emerald-500/50 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-800/60'
-            }`}
-          >
-            <div className="text-[10px] uppercase font-bold text-emerald-400">Geçerli Olanlar</div>
-            <div className="text-xl font-black text-emerald-400 mt-0.5">{companyStats.valid}</div>
-          </button>
-
-          <button
-            onClick={() => setStatusFilter('expiring')}
-            className={`p-3 rounded-xl border text-left transition ${
-              statusFilter === 'expiring' ? 'bg-amber-950/40 border-amber-500/50 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-800/60'
-            }`}
-          >
-            <div className="text-[10px] uppercase font-bold text-amber-400">Süresi Yaklaşanlar</div>
-            <div className="text-xl font-black text-amber-400 mt-0.5">{companyStats.expiring}</div>
-          </button>
-
-          <button
-            onClick={() => setStatusFilter('expired')}
-            className={`p-3 rounded-xl border text-left transition ${
-              statusFilter === 'expired' ? 'bg-red-950/40 border-red-500/50 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-800/60'
-            }`}
-          >
-            <div className="text-[10px] uppercase font-bold text-red-400">Süresi Dolanlar</div>
-            <div className="text-xl font-black text-red-400 mt-0.5">{companyStats.expired}</div>
+            <FileCheck2 size={14} />
+            <span>Bu Firma İçin Sertifika Hazırla</span>
           </button>
         </div>
       </div>
 
-      {/* Search & Filters */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="TC Kimlik No veya İsim ile Kişi Ara..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <span>Filtrelenen:</span>
-            <strong className="text-white">{filteredCertificates.length} Kişi</strong>
-          </div>
+      {/* Kompakt Durum Filtreleri ve Arama Çubuğu */}
+      <div className="bg-slate-900/90 border border-slate-800/90 px-3 py-2 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+        {/* Arama Kutusu */}
+        <div className="relative w-full sm:w-64">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="İsim, TC No veya Seri No Ara..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-slate-950 border border-slate-700/80 rounded-lg pl-8 pr-7 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+            >
+              <X size={13} />
+            </button>
+          )}
         </div>
 
-        {/* Certificate List Table */}
+        {/* Durum Filtre Butonları */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
+              statusFilter === 'all'
+                ? 'bg-amber-500 text-slate-950'
+                : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            Tümü ({companyStats.total})
+          </button>
+
+          <button
+            onClick={() => setStatusFilter('valid')}
+            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
+              statusFilter === 'valid'
+                ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
+                : 'bg-slate-800/70 text-slate-400 hover:text-emerald-300'
+            }`}
+          >
+            Geçerli ({companyStats.valid})
+          </button>
+
+          <button
+            onClick={() => setStatusFilter('expiring')}
+            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
+              statusFilter === 'expiring'
+                ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50'
+                : 'bg-slate-800/70 text-slate-400 hover:text-amber-300'
+            }`}
+          >
+            Yaklaşanlar ({companyStats.expiring})
+          </button>
+
+          <button
+            onClick={() => setStatusFilter('expired')}
+            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
+              statusFilter === 'expired'
+                ? 'bg-red-500/30 text-red-300 border border-red-500/50'
+                : 'bg-slate-800/70 text-slate-400 hover:text-red-300'
+            }`}
+          >
+            Süresi Dolanlar ({companyStats.expired})
+          </button>
+
+          <span className="text-[11px] text-slate-400 ml-1 font-mono">
+            {filteredCertificates.length} kayıt
+          </span>
+        </div>
+      </div>
+
+      {/* Kompakt Sertifika Tablosu (Ekrana Tam Sığar, Yatay Kaydırma Yapmaz) */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-md">
         {filteredCertificates.length === 0 ? (
-          <div className="py-16 text-center text-slate-500 text-sm border border-dashed border-slate-800 rounded-xl bg-slate-950/40">
-            {searchTerm.trim() || statusFilter !== 'all' 
-              ? 'Arama kriterlerinize uygun sertifika bulunamadı.' 
-              : 'Bu firma için henüz bir sertifika düzenlenmemiş.'}
+          <div className="py-10 text-center text-slate-500 text-xs p-4">
+            <Award size={28} className="mx-auto mb-2 text-slate-600 stroke-[1.5]" />
+            <div className="font-semibold text-slate-400">
+              {searchTerm.trim() || statusFilter !== 'all' 
+                ? 'Arama kriterlerinize uygun sertifika bulunamadı.' 
+                : 'Bu firma için henüz bir sertifika düzenlenmemiş.'}
+            </div>
+            {(searchTerm.trim() || statusFilter !== 'all') && (
+              <button
+                onClick={() => { setSearchTerm(''); setStatusFilter('all'); }}
+                className="mt-2 text-xs text-amber-400 hover:underline inline-flex items-center gap-1 font-semibold"
+              >
+                Filtreleri Temizle
+              </button>
+            )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="w-full">
+            <table className="w-full text-left border-collapse table-fixed">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
-                  <th className="py-3 px-3">Seri No</th>
-                  <th className="py-3 px-3">Alıcı (Kişi Adı)</th>
-                  <th className="py-3 px-3">TC Kimlik No</th>
-                  <th className="py-3 px-3">Eğitim Tarihi</th>
-                  <th className="py-3 px-3">Geçerlilik Bitiş</th>
-                  <th className="py-3 px-3">Durum</th>
-                  <th className="py-3 px-3 text-right">İşlem</th>
+                <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                  <th className="py-2 px-2.5 w-28 font-mono">Seri No</th>
+                  <th className="py-2 px-2.5">Alıcı (Kişi Adı & Sertifikalar)</th>
+                  <th className="py-2 px-2 w-28 hidden sm:table-cell font-mono">TC Kimlik No</th>
+                  <th className="py-2 px-2 w-24">Eğitim Trh</th>
+                  <th className="py-2 px-2 w-24">Bitiş Trh</th>
+                  <th className="py-2 px-2 w-28">Durum</th>
+                  <th className="py-2 px-2 w-14 text-right">İşlem</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-medium">
+              <tbody className="divide-y divide-slate-800/50 font-medium text-xs">
                 {filteredCertificates.map(cert => {
                   const status = getCertificateStatus(cert.expiryDate);
                   const daysLeft = getDaysRemaining(cert.expiryDate);
                   const badge = getStatusBadge(status, daysLeft);
 
                   return (
-                    <tr key={cert.serialNo} className="hover:bg-slate-800/40 transition group">
-                      <td className="py-3 px-3 font-mono text-slate-300 font-semibold">
+                    <tr key={cert.serialNo} className="hover:bg-slate-800/60 transition-colors duration-100">
+                      {/* Seri No */}
+                      <td className="py-2 px-2.5 font-mono text-slate-300 font-semibold text-[11px] truncate">
                         {cert.serialNo}
                       </td>
-                      <td className="py-3 px-3 font-bold text-white">
-                        <div>{cert.recipientName || 'İsimsiz Alıcı'}</div>
+
+                      {/* Alıcı ve Sertifika Rozetleri */}
+                      <td className="py-2 px-2.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-bold text-white text-xs">
+                            {cert.recipientName || 'İsimsiz Alıcı'}
+                          </span>
+                          {/* Mobil/küçük ekranda TC'yi isim yanına küçük yaz */}
+                          {cert.recipientTc && (
+                            <span className="text-[10px] text-slate-500 font-mono sm:hidden">
+                              ({cert.recipientTc})
+                            </span>
+                          )}
+                        </div>
+
                         {cert.projects && Array.isArray(cert.projects) && cert.projects.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1 font-normal">
+                          <div className="flex flex-wrap gap-1 mt-0.5">
                             {cert.projects.map((p, pIdx) => (
-                              <span key={pIdx} className="text-[10px] bg-slate-800 text-amber-300 px-1.5 py-0.5 rounded border border-slate-700">
+                              <span key={pIdx} className="text-[9px] bg-slate-800/90 text-amber-300/90 px-1.5 py-0.2 rounded border border-slate-700/80">
                                 {p}
                               </span>
                             ))}
                           </div>
                         )}
                       </td>
-                      <td className="py-3 px-3 font-mono text-slate-400">
+
+                      {/* TC Kimlik No */}
+                      <td className="py-2 px-2 font-mono text-slate-400 text-[11px] hidden sm:table-cell truncate">
                         {cert.recipientTc || '-'}
                       </td>
-                      <td className="py-3 px-3 text-slate-300">
+
+                      {/* Eğitim Tarihi */}
+                      <td className="py-2 px-2 text-slate-300 text-[11px] truncate">
                         {cert.trainingDate || (cert.date ? formatDateTR(new Date(cert.date)) : '-')}
                       </td>
-                      <td className="py-3 px-3 text-slate-200 font-semibold">
+
+                      {/* Bitiş Tarihi */}
+                      <td className="py-2 px-2 text-slate-200 font-semibold text-[11px] truncate">
                         {cert.expiryDate ? formatDateTR(new Date(cert.expiryDate)) : '-'}
                       </td>
-                      <td className="py-3 px-3">
-                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${badge.className}`}>
+
+                      {/* Durum */}
+                      <td className="py-2 px-2 truncate">
+                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${badge.className}`}>
                           {badge.label}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-right">
+
+                      {/* Doğrulama Bağlantısı */}
+                      <td className="py-2 px-2 text-right">
                         <a
                           href={`/dogrula?id=${cert.serialNo}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition text-xs font-semibold"
+                          title="Sertifikayı Doğrula"
+                          className="inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:text-amber-400 hover:bg-slate-700/60 transition"
                         >
-                          <ExternalLink size={12} />
-                          <span>Doğrula</span>
+                          <ExternalLink size={14} />
                         </a>
                       </td>
                     </tr>
