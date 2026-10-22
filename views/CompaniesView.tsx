@@ -11,6 +11,20 @@ interface CompaniesViewProps {
   onOpenSettings: () => void;
 }
 
+const turkishToLower = (str: string): string => {
+  if (!str) return '';
+  return str
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'ı')
+    .replace(/Ğ/g, 'ğ')
+    .replace(/Ü/g, 'ü')
+    .replace(/Ş/g, 'ş')
+    .replace(/Ö/g, 'ö')
+    .replace(/Ç/g, 'ç')
+    .toLowerCase()
+    .trim();
+};
+
 export const CompaniesView: React.FC<CompaniesViewProps> = ({
   companies,
   certificates,
@@ -20,17 +34,28 @@ export const CompaniesView: React.FC<CompaniesViewProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Count certificates per company
+  // Count certificates per company (matched by ID, exact name or shortName)
   const certCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const cert of certificates) {
-      if (cert.company) {
-        const k = cert.company.trim().toLowerCase();
-        counts[k] = (counts[k] || 0) + 1;
-      }
+    for (const company of companies) {
+      const compId = company.id;
+      const compNameNorm = turkishToLower(company.name);
+      const compShortNorm = company.shortName ? turkishToLower(company.shortName) : '';
+
+      const matchedCount = certificates.filter(c => {
+        if (c.companyId && c.companyId === compId) return true;
+        if (!c.company) return false;
+        const certCompNorm = turkishToLower(c.company);
+        return certCompNorm === compNameNorm || 
+               (compShortNorm && certCompNorm === compShortNorm) ||
+               certCompNorm.includes(compNameNorm) ||
+               compNameNorm.includes(certCompNorm);
+      }).length;
+
+      counts[company.id] = matchedCount;
     }
     return counts;
-  }, [certificates]);
+  }, [companies, certificates]);
 
   // Alphabetically sorted companies (Turkish locale support)
   const sortedAndFilteredCompanies = useMemo(() => {
@@ -102,7 +127,7 @@ export const CompaniesView: React.FC<CompaniesViewProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sortedAndFilteredCompanies.map((company) => {
-            const count = certCounts[company.name.trim().toLowerCase()] || 0;
+            const count = certCounts[company.id] || 0;
             const badgeClass = getDangerClassBadgeClass(company.dangerClass);
             const dangerLabel = getDangerClassLabel(company.dangerClass);
 

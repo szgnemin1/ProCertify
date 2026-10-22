@@ -30,6 +30,20 @@ interface CompanyDetailViewProps {
   onNavigateToFillWithCompany: (companyName: string) => void;
 }
 
+const turkishToLower = (str: string): string => {
+  if (!str) return '';
+  return str
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'ı')
+    .replace(/Ğ/g, 'ğ')
+    .replace(/Ü/g, 'ü')
+    .replace(/Ş/g, 'ş')
+    .replace(/Ö/g, 'ö')
+    .replace(/Ç/g, 'ç')
+    .toLowerCase()
+    .trim();
+};
+
 export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
   company,
   certificates,
@@ -39,15 +53,20 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'valid' | 'expiring' | 'expired'>('all');
 
-  // Filter certificates strictly for this company
+  // Filter certificates strictly for this company (matched by ID, exact name or shortName)
   const companyCertificates = useMemo(() => {
-    const compNameLower = company.name.trim().toLowerCase();
-    const compShortLower = (company.shortName || '').trim().toLowerCase();
+    const compId = company.id;
+    const compNameNorm = turkishToLower(company.name);
+    const compShortNorm = company.shortName ? turkishToLower(company.shortName) : '';
 
     return certificates.filter(c => {
+      if (c.companyId && c.companyId === compId) return true;
       if (!c.company) return false;
-      const cCompLower = c.company.trim().toLowerCase();
-      return cCompLower === compNameLower || (compShortLower && cCompLower === compShortLower) || c.companyId === company.id;
+      const certCompNorm = turkishToLower(c.company);
+      return certCompNorm === compNameNorm || 
+             (compShortNorm && certCompNorm === compShortNorm) ||
+             certCompNorm.includes(compNameNorm) ||
+             compNameNorm.includes(certCompNorm);
     });
   }, [certificates, company]);
 
@@ -242,7 +261,16 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
                         {cert.serialNo}
                       </td>
                       <td className="py-3 px-3 font-bold text-white">
-                        {cert.recipientName || 'İsimsiz Alıcı'}
+                        <div>{cert.recipientName || 'İsimsiz Alıcı'}</div>
+                        {cert.projects && Array.isArray(cert.projects) && cert.projects.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1 font-normal">
+                            {cert.projects.map((p, pIdx) => (
+                              <span key={pIdx} className="text-[10px] bg-slate-800 text-amber-300 px-1.5 py-0.5 rounded border border-slate-700">
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3 font-mono text-slate-400">
                         {cert.recipientTc || '-'}

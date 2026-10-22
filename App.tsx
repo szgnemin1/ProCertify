@@ -1944,9 +1944,98 @@ const App = () => {
     await new Promise(r => setTimeout(r, 50));
 
     try {
+        // 1. Generate ONE unified bundle serial number (shared across all certificates for this person)
+        const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
+        const bundleSerialNo = `PRC-${baseSerial}`;
+        const activeValues = { 
+            ...fillValues, 
+            'seri no': bundleSerialNo, 
+            'seri numarasi': bundleSerialNo, 
+            'sertifika no': bundleSerialNo 
+        };
+
+        // 2. Resolve Company
+        let companyVal = '';
+        for (const [k, v] of Object.entries(activeValues)) {
+            if (v && typeof v === 'string') {
+                const lk = k.toLowerCase();
+                if (!companyVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket') || lk.includes('company'))) {
+                    companyVal = v;
+                }
+            }
+        }
+
+        // 3. Resolve Training Date
+        const dateCandidates = Object.keys(activeValues).filter(k => {
+            const lk = k.toLowerCase();
+            return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
+        });
+        const resolvedTrKey = selectedTrainingDateKey && activeValues[selectedTrainingDateKey]
+            ? selectedTrainingDateKey
+            : findBestTrainingDateField(dateCandidates);
+        const trDate = (resolvedTrKey && typeof activeValues[resolvedTrKey] === 'string') ? activeValues[resolvedTrKey] : '';
+
+        // 4. Match Company (Turkish-aware)
+        let matchedComp = companies.find(c => 
+            (companyVal && c.id === companyVal) ||
+            (companyVal && turkishToLower(c.name) === turkishToLower(companyVal)) || 
+            (c.shortName && companyVal && turkishToLower(c.shortName) === turkishToLower(companyVal))
+        );
+
+        const dangerClass = matchedComp?.dangerClass || 'cok_tehlikeli';
+        const years = matchedComp?.validityYears || getValidityYears(dangerClass);
+        const { expiryIso } = calculateExpiryDate(trDate, dangerClass, preferSingleDateExpiry);
+
+        // Auto-register company if it doesn't exist yet so it appears in Firmalar
+        if (!matchedComp && companyVal.trim()) {
+            const newComp: Company = {
+                id: Date.now().toString() + '.' + Math.random().toString().slice(2, 8),
+                name: companyVal.trim(),
+                shortName: companyVal.trim().substring(0, 15).toUpperCase().replace(/\s+/g, '_'),
+                dangerClass,
+                validityYears: years,
+                createdAt: Date.now()
+            };
+            matchedComp = newComp;
+            setCompanies(prev => [newComp, ...prev]);
+            try {
+                const token = localStorage.getItem('vps_session_token');
+                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                fetch(getApiUrl('/api/save'), {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ companies: [newComp, ...companies] })
+                }).catch(() => {});
+            } catch (e) {}
+        }
+
+        // 5. Resolve Recipient Name & TC
+        let recipientName = activeValues['ad soyad'] || activeValues['Ad Soyad'] || activeValues['ad_soyad'] || '';
+        if (!recipientName) {
+            for (const [k, v] of Object.entries(activeValues)) {
+                const lk = k.toLowerCase();
+                if (lk.includes('ad') && (lk.includes('soyad') || lk.includes('isim')) && typeof v === 'string') {
+                    recipientName = v;
+                    break;
+                }
+            }
+        }
+
+        let recipientTc = '';
+        for (const [k, v] of Object.entries(activeValues)) {
+            const lk = k.toLowerCase();
+            if ((lk.includes('tc') || lk.includes('tckn') || lk.includes('kimlik')) && typeof v === 'string') {
+                recipientTc = v;
+                break;
+            }
+        }
+
+        const certImages: string[] = [];
+
         if (exportMode === 'single') {
             const firstProj = targetProjects[0];
-            const filename = generateFilename(firstProj.filenamePattern || 'Sertifikalar_Birlestirilmis', fillValues);
+            const filename = generateFilename(firstProj.filenamePattern || 'Sertifikalar_Birlestirilmis', activeValues);
 
             const pdf = new jsPDF({
                 orientation: firstProj.width > firstProj.height ? 'landscape' : 'portrait',
@@ -1956,87 +2045,9 @@ const App = () => {
 
             for (let i = 0; i < targetProjects.length; i++) {
                 const proj = targetProjects[i];
-                
-                const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
-                const serialNo = `PRC-${baseSerial}`;
-                const activeValues = { ...fillValues, 'seri no': serialNo, 'seri numarasi': serialNo, 'sertifika no': serialNo };
-
                 const certImage = await renderProjectToPDF(pdf, proj, i === 0, activeValues);
+                if (certImage) certImages.push(certImage);
 
-                let companyVal = '';
-                for (const [k, v] of Object.entries(activeValues)) {
-                    if (v && typeof v === 'string') {
-                        const lk = k.toLowerCase();
-                        if (!companyVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket') || lk.includes('company'))) {
-                            companyVal = v;
-                        }
-                    }
-                }
-
-                const dateCandidates = Object.keys(activeValues).filter(k => {
-                    const lk = k.toLowerCase();
-                    return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
-                });
-                const resolvedTrKey = selectedTrainingDateKey && activeValues[selectedTrainingDateKey]
-                    ? selectedTrainingDateKey
-                    : findBestTrainingDateField(dateCandidates);
-                const trDate = (resolvedTrKey && typeof activeValues[resolvedTrKey] === 'string') ? activeValues[resolvedTrKey] : '';
-
-                const matchedComp = companies.find(c => 
-                    c.name.toLowerCase() === companyVal.toLowerCase() || 
-                    (c.shortName && c.shortName.toLowerCase() === companyVal.toLowerCase())
-                );
-                const dangerClass = matchedComp?.dangerClass || 'cok_tehlikeli';
-                const years = matchedComp?.validityYears || getValidityYears(dangerClass);
-                const { expiryIso } = calculateExpiryDate(trDate, dangerClass, preferSingleDateExpiry);
-
-                let recipientName = activeValues['ad soyad'] || activeValues['Ad Soyad'] || activeValues['ad_soyad'] || '';
-                if (!recipientName) {
-                    for (const [k, v] of Object.entries(activeValues)) {
-                        const lk = k.toLowerCase();
-                        if (lk.includes('ad') && (lk.includes('soyad') || lk.includes('isim'))) {
-                            recipientName = v;
-                            break;
-                        }
-                    }
-                }
-
-                let recipientTc = '';
-                for (const [k, v] of Object.entries(activeValues)) {
-                    const lk = k.toLowerCase();
-                    if (lk.includes('tc') || lk.includes('tckn') || lk.includes('kimlik')) {
-                        recipientTc = v;
-                        break;
-                    }
-                }
-
-                try {
-                    const token = localStorage.getItem('vps_session_token');
-                    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                    if (token) headers['Authorization'] = `Bearer ${token}`;
-                    await fetch(getApiUrl('/api/issue'), {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({
-                            serialNo,
-                            company: companyVal,
-                            companyId: matchedComp?.id,
-                            dangerClass,
-                            validityYears: years,
-                            trainingDate: trDate,
-                            expiryDate: expiryIso,
-                            recipientName,
-                            recipientTc,
-                            fields: getVerificationPayload(activeValues),
-                            projects: [proj.name],
-                            date: new Date().toISOString(),
-                            image: certImage
-                          })
-                    });
-                } catch (e) {
-                   console.error("Backend issue error", e);
-                }
-                
                 // Important yield for UI responsiveness
                 if (i % 2 === 0) {
                     setProgress(Math.round(((i + 1) / targetProjects.length) * 100));
@@ -2053,11 +2064,6 @@ const App = () => {
             const usedNames = new Set<string>();
 
             for (const proj of targetProjects) {
-                // Generate unique Serial Number for this certificate
-                const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
-                const serialNo = `PRC-${baseSerial}`;
-                const activeValues = { ...fillValues, 'seri no': serialNo, 'seri numarasi': serialNo, 'sertifika no': serialNo };
-
                 // Create a fresh instance for each file to keep memory low
                 const pdf = new jsPDF({
                     orientation: proj.width > proj.height ? 'landscape' : 'portrait',
@@ -2066,80 +2072,8 @@ const App = () => {
                 });
 
                 const certImage = await renderProjectToPDF(pdf, proj, true, activeValues);
+                if (certImage) certImages.push(certImage);
 
-                let companyVal = '';
-                for (const [k, v] of Object.entries(activeValues)) {
-                    if (v && typeof v === 'string') {
-                        const lk = k.toLowerCase();
-                        if (!companyVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket') || lk.includes('company'))) {
-                            companyVal = v;
-                        }
-                    }
-                }
-
-                const dateCandidates = Object.keys(activeValues).filter(k => {
-                    const lk = k.toLowerCase();
-                    return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
-                });
-                const resolvedTrKey = selectedTrainingDateKey && activeValues[selectedTrainingDateKey]
-                    ? selectedTrainingDateKey
-                    : findBestTrainingDateField(dateCandidates);
-                const trDate = (resolvedTrKey && typeof activeValues[resolvedTrKey] === 'string') ? activeValues[resolvedTrKey] : '';
-
-                const matchedComp = companies.find(c => 
-                    c.name.toLowerCase() === companyVal.toLowerCase() || 
-                    (c.shortName && c.shortName.toLowerCase() === companyVal.toLowerCase())
-                );
-                const dangerClass = matchedComp?.dangerClass || 'cok_tehlikeli';
-                const years = matchedComp?.validityYears || getValidityYears(dangerClass);
-                const { expiryIso } = calculateExpiryDate(trDate, dangerClass, preferSingleDateExpiry);
-
-                let recipientName = activeValues['ad soyad'] || activeValues['Ad Soyad'] || activeValues['ad_soyad'] || '';
-                if (!recipientName) {
-                    for (const [k, v] of Object.entries(activeValues)) {
-                        const lk = k.toLowerCase();
-                        if (lk.includes('ad') && (lk.includes('soyad') || lk.includes('isim'))) {
-                            recipientName = v;
-                            break;
-                        }
-                    }
-                }
-
-                let recipientTc = '';
-                for (const [k, v] of Object.entries(activeValues)) {
-                    const lk = k.toLowerCase();
-                    if (lk.includes('tc') || lk.includes('tckn') || lk.includes('kimlik')) {
-                        recipientTc = v;
-                        break;
-                    }
-                }
-
-                try {
-                    const token = localStorage.getItem('vps_session_token');
-                    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                    if (token) headers['Authorization'] = `Bearer ${token}`;
-                    await fetch(getApiUrl('/api/issue'), {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({
-                            serialNo,
-                            company: companyVal,
-                            companyId: matchedComp?.id,
-                            dangerClass,
-                            validityYears: years,
-                            trainingDate: trDate,
-                            expiryDate: expiryIso,
-                            recipientName,
-                            recipientTc,
-                            fields: getVerificationPayload(activeValues),
-                            projects: [proj.name],
-                            date: new Date().toISOString(),
-                            image: certImage
-                          })
-                    });
-                } catch (e) {
-                   console.error("Backend issue error", e);
-                }
                 // Generate base filename
                 let rawName = generateFilename(proj.filenamePattern || `Sertifika-${proj.name}`, activeValues);
                 let baseName = rawName.replace(/\.pdf$/i, '');
@@ -2156,8 +2090,6 @@ const App = () => {
                 usedNames.add(uniqueName);
 
                 const pdfData = pdf.output('arraybuffer');
-                
-                // Add to zip
                 zip.file(uniqueName, pdfData);
                 savedCount++;
                 
@@ -2169,8 +2101,37 @@ const App = () => {
             setProgress(99); // Generating zip
             const zipBlob = await zip.generateAsync({ type: 'blob' });
             await downloadFile(zipBlob, exportFilename, 'application/zip', fileHandle);
+        }
 
-            alert(`${savedCount} adet dosya başarıyla ZIP olarak indirildi!`);
+        // 6. Save ONE unified certificate record for this person (with all projects bundled together)
+        try {
+            const token = localStorage.getItem('vps_session_token');
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            await fetch(getApiUrl('/api/issue'), {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    serialNo: bundleSerialNo,
+                    company: companyVal,
+                    companyId: matchedComp?.id,
+                    dangerClass,
+                    validityYears: years,
+                    trainingDate: trDate,
+                    expiryDate: expiryIso,
+                    recipientName,
+                    recipientTc,
+                    fields: getVerificationPayload(activeValues),
+                    projects: targetProjects.map(p => p.name),
+                    date: new Date().toISOString(),
+                    image: certImages[0] || '',
+                    images: certImages
+                })
+            });
+            // Immediately reload fresh certificates into state so Firmalar & Dashboard reflect them!
+            await fetchCertificatesAndStats();
+        } catch (e) {
+            console.error("Backend issue error", e);
         }
     } catch (e: any) {
         console.error("Export failed", e);
@@ -2218,6 +2179,9 @@ const App = () => {
           if (tab !== 'company-detail') {
             setSelectedCompanyForDetail(null);
           }
+          if (tab === 'companies' || tab === 'company-detail' || tab === 'dashboard') {
+            fetchCertificatesAndStats();
+          }
         }}
         userRole={sessionUser?.role || 'user'}
         userName={sessionUser?.name || 'Kullanıcı'}
@@ -2234,14 +2198,17 @@ const App = () => {
             onNavigateToFill={() => setCurrentView('fill')}
             onNavigateToCompany={(companyName) => {
               const comp = companies.find(c => 
-                c.name.toLowerCase() === companyName.toLowerCase() || 
-                (c.shortName && c.shortName.toLowerCase() === companyName.toLowerCase())
+                c.id === companyName ||
+                turkishToLower(c.name) === turkishToLower(companyName) || 
+                (c.shortName && turkishToLower(c.shortName) === turkishToLower(companyName))
               );
               if (comp) {
                 setSelectedCompanyForDetail(comp);
                 setCurrentView('company-detail');
+                fetchCertificatesAndStats();
               } else {
                 setCurrentView('companies');
+                fetchCertificatesAndStats();
               }
             }}
             getApiUrl={getApiUrl}
@@ -2256,6 +2223,7 @@ const App = () => {
             onSelectCompany={(company) => {
               setSelectedCompanyForDetail(company);
               setCurrentView('company-detail');
+              fetchCertificatesAndStats();
             }}
             isAdmin={isAdmin}
             onOpenSettings={() => setCurrentView('settings')}

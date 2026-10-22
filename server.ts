@@ -323,6 +323,44 @@ async function startServer() {
         }
       }
     }
+
+    if (!r.company && r.fields) {
+      for (const [k, v] of Object.entries(r.fields)) {
+        const lk = k.toLowerCase()
+        if ((lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket')) && typeof v === 'string') {
+          r.company = v
+          break
+        }
+      }
+    }
+
+    if (r.company) {
+      try {
+        const data = readJsonFile<any>(DATA_FILE, {})
+        data.companies = data.companies || []
+        const found = data.companies.find((c: any) => 
+          (c.id && c.id === r.companyId) ||
+          (c.name && c.name.toLowerCase() === r.company.toLowerCase()) ||
+          (c.shortName && c.shortName.toLowerCase() === r.company.toLowerCase())
+        )
+        if (!found) {
+          const newId = r.companyId || (Date.now().toString() + '.' + Math.random().toString().slice(2, 8))
+          const newComp = {
+            id: newId,
+            name: r.company.trim(),
+            shortName: r.company.trim().substring(0, 15).toUpperCase().replace(/\s+/g, '_'),
+            dangerClass: r.dangerClass || 'cok_tehlikeli',
+            validityYears: r.validityYears || 1,
+            createdAt: Date.now()
+          }
+          data.companies.push(newComp)
+          writeJsonFile(DATA_FILE, data)
+          r.companyId = newId
+        } else if (!r.companyId) {
+          r.companyId = found.id
+        }
+      } catch (e) {}
+    }
   }
 
   app.post('/api/issue', optionalToken, async (req, res) => {

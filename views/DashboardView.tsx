@@ -321,6 +321,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             TC: {cert.recipientTc}
                           </div>
                         )}
+                        {cert.projects && Array.isArray(cert.projects) && cert.projects.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1 font-normal">
+                            {cert.projects.map((p, pIdx) => (
+                              <span key={pIdx} className="text-[10px] bg-slate-800 text-amber-300 px-1.5 py-0.5 rounded border border-slate-700">
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3">
                         {cert.company ? (

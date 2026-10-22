@@ -1810,12 +1810,16 @@
     {
       "id": "17772782026000.5527545700561762",
       "name": "5K1D İNŞAAT EMLAK GIDA OTOMOTİV TURİZM SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
-      "shortName": "5K1D_İNŞAAT"
+      "shortName": "5K1D_İNŞAAT",
+      "dangerClass": "tehlikeli",
+      "validityYears": 2
     },
     {
       "id": "17772782026000.9292514099478226",
       "name": "ABANT HAYVANCILIK ENTEGRE TARIM VE ORMAN ÜRÜNLERİ SANAYİ VE TİCARET ANONİM ŞİRKETİ",
-      "shortName": "ABANT_HAYVANCILIK"
+      "shortName": "ABANT_HAYVANCILIK",
+      "dangerClass": "az_tehlikeli",
+      "validityYears": 3
     },
     {
       "id": "17772782026000.6664744368683331",
