@@ -55,6 +55,8 @@ import {
   Bot,
   Send,
   Calendar,
+  CalendarClock,
+  Clock,
   Menu,
   Folder,
   Lock,
@@ -93,7 +95,11 @@ import {
   calculateExpiryDate, 
   getValidityYears, 
   getDangerClassLabel, 
-  getDangerClassBadgeClass 
+  getDangerClassBadgeClass,
+  findBestTrainingDateField,
+  isValidityDateField,
+  parseDateDetailed,
+  ExpiryCalculationResult
 } from './services/validityService';
 
 type ViewMode = ActiveNavTab;
@@ -365,17 +371,23 @@ const App = () => {
       updated[normKey] = value;
 
       let compVal = '';
-      let dateVal = '';
-
       for (const [k, v] of Object.entries(updated)) {
         const lk = k.toLowerCase();
         if (!compVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket'))) {
           compVal = v;
         }
-        if (!dateVal && lk.includes('tarih') && !lk.includes('gecerlilik') && !lk.includes('geçerlilik') && !lk.includes('bitis') && !lk.includes('bitiş')) {
-          dateVal = v;
-        }
       }
+
+      const dateCandidates = Object.keys(updated).filter(k => {
+        const lk = k.toLowerCase();
+        return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
+      });
+
+      const effectiveTrKey = selectedTrainingDateKey && updated[selectedTrainingDateKey] !== undefined
+        ? selectedTrainingDateKey
+        : findBestTrainingDateField(dateCandidates);
+
+      const dateVal = effectiveTrKey ? (updated[effectiveTrKey] || '') : '';
 
       if (compVal) {
         const matched = companies.find(c => 
@@ -383,7 +395,7 @@ const App = () => {
           (c.shortName && c.shortName.toLowerCase() === compVal.toLowerCase())
         );
         const dangerClass = matched?.dangerClass || 'cok_tehlikeli';
-        const { expiryDisplay } = calculateExpiryDate(dateVal, dangerClass);
+        const { expiryDisplay } = calculateExpiryDate(dateVal, dangerClass, preferSingleDateExpiry);
 
         const expKeys = [
           'gecerlilik tarihi', 'geçerlilik tarihi', 'gecerlilik_tarihi', 'geçerlilik_tarihi',
@@ -399,6 +411,79 @@ const App = () => {
       return updated;
     });
   };
+
+  const handleTrainingDateKeyChange = (newKey: string) => {
+    setSelectedTrainingDateKey(newKey);
+    setFillValues(prev => {
+      const updated = { ...prev };
+      let compVal = '';
+      for (const [k, v] of Object.entries(updated)) {
+        const lk = k.toLowerCase();
+        if (!compVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket'))) {
+          compVal = v;
+        }
+      }
+      const dateVal = updated[newKey] || '';
+      if (compVal) {
+        const matched = companies.find(c => 
+          c.name.toLowerCase() === compVal.toLowerCase() || 
+          (c.shortName && c.shortName.toLowerCase() === compVal.toLowerCase())
+        );
+        const dangerClass = matched?.dangerClass || 'cok_tehlikeli';
+        const { expiryDisplay } = calculateExpiryDate(dateVal, dangerClass, preferSingleDateExpiry);
+        const expKeys = [
+          'gecerlilik tarihi', 'geçerlilik tarihi', 'gecerlilik_tarihi', 'geçerlilik_tarihi',
+          'bitiş tarihi', 'bitis tarihi', 'bitiş_tarihi', 'bitis_tarihi',
+          'gecerlilik', 'geçerlilik', 'bitis', 'bitiş',
+          'Geçerlilik Tarihi', 'Bitiş Tarihi'
+        ];
+        for (const ek of expKeys) {
+          updated[ek] = expiryDisplay;
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleToggleSingleDateExpiry = (single: boolean) => {
+    setPreferSingleDateExpiry(single);
+    setFillValues(prev => {
+      const updated = { ...prev };
+      let compVal = '';
+      for (const [k, v] of Object.entries(updated)) {
+        const lk = k.toLowerCase();
+        if (!compVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket'))) {
+          compVal = v;
+        }
+      }
+      const dateCandidates = Object.keys(updated).filter(k => {
+        const lk = k.toLowerCase();
+        return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
+      });
+      const effectiveTrKey = selectedTrainingDateKey && updated[selectedTrainingDateKey] !== undefined
+        ? selectedTrainingDateKey
+        : findBestTrainingDateField(dateCandidates);
+      const dateVal = effectiveTrKey ? (updated[effectiveTrKey] || '') : '';
+      if (compVal) {
+        const matched = companies.find(c => 
+          c.name.toLowerCase() === compVal.toLowerCase() || 
+          (c.shortName && c.shortName.toLowerCase() === compVal.toLowerCase())
+        );
+        const dangerClass = matched?.dangerClass || 'cok_tehlikeli';
+        const { expiryDisplay } = calculateExpiryDate(dateVal, dangerClass, single);
+        const expKeys = [
+          'gecerlilik tarihi', 'geçerlilik tarihi', 'gecerlilik_tarihi', 'geçerlilik_tarihi',
+          'bitiş tarihi', 'bitis tarihi', 'bitiş_tarihi', 'bitis_tarihi',
+          'gecerlilik', 'geçerlilik', 'bitis', 'bitiş',
+          'Geçerlilik Tarihi', 'Bitiş Tarihi'
+        ];
+        for (const ek of expKeys) {
+          updated[ek] = expiryDisplay;
+        }
+      }
+      return updated;
+    });
+  };
   
   // Signatures State
   const [signatures, setSignatures] = useState<SavedSignature[]>([]);
@@ -408,6 +493,10 @@ const App = () => {
   const [tempCompanyInput, setTempCompanyInput] = useState('');
   const [companySearchQuery, setCompanySearchQuery] = useState('');
   const [selectedDangerClassInput, setSelectedDangerClassInput] = useState<DangerClass>('cok_tehlikeli');
+
+  // Training date reference selection state for multiple date fields
+  const [selectedTrainingDateKey, setSelectedTrainingDateKey] = useState<string>('');
+  const [preferSingleDateExpiry, setPreferSingleDateExpiry] = useState<boolean>(false);
   
   // Settings - Password State
   const [newPassword, setNewPassword] = useState('');
@@ -1014,7 +1103,8 @@ const App = () => {
         variantOptions?: { id: string; name: string }[],
         allowedSignatureIds?: string[],
         options?: string[],
-        defaultValue?: string
+        defaultValue?: string,
+        dateKind?: 'training' | 'validity'
     }> = {};
     const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
 
@@ -1081,13 +1171,15 @@ const App = () => {
                         displayLabel: rawLabel, 
                         allowedSignatureIds: el.allowedSignatureIds,
                         options: el.options,
-                        defaultValue: el.content
+                        defaultValue: el.content,
+                        dateKind: el.dateKind
                     };
                     if (!fields[key]) fields[key] = structuredField;
                     else if (fields[key].type === ElementType.TEXT) fields[key] = structuredField;
                     else if (fields[key].type === el.type) {
                         if (el.allowedSignatureIds) fields[key].allowedSignatureIds = Array.from(new Set([...(fields[key].allowedSignatureIds || []), ...el.allowedSignatureIds]));
                         if (el.options) fields[key].options = Array.from(new Set([...(fields[key].options || []), ...el.options]));
+                        if (el.dateKind) fields[key].dateKind = el.dateKind;
                     }
                 }
                 if (el.type === ElementType.TEXT || el.type === ElementType.QRCODE) {
@@ -1097,7 +1189,7 @@ const App = () => {
                         const rawKey = match[1];
                         const key = normalizeKey(rawKey); 
                         if (key.endsWith('_kisa') || key === normalizeKey('Sistem URL') || key === normalizeKey('Seri No') || key === normalizeKey('Seri Numarasi') || key === normalizeKey('Sertifika No')) continue; 
-                        if (!fields[key]) fields[key] = { type: ElementType.TEXT, label: key, displayLabel: rawKey.trim() };
+                        if (!fields[key]) fields[key] = { type: ElementType.TEXT, label: key, displayLabel: rawKey.trim(), dateKind: el.dateKind };
                     }
                 }
             });
@@ -1872,18 +1964,23 @@ const App = () => {
                 const certImage = await renderProjectToPDF(pdf, proj, i === 0, activeValues);
 
                 let companyVal = '';
-                let trDate = '';
                 for (const [k, v] of Object.entries(activeValues)) {
                     if (v && typeof v === 'string') {
                         const lk = k.toLowerCase();
                         if (!companyVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket') || lk.includes('company'))) {
                             companyVal = v;
                         }
-                        if (!trDate && lk.includes('tarih') && !lk.includes('gecerlilik') && !lk.includes('geçerlilik') && !lk.includes('bitis') && !lk.includes('bitiş')) {
-                            trDate = v;
-                        }
                     }
                 }
+
+                const dateCandidates = Object.keys(activeValues).filter(k => {
+                    const lk = k.toLowerCase();
+                    return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
+                });
+                const resolvedTrKey = selectedTrainingDateKey && activeValues[selectedTrainingDateKey]
+                    ? selectedTrainingDateKey
+                    : findBestTrainingDateField(dateCandidates);
+                const trDate = (resolvedTrKey && typeof activeValues[resolvedTrKey] === 'string') ? activeValues[resolvedTrKey] : '';
 
                 const matchedComp = companies.find(c => 
                     c.name.toLowerCase() === companyVal.toLowerCase() || 
@@ -1891,7 +1988,7 @@ const App = () => {
                 );
                 const dangerClass = matchedComp?.dangerClass || 'cok_tehlikeli';
                 const years = matchedComp?.validityYears || getValidityYears(dangerClass);
-                const { expiryIso } = calculateExpiryDate(trDate, dangerClass);
+                const { expiryIso } = calculateExpiryDate(trDate, dangerClass, preferSingleDateExpiry);
 
                 let recipientName = activeValues['ad soyad'] || activeValues['Ad Soyad'] || activeValues['ad_soyad'] || '';
                 if (!recipientName) {
@@ -1971,18 +2068,23 @@ const App = () => {
                 const certImage = await renderProjectToPDF(pdf, proj, true, activeValues);
 
                 let companyVal = '';
-                let trDate = '';
                 for (const [k, v] of Object.entries(activeValues)) {
                     if (v && typeof v === 'string') {
                         const lk = k.toLowerCase();
                         if (!companyVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket') || lk.includes('company'))) {
                             companyVal = v;
                         }
-                        if (!trDate && lk.includes('tarih') && !lk.includes('gecerlilik') && !lk.includes('geçerlilik') && !lk.includes('bitis') && !lk.includes('bitiş')) {
-                            trDate = v;
-                        }
                     }
                 }
+
+                const dateCandidates = Object.keys(activeValues).filter(k => {
+                    const lk = k.toLowerCase();
+                    return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
+                });
+                const resolvedTrKey = selectedTrainingDateKey && activeValues[selectedTrainingDateKey]
+                    ? selectedTrainingDateKey
+                    : findBestTrainingDateField(dateCandidates);
+                const trDate = (resolvedTrKey && typeof activeValues[resolvedTrKey] === 'string') ? activeValues[resolvedTrKey] : '';
 
                 const matchedComp = companies.find(c => 
                     c.name.toLowerCase() === companyVal.toLowerCase() || 
@@ -1990,7 +2092,7 @@ const App = () => {
                 );
                 const dangerClass = matchedComp?.dangerClass || 'cok_tehlikeli';
                 const years = matchedComp?.validityYears || getValidityYears(dangerClass);
-                const { expiryIso } = calculateExpiryDate(trDate, dangerClass);
+                const { expiryIso } = calculateExpiryDate(trDate, dangerClass, preferSingleDateExpiry);
 
                 let recipientName = activeValues['ad soyad'] || activeValues['Ad Soyad'] || activeValues['ad_soyad'] || '';
                 if (!recipientName) {
@@ -2507,6 +2609,18 @@ const App = () => {
                         {/* ... Properties Inputs (Font, Color, Align etc) ... */}
                         <span className="text-xs font-bold text-amber-500 uppercase whitespace-nowrap">{selectedElement.type === ElementType.COMPANY ? 'FİRMA' : (selectedElement.type === ElementType.CHOICE_BOX ? 'SEÇİM' : selectedElement.type)}</span>
                         <input value={selectedElement.label || ''} onChange={(e) => updateElement(selectedElement.id, { label: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-32 focus:border-amber-500 outline-none shrink-0" placeholder="Etiket / Soru" />
+                        {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DATE) && (
+                          <select 
+                            value={selectedElement.dateKind || 'auto'} 
+                            onChange={(e) => updateElement(selectedElement.id, { dateKind: e.target.value === 'auto' ? undefined : (e.target.value as any) })}
+                            className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-amber-400 outline-none hover:border-amber-500 transition shrink-0 cursor-pointer"
+                            title="İSG Geçerlilik Tarih Rolü"
+                          >
+                            <option value="auto">Tarih Rolü: Otomatik</option>
+                            <option value="training">📅 Eğitim / Referans Tarihi</option>
+                            <option value="validity">⌛ Geçerlilik Tarihi (Hesaplanan)</option>
+                          </select>
+                        )}
                         {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DROPDOWN || selectedElement.type === ElementType.QRCODE || selectedElement.type === ElementType.COMPANY || selectedElement.type === ElementType.TCKN || selectedElement.type === ElementType.CHOICE_BOX) && (
                         <>
                             <div className="w-[1px] h-6 bg-slate-600 mx-2 shrink-0"></div>
@@ -3232,6 +3346,144 @@ const App = () => {
                         </div>
                       ) : (
                           <>
+                          {(() => {
+                            const unifiedFields = getUnifiedFillFields();
+                            const dateCandidateFields = unifiedFields.filter(f => {
+                              const lk = f.label.toLowerCase();
+                              return (f.type === ElementType.DATE || lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
+                            });
+
+                            const autoBestTrainingKey = findBestTrainingDateField(dateCandidateFields.map(f => f.label));
+                            const effectiveTrainingKey = selectedTrainingDateKey && dateCandidateFields.some(f => f.label === selectedTrainingDateKey)
+                              ? selectedTrainingDateKey
+                              : (autoBestTrainingKey || (dateCandidateFields[0]?.label || ''));
+
+                            let compName = '';
+                            for (const [k, v] of Object.entries(fillValues)) {
+                              const lk = k.toLowerCase();
+                              if (!compName && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket'))) {
+                                compName = v;
+                              }
+                            }
+                            const currentMatchedComp = companies.find(c => 
+                              c.name.toLowerCase() === compName.toLowerCase() || 
+                              (c.shortName && c.shortName.toLowerCase() === compName.toLowerCase())
+                            );
+                            const activeDangerClass = currentMatchedComp?.dangerClass || 'cok_tehlikeli';
+                            const activeTrainingDateVal = effectiveTrainingKey ? (fillValues[effectiveTrainingKey] || '') : '';
+                            const currentExpiryResult = activeTrainingDateVal 
+                              ? calculateExpiryDate(activeTrainingDateVal, activeDangerClass, preferSingleDateExpiry)
+                              : null;
+
+                            if (dateCandidateFields.length === 0) return null;
+
+                            return (
+                              <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-700/80 rounded-2xl p-4 shadow-xl space-y-3.5 mb-6">
+                                <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                                      <CalendarClock size={16} />
+                                    </div>
+                                    <div>
+                                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">İSG Geçerlilik &amp; Tarih Referansı</h4>
+                                      <p className="text-[10px] text-slate-400">Eğitim süresi &amp; tehlike sınıfına göre hesaplama</p>
+                                    </div>
+                                  </div>
+                                  {currentMatchedComp ? (
+                                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold ${getDangerClassBadgeClass(activeDangerClass)}`}>
+                                      {getDangerClassLabel(activeDangerClass)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-500 bg-slate-800/80 px-2 py-0.5 rounded">
+                                      Firma seçilince hesaplanır
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <label className="font-semibold text-slate-300 flex items-center gap-1.5">
+                                      <span>Hesaplama Referansı (Eğitim Tarihi):</span>
+                                      {dateCandidateFields.length > 1 && (
+                                        <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">
+                                          {dateCandidateFields.length} Tarih Alanı Algılandı
+                                        </span>
+                                      )}
+                                    </label>
+                                  </div>
+
+                                  {dateCandidateFields.length > 1 ? (
+                                    <div className="space-y-1">
+                                      <div className="relative">
+                                        <select 
+                                          value={effectiveTrainingKey}
+                                          onChange={(e) => handleTrainingDateKeyChange(e.target.value)}
+                                          className="w-full bg-slate-950 border border-amber-500/40 focus:border-amber-500 rounded-xl px-3 py-2.5 text-xs text-white outline-none transition appearance-none cursor-pointer shadow-inner"
+                                        >
+                                          {dateCandidateFields.map(f => {
+                                            const val = fillValues[f.label] || '';
+                                            const isBest = f.label === autoBestTrainingKey;
+                                            return (
+                                              <option key={f.label} value={f.label}>
+                                                {f.displayLabel} {val ? `➜ [${val}]` : '(Boş)'} {isBest ? '⭐ (Önerilen)' : ''}
+                                              </option>
+                                            );
+                                          })}
+                                        </select>
+                                        <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-amber-400 text-xs font-bold">▼</div>
+                                      </div>
+                                      <p className="text-[10px] text-slate-400 px-1">
+                                        💡 Evrakta birden fazla tarih olduğunda geçerliliğin hangi tarihe göre hesaplanacağını buradan belirleyebilirsiniz.
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-between text-xs bg-slate-950/80 px-3.5 py-2.5 rounded-xl border border-slate-800 text-slate-300">
+                                      <span className="font-medium text-slate-400">{dateCandidateFields[0]?.displayLabel}:</span>
+                                      <span className="text-amber-400 font-mono font-bold">{fillValues[dateCandidateFields[0]?.label] || 'Henüz girilmedi'}</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {currentExpiryResult && (
+                                  <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-2.5">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5">
+                                        <Clock size={13} className="text-emerald-400" />
+                                        <span className="text-xs text-slate-300">Hesaplanan Geçerlilik Bitişi:</span>
+                                      </div>
+                                      <span className="font-mono font-black text-emerald-400 text-sm tracking-wide">
+                                        {currentExpiryResult.expiryDisplay}
+                                      </span>
+                                    </div>
+
+                                    {currentExpiryResult.isMultiDay && (
+                                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                                        <span className="text-slate-400">Geçerlilik Yazım Biçimi:</span>
+                                        <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-700">
+                                          <button 
+                                            type="button" 
+                                            onClick={() => handleToggleSingleDateExpiry(false)}
+                                            className={`px-2.5 py-1 rounded text-[10px] font-semibold transition ${!preferSingleDateExpiry ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'}`}
+                                            title="Girdiğiniz gün aralığı formatında yazar (örn: 22.25/10/2027)"
+                                          >
+                                            Aralık Formatı ({currentExpiryResult.parsedInfo?.raw.slice(0, 5)}...)
+                                          </button>
+                                          <button 
+                                            type="button" 
+                                            onClick={() => handleToggleSingleDateExpiry(true)}
+                                            className={`px-2.5 py-1 rounded text-[10px] font-semibold transition ${preferSingleDateExpiry ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'}`}
+                                            title="Bitiş gününü standart tek tarih olarak yazar (örn: 25.10.2027)"
+                                          >
+                                            Tek Gün ({currentExpiryResult.expirySingleDisplay})
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {getUnifiedFillFields().filter(f => f.type !== ElementType.CHOICE_BOX).map((field, idx) => (
                          <div key={idx} className="space-y-2">
                             {((field.type as any) === "bg_front" || (field.type as any) === "bg_back") ? (
@@ -3285,21 +3537,96 @@ const App = () => {
                               </div>
                             ) : (
                               <>
-                            <label className="text-sm font-medium text-amber-500 flex justify-between select-none">
-                              <span className="truncate pr-2">{field.displayLabel}</span>
+                            <label className="text-sm font-medium text-amber-500 flex justify-between select-none items-center">
+                              <span className="truncate pr-2 flex items-center gap-2">
+                                <span>{field.displayLabel}</span>
+                                {field.label === (selectedTrainingDateKey || findBestTrainingDateField(getUnifiedFillFields().filter(f => (f.type === ElementType.DATE || f.label.toLowerCase().includes('tarih')) && !isValidityDateField(f.label.toLowerCase())).map(f => f.label))) && (
+                                  <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">
+                                    ⭐ Referans Tarih
+                                  </span>
+                                )}
+                                {isValidityDateField(field.label) && (
+                                  <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded-full font-bold">
+                                    ⌛ Otomatik Geçerlilik
+                                  </span>
+                                )}
+                              </span>
                               <span className="text-slate-500 text-[10px] bg-slate-900 px-2 rounded uppercase shrink-0">{field.type === ElementType.DROPDOWN ? 'SEÇENEK' : (field.type === ElementType.COMPANY ? 'FİRMA' : (field.type === ElementType.TCKN ? 'TC NO' : (field.type === ElementType.DATE ? 'TARİH' : (field.type === ElementType.QRCODE ? 'QR VERİSİ' : field.type))))}</span>
                             </label>
                             {(field.type === ElementType.TEXT || field.type === ElementType.QRCODE || field.type === ElementType.TCKN) && (
-                              <textarea rows={field.label.toLowerCase().includes('adres') ? 3 : 1} value={fillValues[field.label] || ''} onChange={(e) => handleFillFieldChange(field.label, e.target.value, field.type as ElementType)} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-600 transition resize-y min-h-[46px]" placeholder={field.type === ElementType.QRCODE ? "https://site.com" : (field.type === ElementType.TCKN ? "TC Kimlik No Girin (11 Hane)" : "Metin değeri girin")} style={{ overflow: 'hidden' }} maxLength={field.type === ElementType.TCKN ? 11 : undefined} onInput={(e) => { const target = e.target as HTMLTextAreaElement; target.style.height = 'auto'; target.style.height = target.scrollHeight + 'px'; }} />
+                              <div>
+                                <textarea rows={field.label.toLowerCase().includes('adres') ? 3 : 1} value={fillValues[field.label] || ''} onChange={(e) => handleFillFieldChange(field.label, e.target.value, field.type as ElementType)} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-600 transition resize-y min-h-[46px]" placeholder={field.type === ElementType.QRCODE ? "https://site.com" : (field.type === ElementType.TCKN ? "TC Kimlik No Girin (11 Hane)" : "Metin değeri girin")} style={{ overflow: 'hidden' }} maxLength={field.type === ElementType.TCKN ? 11 : undefined} onInput={(e) => { const target = e.target as HTMLTextAreaElement; target.style.height = 'auto'; target.style.height = target.scrollHeight + 'px'; }} />
+                                {(() => {
+                                  const isDateText = (field.label.toLowerCase().includes('tarih') || field.label.toLowerCase().includes('date')) && !isValidityDateField(field.label);
+                                  if (!isDateText) return null;
+                                  const val = fillValues[field.label];
+                                  if (!val) return null;
+                                  const parsed = parseDateDetailed(val);
+                                  if (parsed) {
+                                    return (
+                                      <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 pl-1 mt-1">
+                                        <Check size={12} />
+                                        <span>
+                                          {parsed.isMultiDay 
+                                            ? `Çok Günlü Eğitim: Bitiş ${String(parsed.endDay).padStart(2,'0')}.${String(parsed.month+1).padStart(2,'0')}.${parsed.year}` 
+                                            : `Algılanan Tarih: ${String(parsed.endDay).padStart(2,'0')}.${String(parsed.month+1).padStart(2,'0')}.${parsed.year}`}
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </div>
                             )}
                             {field.type === ElementType.DATE && (
-                              <div className="relative">
-                                <input 
-                                  type="date"
-                                  value={fillValues[field.label] || ''} 
-                                  onChange={(e) => handleFillFieldChange(field.label, e.target.value, ElementType.DATE)}
-                                  className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white transition [color-scheme:dark]"
-                                />
+                              <div className="space-y-1.5">
+                                <div className="relative flex items-center">
+                                  <input 
+                                    type="text"
+                                    value={fillValues[field.label] || ''} 
+                                    onChange={(e) => handleFillFieldChange(field.label, e.target.value, ElementType.DATE)}
+                                    placeholder="Örn: 22.25/10/2026 veya 25.10.2026"
+                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-4 pr-10 py-3 focus:border-amber-500 outline-none text-white transition placeholder-slate-600 font-mono text-sm"
+                                  />
+                                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
+                                    <input 
+                                      type="date" 
+                                      id={`native-date-picker-${idx}`}
+                                      className="sr-only"
+                                      onChange={(e) => {
+                                        if (e.target.value) {
+                                          const [y, m, d] = e.target.value.split('-');
+                                          handleFillFieldChange(field.label, `${d}.${m}.${y}`, ElementType.DATE);
+                                        }
+                                      }}
+                                    />
+                                    <label 
+                                      htmlFor={`native-date-picker-${idx}`} 
+                                      className="p-1.5 hover:bg-slate-800 rounded-md text-slate-400 hover:text-amber-400 cursor-pointer transition"
+                                      title="Takvimden Tek Gün Seç"
+                                    >
+                                      <Calendar size={16} />
+                                    </label>
+                                  </div>
+                                </div>
+                                {(() => {
+                                  const val = fillValues[field.label];
+                                  if (!val) return null;
+                                  const parsed = parseDateDetailed(val);
+                                  if (parsed) {
+                                    return (
+                                      <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 pl-1">
+                                        <Check size={12} />
+                                        <span>
+                                          {parsed.isMultiDay 
+                                            ? `Çok Günlü Eğitim: Bitiş ${String(parsed.endDay).padStart(2,'0')}.${String(parsed.month+1).padStart(2,'0')}.${parsed.year}` 
+                                            : `Algılanan Tarih: ${String(parsed.endDay).padStart(2,'0')}.${String(parsed.month+1).padStart(2,'0')}.${parsed.year}`}
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                             )}
                             {field.type === ElementType.DROPDOWN && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => handleFillFieldChange(field.label, e.target.value, ElementType.DROPDOWN)} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">Bir seçenek belirleyin...</option>{field.options && field.options.map((opt, i) => (<option key={i} value={opt}>{opt}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div></div>)}
