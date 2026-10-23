@@ -214,7 +214,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                     height: newHeight
                 };
 
-                if (element.type === ElementType.TEXT || element.type === ElementType.DROPDOWN || element.type === ElementType.COMPANY || element.type === ElementType.TCKN) {
+                if (element.type === ElementType.TEXT || element.type === ElementType.DROPDOWN || element.type === ElementType.COMPANY || element.type === ElementType.TCKN || element.type === ElementType.DATE) {
                     const ratio = newWidth / start.w;
                     updates.fontSize = Math.max(10, start.fontSize * ratio);
                 }
@@ -449,8 +449,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
                 {/* Visual cue for DATE in Edit Mode */}
                 {!readOnly && el.type === ElementType.DATE && (
-                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] bg-amber-500 text-slate-950 font-bold px-2 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition">
-                        Tarih Alanı
+                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] bg-amber-500 text-slate-950 font-bold px-2 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition shadow-md">
+                        {el.dateKind === 'validity' ? '⌛ Geçerlilik Tarihi (Hesaplanan)' : '📅 Başlangıç / Eğitim Tarihi'}
                     </div>
                 )}
                 

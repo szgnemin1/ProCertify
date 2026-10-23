@@ -104,6 +104,7 @@ import {
   findBestTrainingDateField,
   isValidityDateField,
   parseDateDetailed,
+  formatDateTR,
   ExpiryCalculationResult
 } from './services/validityService';
 
@@ -431,6 +432,27 @@ const App = () => {
       const updated = { ...prev, [fieldLabel]: value };
       const normKey = fieldLabel.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
       updated[normKey] = value;
+
+      const isDateComponent = fieldType === ElementType.DATE || 
+        normKey.includes('başlangıç') || normKey.includes('baslangic') || 
+        normKey.includes('başlama') || normKey.includes('baslama') ||
+        normKey.includes('eğitim tarihi') || normKey.includes('egitim tarihi');
+
+      // Tarih bileşeni veya açıkça başlangıç/eğitim tarihi girildiğinde bunu referans başlangıç tarihi kabul et
+      // ve gruptaki diğer sertifikaların ortak tarih etiketlerine ({Tarih}, {Eğitim Tarihi}) otomatik aktar
+      if (isDateComponent && value.trim()) {
+        setSelectedTrainingDateKey(fieldLabel);
+        const syncKeys = [
+          'tarih', 'tarihi', 'eğitim tarihi', 'egitim tarihi', 'egitim_tarihi',
+          'başlangıç tarihi', 'baslangic tarihi', 'baslangic_tarihi',
+          'Tarih', 'Eğitim Tarihi', 'Başlangıç Tarihi'
+        ];
+        for (const sk of syncKeys) {
+          if (!updated[sk] || updated[sk] === prev[fieldLabel]) {
+            updated[sk] = value;
+          }
+        }
+      }
 
       let compVal = '';
       for (const [k, v] of Object.entries(updated)) {
@@ -930,7 +952,7 @@ const App = () => {
         side.elements.forEach(el => {
             if (el.label) {
                 const norm = normalizeKey(el.label);
-                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.SIGNATURE || el.type === ElementType.TCKN || el.type === ElementType.COMPANY || el.type === ElementType.CHOICE_BOX) {
+                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.SIGNATURE || el.type === ElementType.TCKN || el.type === ElementType.COMPANY || el.type === ElementType.CHOICE_BOX || el.type === ElementType.DATE) {
                     if (!labelMap.has(norm)) labelMap.set(norm, el.label);
                 }
                 if (el.type === ElementType.COMPANY) {
@@ -1053,10 +1075,11 @@ const App = () => {
                     : (type === ElementType.COMPANY ? '{FİRMA}' 
                     : (type === ElementType.TCKN ? '{TCKN}' 
                     : (type === ElementType.CHOICE_BOX ? 'Evet' 
-                    : (type === ElementType.QRCODE ? '{Sistem URL}?id={Seri No}' : '')))));
+                    : (type === ElementType.DATE ? '{Eğitim Tarihi}'
+                    : (type === ElementType.QRCODE ? '{Sistem URL}?id={Seri No}' : ''))))));
     
-    const width = (type === ElementType.SIGNATURE || type === ElementType.QRCODE) ? 200 : (type === ElementType.CHOICE_BOX ? 40 : 400);
-    const height = (type === ElementType.SIGNATURE) ? 100 : (type === ElementType.QRCODE ? 200 : (type === ElementType.CHOICE_BOX ? 40 : 100));
+    const width = (type === ElementType.SIGNATURE || type === ElementType.QRCODE) ? 200 : (type === ElementType.CHOICE_BOX ? 40 : (type === ElementType.DATE ? 320 : 400));
+    const height = (type === ElementType.SIGNATURE) ? 100 : (type === ElementType.QRCODE ? 200 : (type === ElementType.CHOICE_BOX ? 40 : (type === ElementType.DATE ? 60 : 100)));
     
     const newEl: CanvasElement = {
       id: Date.now().toString(),
@@ -1066,7 +1089,7 @@ const App = () => {
       y: activeProject.height / 2 - (height/2),
       width,
       height,
-      fontSize: 60,
+      fontSize: type === ElementType.DATE ? 48 : 60,
       fontFamily: FontStyle.SANS,
       color: '#000000',
       label: type === ElementType.TEXT ? 'Metin' 
@@ -1075,11 +1098,13 @@ const App = () => {
               : (type === ElementType.COMPANY ? 'Firma'
               : (type === ElementType.TCKN ? 'TC Kimlik No'
               : (type === ElementType.CHOICE_BOX ? 'Seçim Kutusu'
-              : (type === ElementType.QRCODE ? 'QR' : 'Görsel')))))),
+              : (type === ElementType.DATE ? 'Eğitim Tarihi'
+              : (type === ElementType.QRCODE ? 'QR' : 'Görsel'))))))),
       options: type === ElementType.DROPDOWN ? [] : (type === ElementType.CHOICE_BOX ? ['Evet', 'Hayır'] : undefined),
       fontWeight: 400,
       fontStyle: 'normal',
       textAlign: 'center',
+      dateKind: type === ElementType.DATE ? 'training' : undefined,
       secondaryX: type === ElementType.CHOICE_BOX ? (activeProject.width / 2 - (width/2)) + 150 : undefined,
       secondaryY: type === ElementType.CHOICE_BOX ? (activeProject.height / 2 - (height/2)) : undefined,
     };
@@ -1245,7 +1270,7 @@ const App = () => {
                         allowedSignatureIds: el.allowedSignatureIds,
                         options: el.options,
                         defaultValue: el.content,
-                        dateKind: el.dateKind
+                        dateKind: el.dateKind || (el.type === ElementType.DATE ? 'training' : undefined)
                     };
                     if (!fields[key]) fields[key] = structuredField;
                     else if (fields[key].type === ElementType.TEXT) fields[key] = structuredField;
@@ -1932,6 +1957,9 @@ const App = () => {
 
                 if (el.type === ElementType.QRCODE || el.type === ElementType.TEXT) {
                    content = formatContent(el.content, activeValues);
+                } else if (el.type === ElementType.DATE) {
+                   const key = normalizeKey(el.label || el.id);
+                   content = activeValues[key] || formatContent(el.content, activeValues);
                 } else {
                    const key = normalizeKey(el.label || '');
                    content = activeValues[key] || el.content;
@@ -1956,7 +1984,7 @@ const App = () => {
                     continue; 
                 }
 
-                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) {
+                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN || el.type === ElementType.DATE) {
                     ctx.font = `${el.fontStyle === 'italic' ? 'italic ' : ''}${el.fontWeight || 400} ${el.fontSize}px ${el.fontFamily?.split(',')[0]}`;
                     ctx.fillStyle = el.color || '#000';
                     const align = el.textAlign || 'center';
@@ -2083,14 +2111,34 @@ const App = () => {
             }
         }
 
-        // 3. Resolve Training Date
+        // 3. Resolve Training Date (Öncelikle gruptaki herhangi bir sertifikada bulunan Tarih bileşeni aranır)
         const dateCandidates = Object.keys(activeValues).filter(k => {
             const lk = k.toLowerCase();
             return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
         });
+
+        let explicitDateKey: string | null = null;
+        for (const proj of targetProjects) {
+            const bSide = getActiveSideData(proj, 'back');
+            for (const s of [proj.front, bSide]) {
+                if (!s) continue;
+                for (const el of s.elements) {
+                    if (el.type === ElementType.DATE && el.dateKind !== 'validity') {
+                        const k = normalizeKey(el.label || el.id);
+                        if (activeValues[k]) {
+                            explicitDateKey = k;
+                            break;
+                        }
+                    }
+                }
+                if (explicitDateKey) break;
+            }
+            if (explicitDateKey) break;
+        }
+
         const resolvedTrKey = selectedTrainingDateKey && activeValues[selectedTrainingDateKey]
             ? selectedTrainingDateKey
-            : findBestTrainingDateField(dateCandidates);
+            : (explicitDateKey || findBestTrainingDateField(dateCandidates));
         const trDate = (resolvedTrKey && typeof activeValues[resolvedTrKey] === 'string') ? activeValues[resolvedTrKey] : '';
 
         // 4. Match Company (Turkish-aware)
@@ -2283,6 +2331,10 @@ const App = () => {
       if (el.type === ElementType.TCKN) {
           if (val) return { ...el, content: maskTCKN(val) };
           return el;
+      }
+      if (el.type === ElementType.DATE) {
+          if (val) return { ...el, content: val };
+          return { ...el, content: formatContent(el.content, fillValues) };
       }
       if (val) return { ...el, content: val };
       return el; 
@@ -2659,6 +2711,7 @@ const App = () => {
                  <div className="space-y-3">
                     <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Bileşen Ekle</h3>
                     <button onClick={() => addElement(ElementType.TEXT)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><Type size={18} /> Metin Alanı</button>
+                    <button onClick={() => addElement(ElementType.DATE)} className="w-full py-3 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-lg flex items-center justify-center gap-2 transition text-sm font-semibold shadow-sm"><Calendar size={18} className="text-amber-400" /> Tarih / Başlangıç Tarihi</button>
                     <button onClick={() => addElement(ElementType.DROPDOWN)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><List size={18} /> Seçenekli Alan</button>
                     <button onClick={() => addElement(ElementType.COMPANY)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><Building size={18} /> Firma Ekle</button>
                     <button onClick={() => addElement(ElementType.TCKN)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><ShieldCheck size={18} /> TC Kimlik No</button>
@@ -2707,21 +2760,21 @@ const App = () => {
                      {selectedElement ? (
                     <>
                         {/* ... Properties Inputs (Font, Color, Align etc) ... */}
-                        <span className="text-xs font-bold text-amber-500 uppercase whitespace-nowrap">{selectedElement.type === ElementType.COMPANY ? 'FİRMA' : (selectedElement.type === ElementType.CHOICE_BOX ? 'SEÇİM' : selectedElement.type)}</span>
-                        <input value={selectedElement.label || ''} onChange={(e) => updateElement(selectedElement.id, { label: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-32 focus:border-amber-500 outline-none shrink-0" placeholder="Etiket / Soru" />
+                        <span className="text-xs font-bold text-amber-500 uppercase whitespace-nowrap">{selectedElement.type === ElementType.COMPANY ? 'FİRMA' : (selectedElement.type === ElementType.CHOICE_BOX ? 'SEÇİM' : (selectedElement.type === ElementType.DATE ? 'TARİH' : selectedElement.type))}</span>
+                        <input value={selectedElement.label || ''} onChange={(e) => updateElement(selectedElement.id, { label: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-36 focus:border-amber-500 outline-none shrink-0" placeholder="Etiket / İsim" />
                         {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DATE) && (
                           <select 
-                            value={selectedElement.dateKind || 'auto'} 
+                            value={selectedElement.dateKind || (selectedElement.type === ElementType.DATE ? 'training' : 'auto')} 
                             onChange={(e) => updateElement(selectedElement.id, { dateKind: e.target.value === 'auto' ? undefined : (e.target.value as any) })}
                             className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-amber-400 outline-none hover:border-amber-500 transition shrink-0 cursor-pointer"
                             title="İSG Geçerlilik Tarih Rolü"
                           >
                             <option value="auto">Tarih Rolü: Otomatik</option>
-                            <option value="training">📅 Eğitim / Referans Tarihi</option>
+                            <option value="training">📅 Eğitim / Başlangıç Tarihi (Referans)</option>
                             <option value="validity">⌛ Geçerlilik Tarihi (Hesaplanan)</option>
                           </select>
                         )}
-                        {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DROPDOWN || selectedElement.type === ElementType.QRCODE || selectedElement.type === ElementType.COMPANY || selectedElement.type === ElementType.TCKN || selectedElement.type === ElementType.CHOICE_BOX) && (
+                        {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DROPDOWN || selectedElement.type === ElementType.QRCODE || selectedElement.type === ElementType.COMPANY || selectedElement.type === ElementType.TCKN || selectedElement.type === ElementType.CHOICE_BOX || selectedElement.type === ElementType.DATE) && (
                         <>
                             <div className="w-[1px] h-6 bg-slate-600 mx-2 shrink-0"></div>
                             {selectedElement.type !== ElementType.QRCODE && (
@@ -2736,7 +2789,7 @@ const App = () => {
                             <input type="color" value={selectedElement.color} onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })} className="w-8 h-8 rounded bg-transparent border-none cursor-pointer shrink-0" title="Renk" />
                             {selectedElement.type === ElementType.DROPDOWN && (<button onClick={() => setShowOptionManager(true)} className="flex items-center gap-1 bg-blue-700 hover:bg-blue-600 px-3 py-1 rounded text-xs text-white border border-blue-600 ml-2 whitespace-nowrap transition"><List size={12} /> Seçenekleri Düzenle ({selectedElement.options?.length || 0})</button>)}
                             {selectedElement.type === ElementType.CHOICE_BOX && selectedElement.options && (<div className="flex items-center gap-2 ml-2 bg-slate-900 p-1 rounded border border-slate-600"><span className="text-[10px] text-slate-400">Varsayılan:</span><select value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-xs text-white outline-none">{selectedElement.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>)}
-                            {selectedElement.type === ElementType.TEXT && (<input value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-32 shrink-0" placeholder="Örn metin" />)}
+                            {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DATE) && (<input value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-36 shrink-0 font-mono text-xs" placeholder={selectedElement.type === ElementType.DATE ? "{Eğitim Tarihi}" : "Örn metin"} title="Varsayılan Değer / Yer Tutucu" />)}
                         </>
                         )}
                         {selectedElement.type === ElementType.SIGNATURE && (<button onClick={() => setShowSigPermissions(true)} className="flex items-center gap-1 bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-xs text-white border border-slate-600 ml-2 whitespace-nowrap transition"><Filter size={12} /> İmza İzinleri ({selectedElement.allowedSignatureIds?.length || 'Tümü'})</button>)}
@@ -3934,7 +3987,8 @@ const App = () => {
                               return (f.type === ElementType.DATE || lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
                             });
 
-                            const autoBestTrainingKey = findBestTrainingDateField(dateCandidateFields.map(f => f.label));
+                            const explicitDateField = dateCandidateFields.find(f => f.type === ElementType.DATE || f.dateKind === 'training');
+                            const autoBestTrainingKey = explicitDateField ? explicitDateField.label : findBestTrainingDateField(dateCandidateFields.map(f => f.label));
                             const effectiveTrainingKey = selectedTrainingDateKey && dateCandidateFields.some(f => f.label === selectedTrainingDateKey)
                               ? selectedTrainingDateKey
                               : (autoBestTrainingKey || (dateCandidateFields[0]?.label || ''));
@@ -4003,10 +4057,11 @@ const App = () => {
                                         >
                                           {dateCandidateFields.map(f => {
                                             const val = fillValues[f.label] || '';
+                                            const isDateComp = f.type === ElementType.DATE;
                                             const isBest = f.label === autoBestTrainingKey;
                                             return (
                                               <option key={f.label} value={f.label}>
-                                                {f.displayLabel} {val ? `➜ [${val}]` : '(Boş)'} {isBest ? '⭐ (Önerilen)' : ''}
+                                                {f.displayLabel} {val ? `➜ [${val}]` : '(Boş)'} {isDateComp ? '⭐ (Bileşen: Grup Başlangıç Tarihi)' : (isBest ? '⭐ (Önerilen)' : '')}
                                               </option>
                                             );
                                           })}
@@ -4121,9 +4176,9 @@ const App = () => {
                             <label className="text-sm font-medium text-amber-500 flex justify-between select-none items-center">
                               <span className="truncate pr-2 flex items-center gap-2">
                                 <span>{field.displayLabel}</span>
-                                {field.label === (selectedTrainingDateKey || findBestTrainingDateField(getUnifiedFillFields().filter(f => (f.type === ElementType.DATE || f.label.toLowerCase().includes('tarih')) && !isValidityDateField(f.label.toLowerCase())).map(f => f.label))) && (
-                                  <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">
-                                    ⭐ Referans Tarih
+                                {(field.label === selectedTrainingDateKey || (field.type === ElementType.DATE && field.dateKind !== 'validity') || field.label.toLowerCase().includes('başlangıç') || field.label.toLowerCase().includes('baslangic')) && (
+                                  <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                    ⭐ Başlangıç Tarihi (Grup Referansı)
                                   </span>
                                 )}
                                 {isValidityDateField(field.label) && (
@@ -4132,7 +4187,7 @@ const App = () => {
                                   </span>
                                 )}
                               </span>
-                              <span className="text-slate-500 text-[10px] bg-slate-900 px-2 rounded uppercase shrink-0">{field.type === ElementType.DROPDOWN ? 'SEÇENEK' : (field.type === ElementType.COMPANY ? 'FİRMA' : (field.type === ElementType.TCKN ? 'TC NO' : (field.type === ElementType.DATE ? 'TARİH' : (field.type === ElementType.QRCODE ? 'QR VERİSİ' : field.type))))}</span>
+                              <span className="text-slate-500 text-[10px] bg-slate-900 px-2 rounded uppercase shrink-0 font-bold">{field.type === ElementType.DROPDOWN ? 'SEÇENEK' : (field.type === ElementType.COMPANY ? 'FİRMA' : (field.type === ElementType.TCKN ? 'TC NO' : (field.type === ElementType.DATE ? 'TARİH BİLEŞENİ' : (field.type === ElementType.QRCODE ? 'QR VERİSİ' : field.type))))}</span>
                             </label>
                             {(field.type === ElementType.TEXT || field.type === ElementType.QRCODE || field.type === ElementType.TCKN) && (
                               <div>
@@ -4208,6 +4263,42 @@ const App = () => {
                                   }
                                   return null;
                                 })()}
+                                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                                  <div className="flex items-center gap-1.5 text-[10px]">
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        const now = new Date();
+                                        const d = String(now.getDate()).padStart(2, '0');
+                                        const m = String(now.getMonth() + 1).padStart(2, '0');
+                                        const y = now.getFullYear();
+                                        handleFillFieldChange(field.label, `${d}.${m}.${y}`, ElementType.DATE);
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 transition"
+                                      title="Bugünün tarihini gir"
+                                    >
+                                      Bugün ({formatDateTR(new Date())})
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        const yesterday = new Date();
+                                        yesterday.setDate(yesterday.getDate() - 1);
+                                        const d = String(yesterday.getDate()).padStart(2, '0');
+                                        const m = String(yesterday.getMonth() + 1).padStart(2, '0');
+                                        const y = yesterday.getFullYear();
+                                        handleFillFieldChange(field.label, `${d}.${m}.${y}`, ElementType.DATE);
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 transition"
+                                      title="Dünün tarihini gir"
+                                    >
+                                      Dün
+                                    </button>
+                                  </div>
+                                  <span className="text-[10px] text-amber-400/90 italic">
+                                    ✦ Gruptaki tüm sertifikaların başlangıç tarihi kabul edilir
+                                  </span>
+                                </div>
                               </div>
                             )}
                             {field.type === ElementType.DROPDOWN && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => handleFillFieldChange(field.label, e.target.value, ElementType.DROPDOWN)} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">Bir seçenek belirleyin...</option>{field.options && field.options.map((opt, i) => (<option key={i} value={opt}>{opt}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div></div>)}

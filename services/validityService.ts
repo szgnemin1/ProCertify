@@ -296,6 +296,7 @@ export const scoreDateFieldForTraining = (label: string): number => {
   const l = label.toLowerCase();
   if (isValidityDateField(l)) return -1; // Expiry fields are never training reference dates
 
+  if (l.includes('başlangıç') || l.includes('baslangic') || l.includes('başlama') || l.includes('baslama') || l.includes('start')) return 110;
   if (l.includes('eğitim bitiş') || l.includes('egitim bitis')) return 100;
   if (l.includes('eğitim tarihi') || l.includes('egitim tarihi')) return 95;
   if (l.includes('eğitim') || l.includes('egitim')) return 85;
