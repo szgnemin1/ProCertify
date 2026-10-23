@@ -115,18 +115,15 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const mouseX = (e.clientX - rect.left) / scale;
     const mouseY = (e.clientY - rect.top) / scale;
 
-    if (mode === 'main') {
-        setDragOffset({
-            x: mouseX - element.x,
-            y: mouseY - element.y
-        });
-    } else {
-        // Dragging the secondary box
-        setDragOffset({
-            x: mouseX - (element.secondaryX || (element.x + 100)),
-            y: mouseY - (element.secondaryY || element.y)
-        });
-    }
+    const offset = mode === 'main'
+      ? { x: mouseX - element.x, y: mouseY - element.y }
+      : { x: mouseX - (element.secondaryX || (element.x + 100)), y: mouseY - (element.secondaryY || element.y) };
+
+    setDragOffset(offset);
+    // Sync refs immediately to eliminate any drag delay or stale coordinates
+    draggingIdRef.current = id;
+    dragModeRef.current = mode;
+    dragOffsetRef.current = offset;
   };
 
   // --- RESIZE HANDLERS ---
@@ -139,13 +136,16 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (!element) return;
 
     setResizingId(id);
-    setResizeStart({
+    const startObj = {
       x: e.clientX,
       y: e.clientY,
       w: element.width,
       h: element.height,
       fontSize: element.fontSize || 20
-    });
+    };
+    setResizeStart(startObj);
+    resizingIdRef.current = id;
+    resizeStartRef.current = startObj;
   };
 
   // --- GLOBAL MOVE/UP HANDLERS (OPTIMIZED WITH RAF) ---
@@ -248,10 +248,10 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   return (
     <div 
-        className="relative shadow-2xl transition-all duration-200 ease-out flex-shrink-0"
+        className="relative shadow-2xl flex-shrink-0"
         style={{
-            width: width * scale,
-            height: height * scale,
+            width: Math.round(width * scale),
+            height: Math.round(height * scale),
         }}
     >
         <div

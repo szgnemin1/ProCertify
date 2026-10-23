@@ -55,6 +55,10 @@ import {
   Bot,
   Send,
   Calendar,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  ArrowLeft,
   Menu,
   Folder,
   Lock,
@@ -609,6 +613,18 @@ const App = () => {
   // --- Editor State ---
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scale, setScale] = useState(0.4);
+  
+  const handleZoomIn = () => setScale(prev => Math.min(Number((prev + 0.05).toFixed(2)), 1.5));
+  const handleZoomOut = () => setScale(prev => Math.max(Number((prev - 0.05).toFixed(2)), 0.15));
+  const handleZoomFit = () => {
+    if (editorContainerRef.current && activeProject) {
+      const { clientWidth, clientHeight } = editorContainerRef.current;
+      const padding = 60;
+      const scaleX = (clientWidth - padding) / activeProject.width;
+      const scaleY = (clientHeight - padding) / activeProject.height;
+      setScale(Math.max(0.15, Math.min(scaleX, scaleY)));
+    }
+  };
   
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2586,27 +2602,34 @@ const App = () => {
 
         {/* VIEW: TEMPLATE EDITOR */}
         {currentView === 'template' && (
-          <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-            <div className="w-full md:w-72 h-[40vh] md:h-auto bg-slate-800 border-b md:border-b-0 md:border-r border-slate-700 flex flex-col z-20 shadow-xl flex-shrink-0 select-none">
-               <div className="p-5 border-b border-slate-700 bg-slate-800 group relative">
+          <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-w-0">
+            {/* Left Sidebar */}
+            <div className="w-full md:w-80 h-[40vh] md:h-auto bg-slate-850 border-b md:border-b-0 md:border-r border-slate-700/80 flex flex-col z-20 shadow-2xl flex-shrink-0 select-none">
+               {/* Project Header */}
+               <div className="p-4 border-b border-slate-700/80 bg-slate-900/80 backdrop-blur">
                  {isEditingName ? (
-                     <input ref={projectNameInputRef} type="text" value={activeProject.name} onChange={(e) => updateProjectMeta({ name: e.target.value })} onBlur={() => setIsEditingName(false)} onKeyDown={(e) => e.key === 'Enter' && setIsEditingName(false)} className="w-full bg-slate-900 border border-amber-500 rounded px-2 py-1 text-sm text-white outline-none font-bold" />
+                     <input ref={projectNameInputRef} type="text" value={activeProject.name} onChange={(e) => updateProjectMeta({ name: e.target.value })} onBlur={() => setIsEditingName(false)} onKeyDown={(e) => e.key === 'Enter' && setIsEditingName(false)} className="w-full bg-slate-950 border border-amber-500 rounded-lg px-2.5 py-1.5 text-sm text-white outline-none font-bold" />
                  ) : (
-                     <div className="flex items-center justify-between group-hover:bg-slate-700/50 p-1 rounded -ml-1 cursor-pointer" onClick={() => setIsEditingName(true)}>
-                         <div className="overflow-hidden"><h2 className="text-lg font-bold text-white truncate" title={activeProject.name}>{activeProject.name}</h2><p className="text-xs text-slate-400">Şablon Düzenleyici</p></div>
-                         <Edit2 size={14} className="text-slate-500 opacity-0 group-hover:opacity-100 transition" />
+                     <div className="flex items-center justify-between group hover:bg-slate-800/60 p-1.5 rounded-lg -ml-1 cursor-pointer transition" onClick={() => setIsEditingName(true)}>
+                         <div className="overflow-hidden">
+                           <h2 className="text-base font-bold text-white truncate flex items-center gap-1.5" title={activeProject.name}>
+                             <span>{activeProject.name}</span>
+                             <Edit2 size={12} className="text-slate-500 opacity-60 group-hover:opacity-100 transition" />
+                           </h2>
+                           <p className="text-[11px] text-slate-400">Şablon Tasarım Stüdyosu</p>
+                         </div>
                      </div>
                  )}
-                 {/* Status Indicator */}
-                 <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-slate-700/60 text-xs">
-                    <span className="text-[11px] text-slate-400">Sertifika Listesi:</span>
+                 {/* Status & Orientation */}
+                 <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-slate-800 text-xs">
+                    <span className="text-[11px] text-slate-400">Sertifika Durumu:</span>
                     <button
                        type="button"
                        onClick={(e) => handleToggleProjectActive(activeProject.id, e)}
-                       className={`px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 transition border ${
+                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 transition border ${
                          activeProject.isActive !== false
                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                           : 'bg-slate-700 text-slate-300 border-slate-600 hover:bg-slate-600'
+                           : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750'
                        }`}
                        title={activeProject.isActive !== false ? "Pasife alarak sertifika listesinde gizleyin" : "Aktif ederek sertifika listesinde gösterin"}
                     >
@@ -2617,22 +2640,116 @@ const App = () => {
                        )}
                     </button>
                  </div>
+                 {/* Orientation Switcher */}
+                 <div className="mt-2.5 flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                     <button onClick={() => handleOrientationChange('landscape')} className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition ${activeProject.width > activeProject.height ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}><RectangleHorizontal size={14} /> Yatay Belge</button>
+                     <button onClick={() => handleOrientationChange('portrait')} className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition ${activeProject.height > activeProject.width ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}><RectangleVertical size={14} /> Dikey Belge</button>
+                 </div>
                </div>
                
-               <div className="p-4 space-y-6 overflow-y-auto custom-scrollbar">
-                 {/* ... Layout, Background, Components ... */}
-                 <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Sayfa Düzeni</h3>
-                    <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-700">
-                        <button onClick={() => handleOrientationChange('landscape')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-xs font-medium transition ${activeProject.width > activeProject.height ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}><RectangleHorizontal size={16} /> Yatay</button>
-                        <button onClick={() => handleOrientationChange('portrait')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-xs font-medium transition ${activeProject.height > activeProject.width ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}><RectangleVertical size={16} /> Dikey</button>
+               <div className="p-3.5 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+                 {/* Bileşen Ekle (2-Column Grid) */}
+                 <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold uppercase text-slate-400 tracking-wider">
+                      <span>Bileşenler</span>
+                      <span className="text-[10px] text-slate-500 font-normal">Tıkla & Ekle</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button onClick={() => addElement(ElementType.TEXT)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-blue-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 group-hover:bg-blue-500/20 shrink-0">
+                          <Type size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">Metin</div>
+                          <div className="text-[10px] text-slate-500">Alan ekle</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.DATE)} className="p-2.5 bg-amber-500/10 hover:bg-amber-500/20 hover:border-amber-500/60 border border-amber-500/30 rounded-xl flex items-center gap-2 transition text-xs text-amber-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
+                          <Calendar size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-amber-300">Tarih</div>
+                          <div className="text-[10px] text-amber-400/70">Başlangıç</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.COMPANY)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-emerald-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:bg-emerald-500/20 shrink-0">
+                          <Building size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">Firma</div>
+                          <div className="text-[10px] text-slate-500">Kurum adı</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.TCKN)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-purple-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:bg-purple-500/20 shrink-0">
+                          <ShieldCheck size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">TC No</div>
+                          <div className="text-[10px] text-slate-500">11 Hane</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.DROPDOWN)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-sky-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:bg-sky-500/20 shrink-0">
+                          <List size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">Seçenek</div>
+                          <div className="text-[10px] text-slate-500">Açılır liste</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.CHOICE_BOX)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-teal-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 group-hover:bg-teal-500/20 shrink-0">
+                          <CheckCircle2 size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">Seçim</div>
+                          <div className="text-[10px] text-slate-500">Evet/Hayır</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.QRCODE)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-rose-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 group-hover:bg-rose-500/20 shrink-0">
+                          <QrCode size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">QR Kod</div>
+                          <div className="text-[10px] text-slate-500">Doğrulama</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.SIGNATURE)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-violet-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 group-hover:bg-violet-500/20 shrink-0">
+                          <PenTool size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">İmza</div>
+                          <div className="text-[10px] text-slate-500">Yetkili imza</div>
+                        </div>
+                      </button>
+
+                      <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
+                      <button onClick={() => addElement(ElementType.IMAGE)} className="col-span-2 p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-amber-500/50 border border-slate-750 rounded-xl flex items-center justify-center gap-2 transition text-xs text-slate-200 group shadow-sm">
+                        <div className="w-6 h-6 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:bg-amber-500/20 shrink-0">
+                          <ImageIcon size={14} />
+                        </div>
+                        <span className="font-semibold text-slate-200 group-hover:text-white">Logo / Resim Ekle</span>
+                      </button>
                     </div>
                  </div>
-                 <div className="h-[1px] bg-slate-700"></div>
-                 <div className="space-y-3">
+
+                 {/* Arkaplan Yönetimi */}
+                 <div className="space-y-2 pt-2 border-t border-slate-800">
                     <div className="flex justify-between items-center">
-                        <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Arkaplan ({activeSide === 'front' ? 'Ön' : 'Arka'})</h3>
-                        <button onClick={() => variantFileInputRef.current?.click()} className="flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-500 px-2 py-1 rounded hover:bg-amber-500/20 transition">
+                        <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider">Arkaplan ({activeSide === 'front' ? 'Ön Yüz' : 'Arka Yüz'})</h3>
+                        <button onClick={() => variantFileInputRef.current?.click()} className="flex items-center gap-1 text-[11px] bg-amber-500/15 border border-amber-500/30 text-amber-400 px-2.5 py-1 rounded-lg hover:bg-amber-500/25 transition font-semibold">
                             <Plus size={12} /> Yeni Seçenek
                         </button>
                     </div>
@@ -2640,26 +2757,26 @@ const App = () => {
                     <input type="file" ref={variantFileInputRef} onChange={handleVariantUpload} accept="image/*" multiple className="hidden" />
                     
                     {activeProject && (
-                        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto custom-scrollbar pr-1 -mx-1 px-1">
+                        <div className="flex flex-col gap-1.5 max-h-44 overflow-y-auto custom-scrollbar pr-0.5">
                             <div 
                                 onClick={() => handleSelectVariant(activeSide, '')} 
-                                className={`group flex items-center justify-between p-2 rounded text-[11px] cursor-pointer transition border ${!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? 'bg-amber-500/10 border-amber-500/40 text-amber-200' : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'}`}
+                                className={`group flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer transition border ${!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? 'bg-amber-500/15 border-amber-500/50 text-amber-200 shadow-sm' : 'bg-slate-900/90 border-slate-750 text-slate-300 hover:bg-slate-800'}`}
                             >
                                 <div className="flex items-center gap-2 truncate flex-1 font-medium">
-                                    {!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? <Check size={12} className="text-amber-500" /> : <div className="w-3 h-3" />}
+                                    {!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? <Check size={13} className="text-amber-400 font-bold" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-700" />}
                                     <span>Varsayılan Arkaplan</span>
                                 </div>
-                                <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-all">
-                                    <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="p-1 text-slate-400 hover:text-amber-500 transition-all" title="Arkaplanı Değiştir">
-                                        <Upload size={12} />
+                                <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100 transition-all">
+                                    <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="p-1 text-slate-400 hover:text-amber-400 transition-all" title="Arkaplanı Değiştir">
+                                        <Upload size={13} />
                                     </button>
                                     <button onClick={(e) => { 
                                         e.stopPropagation(); 
                                         if(confirm('Arkaplanı temizlemek istediğinize emin misiniz?')) {
                                             updateProjectSide(activeSide, { bgUrl: '' });
                                         }
-                                    }} className="p-1 text-slate-400 hover:text-red-500 transition-all" title="Arkaplanı Temizle">
-                                        <Trash2 size={12} />
+                                    }} className="p-1 text-slate-400 hover:text-rose-400 transition-all" title="Arkaplanı Temizle">
+                                        <Trash2 size={13} />
                                     </button>
                                 </div>
                             </div>
@@ -2676,10 +2793,10 @@ const App = () => {
                                         <div 
                                             key={v.id} 
                                             onClick={() => handleSelectVariant(side, v.id)} 
-                                            className={`group flex items-center justify-between p-2 rounded text-[11px] cursor-pointer transition border ${isSelected ? 'bg-amber-500/10 border-amber-500/40 text-amber-200' : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'}`}
+                                            className={`group flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer transition border ${isSelected ? 'bg-amber-500/15 border-amber-500/50 text-amber-200 shadow-sm' : 'bg-slate-900/90 border-slate-750 text-slate-300 hover:bg-slate-800'}`}
                                         >
                                             <div className="flex items-center gap-2 truncate flex-1">
-                                                {isSelected ? <Check size={12} className="text-amber-500" /> : <div className="w-3 h-3" />}
+                                                {isSelected ? <Check size={13} className="text-amber-400 font-bold" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-700" />}
                                                 <input 
                                                     type="text" 
                                                     value={v.name || ''} 
@@ -2688,12 +2805,12 @@ const App = () => {
                                                         handleRenameVariant(side, v.id, e.target.value);
                                                     }}
                                                     onClick={(e) => e.stopPropagation()}
-                                                    className="bg-transparent border-none text-[11px] focus:outline-none w-full text-inherit font-medium underline decoration-transparent focus:decoration-amber-500/30"
+                                                    className="bg-transparent border-none text-xs focus:outline-none w-full text-inherit font-medium underline decoration-transparent focus:decoration-amber-500/40"
                                                     placeholder="Varyant İsmi"
                                                 />
                                             </div>
-                                            <button onClick={(e) => handleDeleteVariant(side, v.id, e)} className="p-1 text-slate-400 hover:text-red-500 opacity-60 group-hover:opacity-100 transition-all" title="Varyantı Sil">
-                                                <Trash2 size={12} />
+                                            <button onClick={(e) => handleDeleteVariant(side, v.id, e)} className="p-1 text-slate-400 hover:text-rose-400 opacity-70 group-hover:opacity-100 transition-all" title="Varyantı Sil">
+                                                <Trash2 size={13} />
                                             </button>
                                         </div>
                                     );
@@ -2702,110 +2819,176 @@ const App = () => {
                         </div>
                     )}
                  </div>
-                 <div className="h-[1px] bg-slate-700"></div>
-                 <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Bileşen Ekle</h3>
-                    <button onClick={() => addElement(ElementType.TEXT)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><Type size={18} /> Metin Alanı</button>
-                    <button onClick={() => addElement(ElementType.DATE)} className="w-full py-3 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-lg flex items-center justify-center gap-2 transition text-sm font-semibold shadow-sm"><Calendar size={18} className="text-amber-400" /> Tarih / Başlangıç Tarihi</button>
-                    <button onClick={() => addElement(ElementType.DROPDOWN)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><List size={18} /> Seçenekli Alan</button>
-                    <button onClick={() => addElement(ElementType.COMPANY)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><Building size={18} /> Firma Ekle</button>
-                    <button onClick={() => addElement(ElementType.TCKN)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><ShieldCheck size={18} /> TC Kimlik No</button>
-                    <button onClick={() => addElement(ElementType.CHOICE_BOX)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><CheckCircle2 size={18} /> Seçim Kutusu</button>
-                    <button onClick={() => addElement(ElementType.QRCODE)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><QrCode size={18} /> QR Kod</button>
-                    <button onClick={() => addElement(ElementType.SIGNATURE)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><PenTool size={18} /> İmza Alanı</button>
-                    <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
-                    <button onClick={() => addElement(ElementType.IMAGE)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><ImageIcon size={18} /> Logo / Resim</button>
-                 </div>
-                 {/* QR & Filename Settings */}
+
+                 {/* QR İçerik Ayarı (Sadece QR seçiliyken) */}
                  {selectedElement && selectedElement.type === ElementType.QRCODE && (
-                   <div className="space-y-3 mt-4 pt-4 border-t border-slate-700 animate-in fade-in slide-in-from-left-4">
-                       <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2"><QrCode size={14} className="text-amber-500"/> QR İçerik Ayarları</h3>
-                       <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 space-y-2">
-                           <p className="text-[10px] text-slate-400">QR Koda eklenecek verileri seçin:</p>
-                           <textarea rows={3} value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white focus:border-amber-500 outline-none resize-none" placeholder="Örn: {Ad Soyad} - {Tarih}" />
+                   <div className="space-y-2 pt-2 border-t border-slate-800 animate-in fade-in duration-150">
+                       <h3 className="text-xs font-bold uppercase text-amber-400 tracking-wider flex items-center gap-1.5"><QrCode size={13} /> QR İçerik Formatı</h3>
+                       <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-750 space-y-2">
+                           <p className="text-[10px] text-slate-400">QR Koda eklenecek metin veya etiketler:</p>
+                           <textarea rows={3} value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-amber-500 outline-none resize-none font-mono" placeholder="Örn: {Ad Soyad} - {Tarih}" />
                        </div>
                    </div>
                  )}
-                 <div className="h-[1px] bg-slate-700 mt-4"></div>
-                 <div className="space-y-3 mt-4">
-                      <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2"><FileBadge size={14} /> Proje Ayarları & Çıktı</h3>
-                      <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 block">PDF Dosya Adı Formatı</label>
-                          <input type="text" value={activeProject.filenamePattern || 'Sertifika-{Ad Soyad}'} onChange={(e) => updateProjectMeta({ filenamePattern: e.target.value })} className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white focus:border-amber-500 outline-none" placeholder="Örn: {Ad Soyad}-{Tarih}" />
+
+                 {/* Proje Ayarları & Çıktı */}
+                 <div className="space-y-2 pt-2 border-t border-slate-800">
+                      <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider flex items-center gap-1.5"><FileBadge size={13} /> PDF Dosya Adı & Şablon</h3>
+                      <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-750 space-y-2">
+                          <label className="text-[10px] font-bold text-slate-400 block">PDF İndirme Dosya Adı:</label>
+                          <input type="text" value={activeProject.filenamePattern || 'Sertifika-{Ad Soyad}'} onChange={(e) => updateProjectMeta({ filenamePattern: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-amber-500 outline-none font-mono" placeholder="Örn: {Ad Soyad}-{Tarih}" />
                           <div className="text-[9px] text-slate-500 mb-1">Mevcut etiketleri ekle:</div>
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto custom-scrollbar">
                               {getProjectLabels().map(label => (
-                                  <button key={label} onClick={() => { const current = activeProject.filenamePattern || ''; updateProjectMeta({ filenamePattern: current + `{${label}}` }); }} className={`text-[10px] px-2 py-0.5 rounded transition border border-slate-600 hover:border-slate-500 ${label.endsWith('_Kisa') ? 'bg-slate-800 text-amber-500 border-amber-500/30' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`} title={label.endsWith('_Kisa') ? "Firma kısaltmasını ekle" : "Değeri ekle"}>+ {label}</button>
+                                  <button key={label} onClick={() => { const current = activeProject.filenamePattern || ''; updateProjectMeta({ filenamePattern: current + `{${label}}` }); }} className={`text-[10px] px-2 py-0.5 rounded-md transition border border-slate-700 hover:border-slate-600 ${label.endsWith('_Kisa') ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`} title={label.endsWith('_Kisa') ? "Firma kısaltmasını ekle" : "Değeri ekle"}>+ {label}</button>
                               ))}
                           </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-2 pt-1">
                         <input type="file" ref={htmlTemplateInputRef} onChange={handleImportHTMLTemplate} accept=".json" className="hidden" />
-                        <button onClick={() => htmlTemplateInputRef.current?.click()} className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-bold shadow-sm border border-slate-600 flex items-center justify-center gap-1 transition"><Import size={12} /> ŞABLON YÜKLE</button>
-                        <button onClick={handleSaveTemplateAsHTML} className="w-full py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-[10px] font-bold shadow-sm border border-purple-600 flex items-center justify-center gap-1 transition"><FileCode size={12} /> ŞABLON KAYDET</button>
+                        <button onClick={() => htmlTemplateInputRef.current?.click()} className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-[11px] font-bold shadow-sm border border-slate-700 flex items-center justify-center gap-1.5 transition"><Import size={13} /> Şablon Yükle</button>
+                        <button onClick={handleSaveTemplateAsHTML} className="w-full py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-xl text-[11px] font-bold shadow-sm border border-purple-500/30 flex items-center justify-center gap-1.5 transition"><FileCode size={13} /> Şablon Kaydet</button>
                       </div>
                  </div>
                </div>
             </div>
 
-            {/* Canvas Area with Top Properties Bar */}
-            <div className="flex-1 flex flex-col relative bg-[#0b0f19]">
-              <div className="h-16 bg-slate-800 border-b border-slate-700 flex items-center px-6 gap-4 justify-between relative select-none">
-                 <div className="flex items-center gap-3 overflow-x-auto flex-1 no-scrollbar pr-4">
+            {/* Canvas Area with Locked-Height Top Properties Bar (Zero Layout Shift) */}
+            <div className="flex-1 flex flex-col relative bg-[#0b0f19] min-w-0 overflow-hidden">
+              <div className="h-14 min-h-[3.5rem] max-h-[3.5rem] bg-slate-850/95 backdrop-blur border-b border-slate-750 flex items-center px-4 gap-3 justify-between relative select-none shrink-0 z-30 min-w-0">
+                 {/* Left: Navigation & Side Switcher */}
+                 <div className="flex items-center gap-2 shrink-0">
+                    <button 
+                      onClick={() => setCurrentView('fill')} 
+                      className="bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                      title="Sertifika Doldurma Ekranına Dön"
+                    >
+                      <ArrowLeft size={14} /> Doldur'a Dön
+                    </button>
+                    <div className="w-[1px] h-5 bg-slate-700 mx-1 hidden sm:block"></div>
+                    <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-700 shrink-0">
+                        <button onClick={() => { setActiveSide('front'); setSelectedId(null); }} className={`px-3 py-1 text-xs rounded-md transition font-semibold ${activeSide === 'front' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Ön Yüz</button>
+                        <button onClick={() => { setActiveSide('back'); setSelectedId(null); }} className={`px-3 py-1 text-xs rounded-md transition font-semibold ${activeSide === 'back' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Arka Yüz</button>
+                    </div>
+                 </div>
+
+                 {/* Center: Properties Toolbar or Document Info (min-w-0 + no-scrollbar ensures NO width blowouts) */}
+                 <div className="flex-1 flex items-center gap-2 overflow-x-auto no-scrollbar min-w-0 px-2">
                      {selectedElement ? (
                     <>
-                        {/* ... Properties Inputs (Font, Color, Align etc) ... */}
-                        <span className="text-xs font-bold text-amber-500 uppercase whitespace-nowrap">{selectedElement.type === ElementType.COMPANY ? 'FİRMA' : (selectedElement.type === ElementType.CHOICE_BOX ? 'SEÇİM' : (selectedElement.type === ElementType.DATE ? 'TARİH' : selectedElement.type))}</span>
-                        <input value={selectedElement.label || ''} onChange={(e) => updateElement(selectedElement.id, { label: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-36 focus:border-amber-500 outline-none shrink-0" placeholder="Etiket / İsim" />
+                        {/* Type Badge */}
+                        <span className="text-[11px] font-bold px-2 py-1 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase whitespace-nowrap shrink-0">
+                          {selectedElement.type === ElementType.COMPANY ? '🏢 FİRMA' : (selectedElement.type === ElementType.CHOICE_BOX ? '☑️ SEÇİM' : (selectedElement.type === ElementType.DATE ? '📅 TARİH' : (selectedElement.type === ElementType.TCKN ? '🛡️ TC NO' : (selectedElement.type === ElementType.SIGNATURE ? '✍️ İMZA' : (selectedElement.type === ElementType.QRCODE ? '📱 QR' : selectedElement.type)))))}
+                        </span>
+
+                        {/* Label Input */}
+                        <input value={selectedElement.label || ''} onChange={(e) => updateElement(selectedElement.id, { label: e.target.value })} className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white w-32 focus:border-amber-500 outline-none shrink-0" placeholder="Etiket / İsim" title="Bileşen Etiketi" />
+                        
+                        {/* Date Role Dropdown */}
                         {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DATE) && (
                           <select 
                             value={selectedElement.dateKind || (selectedElement.type === ElementType.DATE ? 'training' : 'auto')} 
                             onChange={(e) => updateElement(selectedElement.id, { dateKind: e.target.value === 'auto' ? undefined : (e.target.value as any) })}
-                            className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-amber-400 outline-none hover:border-amber-500 transition shrink-0 cursor-pointer"
+                            className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-amber-400 outline-none hover:border-amber-500 transition shrink-0 cursor-pointer"
                             title="İSG Geçerlilik Tarih Rolü"
                           >
                             <option value="auto">Tarih Rolü: Otomatik</option>
-                            <option value="training">📅 Eğitim / Başlangıç Tarihi (Referans)</option>
+                            <option value="training">📅 Başlangıç Tarihi (Referans)</option>
                             <option value="validity">⌛ Geçerlilik Tarihi (Hesaplanan)</option>
                           </select>
                         )}
+
                         {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DROPDOWN || selectedElement.type === ElementType.QRCODE || selectedElement.type === ElementType.COMPANY || selectedElement.type === ElementType.TCKN || selectedElement.type === ElementType.CHOICE_BOX || selectedElement.type === ElementType.DATE) && (
                         <>
-                            <div className="w-[1px] h-6 bg-slate-600 mx-2 shrink-0"></div>
+                            <div className="w-[1px] h-5 bg-slate-700 shrink-0"></div>
                             {selectedElement.type !== ElementType.QRCODE && (
                             <>
-                                <select value={selectedElement.fontFamily} onChange={(e) => updateElement(selectedElement.id, { fontFamily: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-36 shrink-0">{FONTS.map(group => (<optgroup key={group.group} label={group.group}>{group.options.map(f => (<option key={f.value} value={f.value}>{f.name}</option>))}</optgroup>))}</select>
-                                <select value={selectedElement.fontWeight || 400} onChange={(e) => updateElement(selectedElement.id, { fontWeight: Number(e.target.value) })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-24 shrink-0">{FONT_WEIGHTS.map(w => (<option key={w.value} value={w.value}>{w.name}</option>))}</select>
-                                {selectedElement.type !== ElementType.CHOICE_BOX && (<div className="flex items-center bg-slate-900 rounded border border-slate-600 shrink-0"><button onClick={() => updateElement(selectedElement.id, { textAlign: 'left' })} className={`p-1.5 hover:bg-slate-700 ${selectedElement.textAlign === 'left' ? 'bg-slate-700 text-amber-500' : 'text-slate-400'}`}><AlignLeft size={16} /></button><div className="w-[1px] h-4 bg-slate-700"></div><button onClick={() => updateElement(selectedElement.id, { textAlign: 'center' })} className={`p-1.5 hover:bg-slate-700 ${(!selectedElement.textAlign || selectedElement.textAlign === 'center') ? 'bg-slate-700 text-amber-500' : 'text-slate-400'}`}><AlignCenter size={16} /></button><div className="w-[1px] h-4 bg-slate-700"></div><button onClick={() => updateElement(selectedElement.id, { textAlign: 'right' })} className={`p-1.5 hover:bg-slate-700 ${selectedElement.textAlign === 'right' ? 'bg-slate-700 text-amber-500' : 'text-slate-400'}`}><AlignRight size={16} /></button></div>)}
-                                <button onClick={() => updateElement(selectedElement.id, { fontStyle: selectedElement.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`w-8 h-8 rounded flex items-center justify-center shrink-0 border ${selectedElement.fontStyle === 'italic' ? 'bg-slate-700 border-amber-500 text-amber-500' : 'bg-transparent border-transparent hover:bg-slate-800'}`}><Italic size={16} /></button>
-                                <input type="number" value={Math.round(selectedElement.fontSize || 0)} onChange={(e) => updateElement(selectedElement.id, { fontSize: Number(e.target.value) })} className="w-16 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm text-center shrink-0" title="Font Boyutu" />
+                                <select value={selectedElement.fontFamily} onChange={(e) => updateElement(selectedElement.id, { fontFamily: e.target.value })} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white w-32 shrink-0 outline-none focus:border-amber-500">{FONTS.map(group => (<optgroup key={group.group} label={group.group}>{group.options.map(f => (<option key={f.value} value={f.value}>{f.name}</option>))}</optgroup>))}</select>
+                                <select value={selectedElement.fontWeight || 400} onChange={(e) => updateElement(selectedElement.id, { fontWeight: Number(e.target.value) })} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white w-24 shrink-0 outline-none focus:border-amber-500">{FONT_WEIGHTS.map(w => (<option key={w.value} value={w.value}>{w.name}</option>))}</select>
+                                {selectedElement.type !== ElementType.CHOICE_BOX && (
+                                  <div className="flex items-center bg-slate-900 rounded-lg border border-slate-700 p-0.5 shrink-0">
+                                    <button onClick={() => updateElement(selectedElement.id, { textAlign: 'left' })} className={`p-1 rounded ${selectedElement.textAlign === 'left' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`} title="Sola Hizala"><AlignLeft size={14} /></button>
+                                    <button onClick={() => updateElement(selectedElement.id, { textAlign: 'center' })} className={`p-1 rounded ${(!selectedElement.textAlign || selectedElement.textAlign === 'center') ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`} title="Ortala"><AlignCenter size={14} /></button>
+                                    <button onClick={() => updateElement(selectedElement.id, { textAlign: 'right' })} className={`p-1 rounded ${selectedElement.textAlign === 'right' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`} title="Sağa Hizala"><AlignRight size={14} /></button>
+                                  </div>
+                                )}
+                                <button onClick={() => updateElement(selectedElement.id, { fontStyle: selectedElement.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`p-1.5 rounded-lg border text-xs flex items-center justify-center shrink-0 ${selectedElement.fontStyle === 'italic' ? 'bg-amber-500 text-slate-950 border-amber-500' : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'}`} title="İtalik"><Italic size={14} /></button>
+                                <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-0.5 shrink-0" title="Font Boyutu (px)">
+                                  <span className="text-[10px] text-slate-500 font-mono mr-1">px</span>
+                                  <input type="number" value={Math.round(selectedElement.fontSize || 0)} onChange={(e) => updateElement(selectedElement.id, { fontSize: Number(e.target.value) })} className="w-12 bg-transparent text-xs text-white text-center outline-none" />
+                                </div>
                             </>
                             )}
-                            <input type="color" value={selectedElement.color} onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })} className="w-8 h-8 rounded bg-transparent border-none cursor-pointer shrink-0" title="Renk" />
-                            {selectedElement.type === ElementType.DROPDOWN && (<button onClick={() => setShowOptionManager(true)} className="flex items-center gap-1 bg-blue-700 hover:bg-blue-600 px-3 py-1 rounded text-xs text-white border border-blue-600 ml-2 whitespace-nowrap transition"><List size={12} /> Seçenekleri Düzenle ({selectedElement.options?.length || 0})</button>)}
-                            {selectedElement.type === ElementType.CHOICE_BOX && selectedElement.options && (<div className="flex items-center gap-2 ml-2 bg-slate-900 p-1 rounded border border-slate-600"><span className="text-[10px] text-slate-400">Varsayılan:</span><select value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-xs text-white outline-none">{selectedElement.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>)}
-                            {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DATE) && (<input value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-36 shrink-0 font-mono text-xs" placeholder={selectedElement.type === ElementType.DATE ? "{Eğitim Tarihi}" : "Örn metin"} title="Varsayılan Değer / Yer Tutucu" />)}
+                            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 shrink-0" title="Yazı Rengi">
+                              <input type="color" value={selectedElement.color || '#000000'} onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })} className="w-5 h-5 rounded cursor-pointer border-none bg-transparent" />
+                              <span className="text-[10px] font-mono text-slate-400 uppercase">{selectedElement.color || '#000000'}</span>
+                            </div>
+                            {selectedElement.type === ElementType.DROPDOWN && (<button onClick={() => setShowOptionManager(true)} className="flex items-center gap-1.5 bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border border-sky-500/30 px-2.5 py-1 rounded-lg text-xs font-medium shrink-0 transition"><List size={13} /> Seçenekler ({selectedElement.options?.length || 0})</button>)}
+                            {selectedElement.type === ElementType.CHOICE_BOX && selectedElement.options && (<div className="flex items-center gap-1.5 bg-slate-900 px-2 py-1 rounded-lg border border-slate-700 shrink-0"><span className="text-[10px] text-slate-400">Varsayılan:</span><select value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-xs text-white outline-none">{selectedElement.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>)}
+                            {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DATE) && (<input value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white w-36 shrink-0 font-mono outline-none focus:border-amber-500" placeholder={selectedElement.type === ElementType.DATE ? "{Eğitim Tarihi}" : "Örn metin"} title="Varsayılan Değer / Yer Tutucu" />)}
                         </>
                         )}
-                        {selectedElement.type === ElementType.SIGNATURE && (<button onClick={() => setShowSigPermissions(true)} className="flex items-center gap-1 bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-xs text-white border border-slate-600 ml-2 whitespace-nowrap transition"><Filter size={12} /> İmza İzinleri ({selectedElement.allowedSignatureIds?.length || 'Tümü'})</button>)}
+                        {selectedElement.type === ElementType.SIGNATURE && (<button onClick={() => setShowSigPermissions(true)} className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded-lg text-xs text-white border border-slate-600 shrink-0 transition"><Filter size={13} /> İmza İzinleri ({selectedElement.allowedSignatureIds?.length || 'Tümü'})</button>)}
+
+                        {/* Top bar delete shortcut */}
+                        <button 
+                          onClick={() => { deleteElement(selectedElement.id); setSelectedId(null); }}
+                          className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 shrink-0 transition ml-1"
+                          title="Seçili Bileşeni Sil"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                     </>
-                    ) : <span className="text-sm text-slate-500">Özellikler için bileşen seçin</span>}
+                    ) : (
+                      <div className="flex items-center gap-3 text-xs text-slate-400 select-none">
+                        <span className="font-mono bg-slate-900 border border-slate-700 px-2.5 py-0.5 rounded-lg text-[11px] text-slate-300">
+                          📐 {activeProject.width} × {activeProject.height} px
+                        </span>
+                        <span className="bg-slate-900/60 border border-slate-700/60 px-2.5 py-0.5 rounded-lg text-[11px] text-slate-300">
+                          {activeProject.width > activeProject.height ? 'Yatay Belge' : 'Dikey Belge'}
+                        </span>
+                        <span className="text-slate-500 hidden sm:inline">
+                          • {currentSideElements.length} bileşen mevcut
+                        </span>
+                        <span className="text-amber-500/70 text-[11px] hidden lg:inline">
+                          (Düzenlemek ve taşımak için bir bileşene tıklayın)
+                        </span>
+                      </div>
+                    )}
                  </div>
-                 <div className="flex items-center gap-2">
+
+                 {/* Right: Zoom Controls */}
+                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-700 shrink-0">
                     <button 
-                      onClick={() => setCurrentView('fill')} 
-                      className="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition shrink-0"
-                      title="Sertifika Doldurma Ekranına Dön"
+                      onClick={handleZoomOut} 
+                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" 
+                      title="Uzaklaştır (%5)"
                     >
-                      <PenTool size={13} /> Doldur'a Dön
+                      <ZoomOut size={14} />
                     </button>
-                    <div className="flex bg-slate-900 p-1 rounded-lg shrink-0">
-                        <button onClick={() => { setActiveSide('front'); setSelectedId(null); }} className={`flex-1 px-4 py-1.5 text-xs rounded-md transition font-medium ${activeSide === 'front' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Ön Yüz</button>
-                        <button onClick={() => { setActiveSide('back'); setSelectedId(null); }} className={`flex-1 px-4 py-1.5 text-xs rounded-md transition font-medium ${activeSide === 'back' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Arka Yüz</button>
-                    </div>
-                  </div>
+                    <span className="text-[11px] font-mono font-bold text-amber-400 px-1 min-w-[38px] text-center">
+                      %{Math.round(scale * 100)}
+                    </span>
+                    <button 
+                      onClick={handleZoomIn} 
+                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" 
+                      title="Yakınlaştır (%5)"
+                    >
+                      <ZoomIn size={14} />
+                    </button>
+                    <div className="w-[1px] h-4 bg-slate-700 mx-0.5"></div>
+                    <button 
+                      onClick={handleZoomFit} 
+                      className="px-2 py-0.5 text-[10px] font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition" 
+                      title="Ekrana Sığdır"
+                    >
+                      Sığdır
+                    </button>
+                 </div>
               </div>
-              <div ref={editorContainerRef} className="flex-1 overflow-hidden relative flex items-center justify-center p-4 md:p-10 bg-dots-pattern" style={{ backgroundImage: 'radial-gradient(#1e293b 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+
+              {/* Canvas Container with Smooth Scroll and Absolute Zero Jitter */}
+              <div ref={editorContainerRef} className="flex-1 overflow-auto relative flex items-center justify-center p-4 md:p-8 bg-dots-pattern min-w-0 custom-scrollbar" style={{ backgroundImage: 'radial-gradient(#1e293b 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' }}>
                 <CanvasEditor elements={currentSideElements} width={activeProject.width} height={activeProject.height} bgUrl={currentSideBg} selectedId={selectedId} onSelect={setSelectedId} onUpdateElement={updateElement} onDeleteElement={deleteElement} scale={scale} />
               </div>
               {showSigPermissions && selectedElement && selectedElement.type === ElementType.SIGNATURE && (
