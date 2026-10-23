@@ -59,22 +59,6 @@
             "textAlign": "center"
           },
           {
-            "id": "1766783038244",
-            "type": "TEXT",
-            "content": "{TARİH}",
-            "x": 1360.9608938547485,
-            "y": 560.8454376163875,
-            "width": 400,
-            "height": 100,
-            "fontSize": 33,
-            "fontFamily": "Cinzel, serif",
-            "color": "#000000",
-            "label": "TARİH EGT",
-            "fontWeight": 700,
-            "fontStyle": "normal",
-            "textAlign": "left"
-          },
-          {
             "id": "1766833414660",
             "type": "COMPANY",
             "content": "{FİRMA}",
@@ -260,6 +244,25 @@
             "textAlign": "center",
             "secondaryX": 1782.75,
             "secondaryY": 437.82499999999993
+          },
+          {
+            "id": "1792764352987",
+            "type": "DATE",
+            "content": "{Eğitim Tarihi}",
+            "x": 1358.940611073047,
+            "y": 560.6752890173411,
+            "width": 320,
+            "height": 60,
+            "fontSize": 33,
+            "fontFamily": "Cinzel, serif",
+            "color": "#000000",
+            "label": "Eğitim Tarihi",
+            "fontWeight": 700,
+            "fontStyle": "normal",
+            "textAlign": "left",
+            "dateKind": "training",
+            "secondaryX": 1462.940611073047,
+            "secondaryY": 558.6752890173411
           }
         ]
       },
@@ -691,6 +694,23 @@
               "17858298564900.12121039143682333",
               "17890224640370.4150943280662903"
             ]
+          },
+          {
+            "id": "1792764662159",
+            "type": "DATE",
+            "content": "{Eğitim Tarihi}",
+            "x": 840,
+            "y": 677,
+            "width": 320,
+            "height": 60,
+            "fontSize": 48,
+            "fontFamily": "Inter, sans-serif",
+            "color": "#000000",
+            "label": "Eğitim Tarihi",
+            "fontWeight": 400,
+            "fontStyle": "normal",
+            "textAlign": "center",
+            "dateKind": "training"
           }
         ]
       },

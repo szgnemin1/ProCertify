@@ -55,8 +55,6 @@ import {
   Bot,
   Send,
   Calendar,
-  CalendarClock,
-  Clock,
   Menu,
   Folder,
   Lock,
@@ -99,13 +97,10 @@ import { EmployeeModal } from './components/EmployeeModal';
 import { 
   calculateExpiryDate, 
   getValidityYears, 
-  getDangerClassLabel, 
-  getDangerClassBadgeClass,
-  findBestTrainingDateField,
+  findBestTrainingDateField, 
   isValidityDateField,
   parseDateDetailed,
-  formatDateTR,
-  ExpiryCalculationResult
+  formatDateTR
 } from './services/validityService';
 
 type ViewMode = ActiveNavTab;
@@ -3980,146 +3975,6 @@ const App = () => {
                         </div>
                       ) : (
                           <>
-                          {(() => {
-                            const unifiedFields = getUnifiedFillFields();
-                            const dateCandidateFields = unifiedFields.filter(f => {
-                              const lk = f.label.toLowerCase();
-                              return (f.type === ElementType.DATE || lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
-                            });
-
-                            const explicitDateField = dateCandidateFields.find(f => f.type === ElementType.DATE || f.dateKind === 'training');
-                            const autoBestTrainingKey = explicitDateField ? explicitDateField.label : findBestTrainingDateField(dateCandidateFields.map(f => f.label));
-                            const effectiveTrainingKey = selectedTrainingDateKey && dateCandidateFields.some(f => f.label === selectedTrainingDateKey)
-                              ? selectedTrainingDateKey
-                              : (autoBestTrainingKey || (dateCandidateFields[0]?.label || ''));
-
-                            let compName = '';
-                            for (const [k, v] of Object.entries(fillValues)) {
-                              const lk = k.toLowerCase();
-                              if (!compName && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket'))) {
-                                compName = v;
-                              }
-                            }
-                            const currentMatchedComp = companies.find(c => 
-                              c.name.toLowerCase() === compName.toLowerCase() || 
-                              (c.shortName && c.shortName.toLowerCase() === compName.toLowerCase())
-                            );
-                            const activeDangerClass = currentMatchedComp?.dangerClass || 'cok_tehlikeli';
-                            const activeTrainingDateVal = effectiveTrainingKey ? (fillValues[effectiveTrainingKey] || '') : '';
-                            const currentExpiryResult = activeTrainingDateVal 
-                              ? calculateExpiryDate(activeTrainingDateVal, activeDangerClass, preferSingleDateExpiry)
-                              : null;
-
-                            if (dateCandidateFields.length === 0) return null;
-
-                            return (
-                              <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-700/80 rounded-2xl p-4 shadow-xl space-y-3.5 mb-6">
-                                <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                                      <CalendarClock size={16} />
-                                    </div>
-                                    <div>
-                                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">İSG Geçerlilik &amp; Tarih Referansı</h4>
-                                      <p className="text-[10px] text-slate-400">Eğitim süresi &amp; tehlike sınıfına göre hesaplama</p>
-                                    </div>
-                                  </div>
-                                  {currentMatchedComp ? (
-                                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold ${getDangerClassBadgeClass(activeDangerClass)}`}>
-                                      {getDangerClassLabel(activeDangerClass)}
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] text-slate-500 bg-slate-800/80 px-2 py-0.5 rounded">
-                                      Firma seçilince hesaplanır
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="space-y-1.5">
-                                  <div className="flex items-center justify-between text-xs">
-                                    <label className="font-semibold text-slate-300 flex items-center gap-1.5">
-                                      <span>Hesaplama Referansı (Eğitim Tarihi):</span>
-                                      {dateCandidateFields.length > 1 && (
-                                        <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">
-                                          {dateCandidateFields.length} Tarih Alanı Algılandı
-                                        </span>
-                                      )}
-                                    </label>
-                                  </div>
-
-                                  {dateCandidateFields.length > 1 ? (
-                                    <div className="space-y-1">
-                                      <div className="relative">
-                                        <select 
-                                          value={effectiveTrainingKey}
-                                          onChange={(e) => handleTrainingDateKeyChange(e.target.value)}
-                                          className="w-full bg-slate-950 border border-amber-500/40 focus:border-amber-500 rounded-xl px-3 py-2.5 text-xs text-white outline-none transition appearance-none cursor-pointer shadow-inner"
-                                        >
-                                          {dateCandidateFields.map(f => {
-                                            const val = fillValues[f.label] || '';
-                                            const isDateComp = f.type === ElementType.DATE;
-                                            const isBest = f.label === autoBestTrainingKey;
-                                            return (
-                                              <option key={f.label} value={f.label}>
-                                                {f.displayLabel} {val ? `➜ [${val}]` : '(Boş)'} {isDateComp ? '⭐ (Bileşen: Grup Başlangıç Tarihi)' : (isBest ? '⭐ (Önerilen)' : '')}
-                                              </option>
-                                            );
-                                          })}
-                                        </select>
-                                        <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-amber-400 text-xs font-bold">▼</div>
-                                      </div>
-                                      <p className="text-[10px] text-slate-400 px-1">
-                                        💡 Evrakta birden fazla tarih olduğunda geçerliliğin hangi tarihe göre hesaplanacağını buradan belirleyebilirsiniz.
-                                      </p>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center justify-between text-xs bg-slate-950/80 px-3.5 py-2.5 rounded-xl border border-slate-800 text-slate-300">
-                                      <span className="font-medium text-slate-400">{dateCandidateFields[0]?.displayLabel}:</span>
-                                      <span className="text-amber-400 font-mono font-bold">{fillValues[dateCandidateFields[0]?.label] || 'Henüz girilmedi'}</span>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {currentExpiryResult && (
-                                  <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-2.5">
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-1.5">
-                                        <Clock size={13} className="text-emerald-400" />
-                                        <span className="text-xs text-slate-300">Hesaplanan Geçerlilik Bitişi:</span>
-                                      </div>
-                                      <span className="font-mono font-black text-emerald-400 text-sm tracking-wide">
-                                        {currentExpiryResult.expiryDisplay}
-                                      </span>
-                                    </div>
-
-                                    {currentExpiryResult.isMultiDay && (
-                                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
-                                        <span className="text-slate-400">Geçerlilik Yazım Biçimi:</span>
-                                        <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-700">
-                                          <button 
-                                            type="button" 
-                                            onClick={() => handleToggleSingleDateExpiry(false)}
-                                            className={`px-2.5 py-1 rounded text-[10px] font-semibold transition ${!preferSingleDateExpiry ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'}`}
-                                            title="Girdiğiniz gün aralığı formatında yazar (örn: 22.25/10/2027)"
-                                          >
-                                            Aralık Formatı ({currentExpiryResult.parsedInfo?.raw.slice(0, 5)}...)
-                                          </button>
-                                          <button 
-                                            type="button" 
-                                            onClick={() => handleToggleSingleDateExpiry(true)}
-                                            className={`px-2.5 py-1 rounded text-[10px] font-semibold transition ${preferSingleDateExpiry ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'}`}
-                                            title="Bitiş gününü standart tek tarih olarak yazar (örn: 25.10.2027)"
-                                          >
-                                            Tek Gün ({currentExpiryResult.expirySingleDisplay})
-                                          </button>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
                           {getUnifiedFillFields().filter(f => f.type !== ElementType.CHOICE_BOX).map((field, idx) => (
                          <div key={idx} className="space-y-2">
                             {((field.type as any) === "bg_front" || (field.type as any) === "bg_back") ? (
