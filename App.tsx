@@ -63,7 +63,10 @@ import {
   Unlock,
   Eye,
   EyeOff,
-  Pencil
+  Pencil,
+  Flame,
+  Search,
+  Building2
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
@@ -552,6 +555,17 @@ const App = () => {
   const [tempCompanyInput, setTempCompanyInput] = useState('');
   const [companySearchQuery, setCompanySearchQuery] = useState('');
   const [selectedDangerClassInput, setSelectedDangerClassInput] = useState<DangerClass>('cok_tehlikeli');
+
+  // Settings View Sub-Tab & Company Form States
+  const [settingsSubTab, setSettingsSubTab] = useState<'companies' | 'users' | 'signatures' | 'security' | 'backup'>('companies');
+  const [singleCompanyName, setSingleCompanyName] = useState('');
+  const [singleCompanyShortName, setSingleCompanyShortName] = useState('');
+  const [singleCompanyDangerClass, setSingleCompanyDangerClass] = useState<DangerClass>('cok_tehlikeli');
+  const [showBatchCompanyInput, setShowBatchCompanyInput] = useState(false);
+  const [companyDangerFilter, setCompanyDangerFilter] = useState<'all' | DangerClass>('all');
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
+  const [editingCompanyName, setEditingCompanyName] = useState('');
+  const [editingCompanyShortName, setEditingCompanyShortName] = useState('');
 
   // Training date reference selection state for multiple date fields
   const [selectedTrainingDateKey, setSelectedTrainingDateKey] = useState<string>('');
@@ -1525,6 +1539,50 @@ const App = () => {
           return [...prev, ...uniqueNew]; 
       });
       setTempCompanyInput('');
+  };
+
+  const handleAddSingleCompany = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!singleCompanyName.trim()) return;
+
+    const trimmedName = singleCompanyName.trim();
+    const shortName = singleCompanyShortName.trim() || 
+      trimmedName.split(' ').slice(0, 2).join('_').toUpperCase().replace(/[^a-zA-Z0-9_ğüşıöçĞÜŞİÖÇ]/g, '');
+
+    const years = getValidityYears(singleCompanyDangerClass);
+    const newCompany: Company = {
+      id: Date.now().toString() + '.' + Math.random().toString().slice(2, 6),
+      name: trimmedName,
+      shortName,
+      dangerClass: singleCompanyDangerClass,
+      validityYears: years,
+      createdAt: Date.now()
+    };
+
+    setCompanies(prev => [newCompany, ...prev.filter(c => c.name.toLowerCase() !== trimmedName.toLowerCase())]);
+    setSingleCompanyName('');
+    setSingleCompanyShortName('');
+  };
+
+  const handleStartEditCompany = (company: Company) => {
+    setEditingCompanyId(company.id);
+    setEditingCompanyName(company.name);
+    setEditingCompanyShortName(company.shortName || '');
+  };
+
+  const handleSaveEditCompany = (companyId: string) => {
+    if (!editingCompanyName.trim()) return;
+    setCompanies(prev => prev.map(c => {
+      if (c.id === companyId) {
+        return {
+          ...c,
+          name: editingCompanyName.trim(),
+          shortName: editingCompanyShortName.trim() || editingCompanyName.trim()
+        };
+      }
+      return c;
+    }));
+    setEditingCompanyId(null);
   };
 
   const removeCompany = (id: string) => {
@@ -2739,373 +2797,822 @@ const App = () => {
 
         {/* VIEW: SETTINGS */}
         {currentView === 'settings' && (
-          <div className="flex-1 bg-slate-900 p-4 md:p-10 overflow-y-auto custom-scrollbar">
-             <div className="max-w-4xl mx-auto space-y-8">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex-1 bg-slate-900 p-4 md:p-8 overflow-y-auto custom-scrollbar">
+             <div className="max-w-6xl mx-auto space-y-6">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
                   <div>
-                    <h1 className="text-3xl font-bold mb-2 text-white">Ayarlar & Varlıklar</h1>
-                    <p className="text-slate-400">Uygulama genel ayarları ve varlık yönetimi.</p>
+                    <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-2">
+                      <Settings className="text-amber-500" size={28} /> Ayarlar & Sistem Yönetimi
+                    </h1>
+                    <p className="text-xs md:text-sm text-slate-400 mt-1">
+                      Firma kayıtları, İSG tehlike sınıfları, kullanıcı yetkileri, imzalar ve sistem parametreleri.
+                    </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <button 
                       onClick={() => setCurrentView('fill')} 
-                      className="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 hover:border-amber-500/50 px-4 py-2 rounded-lg flex items-center gap-2 font-medium text-sm transition"
+                      className="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 hover:border-amber-500/50 px-3.5 py-2 rounded-xl flex items-center gap-2 font-medium text-xs md:text-sm transition shadow-sm"
                       title="Sertifika Doldurma Ekranına Dön"
                     >
-                      <PenTool size={16} /> Doldur Moduna Dön
+                      <PenTool size={15} /> Doldur Modu
                     </button>
                     <button 
                       onClick={handleAdminLogout} 
-                      className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3.5 py-2 rounded-lg flex items-center gap-2 font-medium text-sm transition"
+                      className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3 py-2 rounded-xl flex items-center gap-2 font-medium text-xs md:text-sm transition"
                       title="Yönetici Oturumunu Kilitle"
                     >
-                      <Lock size={16} /> Oturumu Kilitle
+                      <Lock size={15} /> Kilitle
                     </button>
                   </div>
                 </div>
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                  <h2 className="text-xl font-semibold flex items-center gap-2 text-white mb-6">
-                    <FileText className="text-blue-500" /> Aktif Proje Yönetimi
-                  </h2>
-                  <div className="w-full">
-                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Proje İsmi</label>
-                    <input 
-                      type="text" 
-                      value={activeProject.name} 
-                      onChange={(e) => updateProjectMeta({ name: e.target.value })} 
-                      className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-amber-500 outline-none" 
-                    />
-                    <p className="text-[10px] text-slate-500 mt-2">
-                      Projeyi silmek için <button onClick={() => setCurrentView('projects')} className="text-amber-500 hover:underline">Projeler</button> sayfasına gidiniz.
-                    </p>
-                  </div>
-                </div>
 
-                {/* KULLANICI & YETKİ YÖNETİMİ */}
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-semibold flex items-center gap-2 text-white">
-                      <ShieldCheck className="text-amber-500" /> Kullanıcı & Rol Yönetimi
-                    </h2>
-                    <button 
-                      onClick={() => setShowUserModal(true)} 
-                      className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-xl flex items-center gap-2 text-xs transition shadow-lg shadow-amber-500/20 active:scale-95"
-                    >
-                      <Plus size={16} /> Kullanıcıları Yönet
-                    </button>
-                  </div>
-                  <p className="text-sm text-slate-400">
-                    Sistemde sertifika düzenleyecek İSG uzmanlarını ve yöneticileri sınırsız olarak ekleyin veya şifrelerini düzenleyin.
-                  </p>
-                </div>
-
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-semibold flex items-center gap-2 text-white">
-                      <Building className="text-green-500" /> Firma & Tehlike Sınıfı Yönetimi
-                    </h2>
-                    <span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">Toplam: {companies.length}</span>
-                  </div>
-                  <p className="text-sm text-slate-400 mb-4">Sertifikalarda kullanılacak firma/kurum isimlerini buraya ekleyin. Kısaltma belirlemek için "|" karakterini kullanın (Örn: "Acme Şirketi | Acme").</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Toplu Ekleme</label>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs text-slate-400">Varsayılan Tehlike Sınıfı:</span>
-                        <select
-                          value={selectedDangerClassInput}
-                          onChange={(e) => setSelectedDangerClassInput(e.target.value as DangerClass)}
-                          className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-white focus:border-green-500"
-                        >
-                          <option value="cok_tehlikeli">Çok Tehlikeli (1 Yıl)</option>
-                          <option value="tehlikeli">Tehlikeli (2 Yıl)</option>
-                          <option value="az_tehlikeli">Az Tehlikeli (3 Yıl)</option>
-                        </select>
-                      </div>
-                      <textarea 
-                        rows={6} 
-                        value={tempCompanyInput} 
-                        onChange={(e) => setTempCompanyInput(e.target.value)} 
-                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-sm text-white focus:border-green-500 outline-none resize-none font-mono" 
-                        placeholder={"Firma Adı | Kısaltma | az_tehlikeli\nÖrnek A.Ş. | Örnek\nSadece İsim"} 
-                      />
-                      <button 
-                        onClick={() => addCompany(tempCompanyInput)} 
-                        className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition shadow-lg shadow-green-900/20 active:scale-95"
+                {/* Sub-Tabs Nav */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-800/80 custom-scrollbar">
+                  {[
+                    { id: 'companies', label: 'Firmalar & Tehlike Sınıfı', icon: Building2, count: companies.length },
+                    { id: 'users', label: 'Kullanıcı & Roller', icon: ShieldCheck },
+                    { id: 'signatures', label: 'Kayıtlı İmzalar', icon: PenTool, count: signatures.length },
+                    { id: 'security', label: 'Sistem & Güvenlik', icon: Lock },
+                    { id: 'backup', label: 'Yedekleme & Güncelleme', icon: Database },
+                  ].map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = settingsSubTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setSettingsSubTab(tab.id as any)}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs md:text-sm font-semibold transition shrink-0 ${
+                          isActive
+                            ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                            : 'bg-slate-800/70 text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent hover:border-slate-700'
+                        }`}
                       >
-                        Listeye Ekle
-                      </button>
-                    </div>
-                    <div className="space-y-2 flex flex-col h-full">
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="text-xs font-bold text-slate-500 uppercase">Mevcut Liste</label>
-                        {companies.length > 0 && (
-                          <input 
-                            type="text"
-                            value={companySearchQuery}
-                            onChange={(e) => setCompanySearchQuery(e.target.value)}
-                            placeholder="Firma ara..."
-                            className="bg-slate-900 border border-slate-700 rounded px-3 py-1 text-xs text-white placeholder-slate-500 focus:border-green-500 outline-none w-40 md:w-52 transition"
-                          />
+                        <Icon size={16} />
+                        <span>{tab.label}</span>
+                        {tab.count !== undefined && (
+                          <span
+                            className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              isActive ? 'bg-slate-950 text-amber-400' : 'bg-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {tab.count}
+                          </span>
                         )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* TAB 1: COMPANIES */}
+                {settingsSubTab === 'companies' && (
+                  <div className="space-y-6">
+                    {/* New Company Addition Form Card */}
+                    <div className="bg-slate-800/90 rounded-2xl p-5 md:p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                            <Plus size={18} />
+                          </div>
+                          <div>
+                            <h2 className="text-base md:text-lg font-bold text-white">Yeni Firma Ekle</h2>
+                            <p className="text-xs text-slate-400">Firma unvanını, kısa kodunu ve İSG tehlike sınıfını tanımlayın.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowBatchCompanyInput(!showBatchCompanyInput)}
+                          className="text-xs text-slate-400 hover:text-amber-400 flex items-center gap-1.5 transition underline-offset-4 hover:underline"
+                        >
+                          <FileText size={14} />
+                          {showBatchCompanyInput ? 'Tekli Forma Dön' : 'Toplu Metin ile Ekle'}
+                        </button>
                       </div>
-                      <div className="bg-slate-900/50 rounded-lg border border-slate-700 p-2 flex-1 max-h-[200px] overflow-y-auto custom-scrollbar space-y-1">
+
+                      {!showBatchCompanyInput ? (
+                        <form onSubmit={handleAddSingleCompany} className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                                Firma Tam Unvanı <span className="text-rose-400">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={singleCompanyName}
+                                onChange={(e) => setSingleCompanyName(e.target.value)}
+                                placeholder="Örn: ABC İnşaat Sanayi ve Ticaret A.Ş."
+                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-amber-500 outline-none transition"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                                Firma Kısa Kodu / Kısaltması <span className="text-slate-500 font-normal">(Opsiyonel)</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={singleCompanyShortName}
+                                onChange={(e) => setSingleCompanyShortName(e.target.value)}
+                                placeholder="Örn: ABC_INSAAT veya ABC"
+                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-amber-500 outline-none transition font-mono"
+                              />
+                              <p className="text-[10px] text-slate-500 mt-1">
+                                Boş bırakılırsa firma isminden otomatik üretilir. Sertifikada yer dar ise kullanılır.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Danger Class Selector Cards */}
+                          <div>
+                            <label className="text-xs font-semibold text-slate-300 block mb-2">
+                              İSG Tehlike Sınıfı ve Sertifika Geçerlilik Süresi <span className="text-rose-400">*</span>
+                            </label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              {/* Cok Tehlikeli */}
+                              <div
+                                onClick={() => setSingleCompanyDangerClass('cok_tehlikeli')}
+                                className={`cursor-pointer rounded-xl p-3.5 border transition relative flex items-start gap-3 ${
+                                  singleCompanyDangerClass === 'cok_tehlikeli'
+                                    ? 'bg-rose-500/10 border-rose-500 ring-1 ring-rose-500/50'
+                                    : 'bg-slate-900/60 border-slate-700/80 hover:border-slate-600'
+                                }`}
+                              >
+                                <div className="p-2 rounded-lg bg-rose-500/20 text-rose-400 shrink-0">
+                                  <Flame size={18} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-rose-300">Çok Tehlikeli</span>
+                                    <span className="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded font-bold">1 Yıl</span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                                    İnşaat, madencilik, ağır sanayi, tersaneler
+                                  </p>
+                                </div>
+                                {singleCompanyDangerClass === 'cok_tehlikeli' && (
+                                  <Check className="text-rose-400 shrink-0" size={16} />
+                                )}
+                              </div>
+
+                              {/* Tehlikeli */}
+                              <div
+                                onClick={() => setSingleCompanyDangerClass('tehlikeli')}
+                                className={`cursor-pointer rounded-xl p-3.5 border transition relative flex items-start gap-3 ${
+                                  singleCompanyDangerClass === 'tehlikeli'
+                                    ? 'bg-amber-500/10 border-amber-500 ring-1 ring-amber-500/50'
+                                    : 'bg-slate-900/60 border-slate-700/80 hover:border-slate-600'
+                                }`}
+                              >
+                                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 shrink-0">
+                                  <AlertTriangle size={18} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-amber-300">Tehlikeli</span>
+                                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">2 Yıl</span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                                    İmalat sanayi, gıda üretimi, tekstil, lojistik
+                                  </p>
+                                </div>
+                                {singleCompanyDangerClass === 'tehlikeli' && (
+                                  <Check className="text-amber-400 shrink-0" size={16} />
+                                )}
+                              </div>
+
+                              {/* Az Tehlikeli */}
+                              <div
+                                onClick={() => setSingleCompanyDangerClass('az_tehlikeli')}
+                                className={`cursor-pointer rounded-xl p-3.5 border transition relative flex items-start gap-3 ${
+                                  singleCompanyDangerClass === 'az_tehlikeli'
+                                    ? 'bg-emerald-500/10 border-emerald-500 ring-1 ring-emerald-500/50'
+                                    : 'bg-slate-900/60 border-slate-700/80 hover:border-slate-600'
+                                }`}
+                              >
+                                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 shrink-0">
+                                  <ShieldCheck size={18} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-emerald-300">Az Tehlikeli</span>
+                                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">3 Yıl</span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                                    Ofis, perakende, bilişim, eğitim, bürolar
+                                  </p>
+                                </div>
+                                {singleCompanyDangerClass === 'az_tehlikeli' && (
+                                  <Check className="text-emerald-400 shrink-0" size={16} />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end pt-2">
+                            <button
+                              type="submit"
+                              disabled={!singleCompanyName.trim()}
+                              className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold px-6 py-2.5 rounded-xl flex items-center gap-2 text-xs md:text-sm transition shadow-lg shadow-amber-500/20 active:scale-95"
+                            >
+                              <Plus size={16} /> Yeni Firmayı Kaydet
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        /* Batch Add Mode */
+                        <div className="space-y-3 pt-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs text-slate-300 font-semibold">
+                              Toplu Metin Girişi (Satır Satır):
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-slate-400">Varsayılan Tehlike Sınıfı:</span>
+                              <select
+                                value={selectedDangerClassInput}
+                                onChange={(e) => setSelectedDangerClassInput(e.target.value as DangerClass)}
+                                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:border-amber-500 outline-none"
+                              >
+                                <option value="cok_tehlikeli">Çok Tehlikeli (1 Yıl)</option>
+                                <option value="tehlikeli">Tehlikeli (2 Yıl)</option>
+                                <option value="az_tehlikeli">Az Tehlikeli (3 Yıl)</option>
+                              </select>
+                            </div>
+                          </div>
+                          <textarea
+                            rows={5}
+                            value={tempCompanyInput}
+                            onChange={(e) => setTempCompanyInput(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs font-mono text-white placeholder-slate-500 focus:border-amber-500 outline-none resize-none"
+                            placeholder={"Örnek Formatlar:\nFirma Tam Adı | Kısa Kod | az_tehlikeli\nArçelik A.Ş. | ARCELIK | tehlikeli\nKolin İnşaat | KOLIN\nSadece Firma Adı"}
+                          />
+                          <div className="flex justify-between items-center">
+                            <p className="text-[11px] text-slate-500">
+                              Her satıra bir firma gelecek şekilde yapıştırın. '|' ile kısaltma ve tehlike sınıfı belirtebilirsiniz.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                addCompany(tempCompanyInput);
+                                setShowBatchCompanyInput(false);
+                              }}
+                              disabled={!tempCompanyInput.trim()}
+                              className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl text-xs flex items-center gap-2 transition shadow-lg shadow-emerald-900/20 active:scale-95"
+                            >
+                              <Plus size={15} /> Toplu Listeyi Ekle
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Companies List Table Card */}
+                    <div className="bg-slate-800/90 rounded-2xl border border-slate-700 shadow-xl overflow-hidden backdrop-blur-sm">
+                      {/* Filter & Search Header */}
+                      <div className="p-4 md:p-5 border-b border-slate-700/80 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-800/50">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="text-amber-500" size={20} />
+                          <h3 className="font-bold text-white text-base">
+                            Kayıtlı Firmalar
+                          </h3>
+                          <span className="bg-slate-700 text-slate-300 text-xs px-2.5 py-0.5 rounded-full font-bold ml-1">
+                            {companies.length}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Danger Class Filter Tabs */}
+                          <div className="flex items-center bg-slate-900 p-0.5 rounded-xl border border-slate-700 text-xs">
+                            <button
+                              onClick={() => setCompanyDangerFilter('all')}
+                              className={`px-2.5 py-1 rounded-lg font-medium transition ${
+                                companyDangerFilter === 'all'
+                                  ? 'bg-amber-500 text-slate-950 font-bold'
+                                  : 'text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              Tümü
+                            </button>
+                            <button
+                              onClick={() => setCompanyDangerFilter('cok_tehlikeli')}
+                              className={`px-2 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
+                                companyDangerFilter === 'cok_tehlikeli'
+                                  ? 'bg-rose-500 text-white font-bold'
+                                  : 'text-rose-400 hover:text-rose-300'
+                              }`}
+                            >
+                              <Flame size={12} /> Çok Tehlikeli
+                            </button>
+                            <button
+                              onClick={() => setCompanyDangerFilter('tehlikeli')}
+                              className={`px-2 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
+                                companyDangerFilter === 'tehlikeli'
+                                  ? 'bg-amber-500 text-slate-950 font-bold'
+                                  : 'text-amber-400 hover:text-amber-300'
+                              }`}
+                            >
+                              <AlertTriangle size={12} /> Tehlikeli
+                            </button>
+                            <button
+                              onClick={() => setCompanyDangerFilter('az_tehlikeli')}
+                              className={`px-2 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
+                                companyDangerFilter === 'az_tehlikeli'
+                                  ? 'bg-emerald-500 text-white font-bold'
+                                  : 'text-emerald-400 hover:text-emerald-300'
+                              }`}
+                            >
+                              <ShieldCheck size={12} /> Az Tehlikeli
+                            </button>
+                          </div>
+
+                          {/* Search Input */}
+                          <div className="relative">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                            <input
+                              type="text"
+                              value={companySearchQuery}
+                              onChange={(e) => setCompanySearchQuery(e.target.value)}
+                              placeholder="Firma veya kod ara..."
+                              className="bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-500 outline-none w-48 md:w-56 transition"
+                            />
+                            {companySearchQuery && (
+                              <button
+                                onClick={() => setCompanySearchQuery('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Companies Table */}
+                      <div className="overflow-x-auto">
                         {(() => {
-                          const searched = companies.filter(c => 
-                            turkishToLower(c.name).includes(turkishToLower(companySearchQuery)) || 
-                            (c.shortName && turkishToLower(c.shortName).includes(turkishToLower(companySearchQuery)))
-                          );
-                          if (searched.length === 0) {
+                          const filtered = companies.filter(c => {
+                            const matchesSearch = !companySearchQuery.trim() || 
+                              turkishToLower(c.name).includes(turkishToLower(companySearchQuery)) || 
+                              (c.shortName && turkishToLower(c.shortName).includes(turkishToLower(companySearchQuery)));
+                            const matchesDanger = companyDangerFilter === 'all' || (c.dangerClass || 'cok_tehlikeli') === companyDangerFilter;
+                            return matchesSearch && matchesDanger;
+                          });
+
+                          if (filtered.length === 0) {
                             return (
-                              <div className="text-center py-8 text-slate-500 text-sm italic">
-                                {companies.length === 0 ? "Liste boş." : "Aramayla eşleşen firma bulunamadı."}
+                              <div className="py-12 text-center text-slate-500 space-y-2">
+                                <Building2 size={36} className="mx-auto text-slate-600 opacity-60" />
+                                <p className="text-sm">
+                                  {companies.length === 0 ? "Henüz kayıtlı firma bulunmuyor." : "Arama kriterlerine uygun firma bulunamadı."}
+                                </p>
                               </div>
                             );
                           }
-                          return searched.map((company, idx) => (
-                            <div key={idx} className="flex justify-between items-center p-2 bg-slate-800 rounded group hover:bg-slate-700 transition">
-                              <div className="flex flex-col truncate pr-2 flex-1">
-                                <span className="text-sm text-slate-200 font-medium">{company.name}</span>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  {company.shortName && company.shortName !== company.name && (
-                                    <span className="text-[10px] text-slate-500 font-mono">Kısaltma: {company.shortName}</span>
-                                  )}
-                                  <select
-                                    value={company.dangerClass || 'cok_tehlikeli'}
-                                    onChange={(e) => updateCompanyDangerClass(company.id, e.target.value as DangerClass)}
-                                    className="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-amber-400 focus:border-amber-500 outline-none"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <option value="cok_tehlikeli">Çok Tehlikeli (1 Yıl)</option>
-                                    <option value="tehlikeli">Tehlikeli (2 Yıl)</option>
-                                    <option value="az_tehlikeli">Az Tehlikeli (3 Yıl)</option>
-                                  </select>
-                                </div>
-                              </div>
-                              <button 
-                                onClick={() => removeCompany(company.id)} 
-                                className="text-slate-500 hover:text-red-500 p-1 opacity-60 group-hover:opacity-100 transition"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          ));
+
+                          return (
+                            <table className="w-full text-left border-collapse text-xs">
+                              <thead>
+                                <tr className="border-b border-slate-700/60 bg-slate-900/60 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+                                  <th className="py-3 px-4 w-12 text-center">#</th>
+                                  <th className="py-3 px-4">Firma Adı & Kısaltma</th>
+                                  <th className="py-3 px-4 w-52">Tehlike Sınıfı</th>
+                                  <th className="py-3 px-4 w-28 text-center">Geçerlilik</th>
+                                  <th className="py-3 px-4 w-24 text-right">İşlemler</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/80">
+                                {filtered.map((company, idx) => {
+                                  const isEditing = editingCompanyId === company.id;
+                                  const danger = company.dangerClass || 'cok_tehlikeli';
+                                  const years = company.validityYears || getValidityYears(danger);
+
+                                  return (
+                                    <tr key={company.id} className="hover:bg-slate-800/50 transition">
+                                      <td className="py-3 px-4 text-center text-slate-500 font-mono">
+                                        {idx + 1}
+                                      </td>
+                                      <td className="py-3 px-4">
+                                        {isEditing ? (
+                                          <div className="space-y-2 max-w-md">
+                                            <input
+                                              type="text"
+                                              value={editingCompanyName}
+                                              onChange={(e) => setEditingCompanyName(e.target.value)}
+                                              className="w-full bg-slate-900 border border-amber-500/50 rounded-lg px-2.5 py-1 text-xs text-white outline-none"
+                                              placeholder="Firma Adı"
+                                              autoFocus
+                                            />
+                                            <input
+                                              type="text"
+                                              value={editingCompanyShortName}
+                                              onChange={(e) => setEditingCompanyShortName(e.target.value)}
+                                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white outline-none font-mono"
+                                              placeholder="Kısa Kod (opsiyonel)"
+                                            />
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center font-bold text-amber-400 shrink-0 text-xs">
+                                              {company.name.slice(0, 2).toUpperCase()}
+                                            </div>
+                                            <div className="min-w-0">
+                                              <div className="font-semibold text-white truncate max-w-md">
+                                                {company.name}
+                                              </div>
+                                              {company.shortName && (
+                                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                                  Kod: <span className="text-amber-400/90">{company.shortName}</span>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="py-3 px-4">
+                                        <select
+                                          value={danger}
+                                          onChange={(e) => updateCompanyDangerClass(company.id, e.target.value as DangerClass)}
+                                          className={`border rounded-lg px-2.5 py-1 text-xs font-semibold outline-none transition cursor-pointer ${
+                                            danger === 'cok_tehlikeli'
+                                              ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                                              : danger === 'tehlikeli'
+                                              ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                              : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                          }`}
+                                        >
+                                          <option value="cok_tehlikeli" className="bg-slate-900 text-rose-400">🔥 Çok Tehlikeli (1 Yıl)</option>
+                                          <option value="tehlikeli" className="bg-slate-900 text-amber-400">⚠️ Tehlikeli (2 Yıl)</option>
+                                          <option value="az_tehlikeli" className="bg-slate-900 text-emerald-400">🛡️ Az Tehlikeli (3 Yıl)</option>
+                                        </select>
+                                      </td>
+                                      <td className="py-3 px-4 text-center">
+                                        <span className={`inline-block px-2 py-0.5 rounded-full font-bold text-[11px] ${
+                                          danger === 'cok_tehlikeli'
+                                            ? 'bg-rose-500/20 text-rose-400'
+                                            : danger === 'tehlikeli'
+                                            ? 'bg-amber-500/20 text-amber-400'
+                                            : 'bg-emerald-500/20 text-emerald-400'
+                                        }`}>
+                                          {years} Yıl
+                                        </span>
+                                      </td>
+                                      <td className="py-3 px-4 text-right">
+                                        {isEditing ? (
+                                          <div className="flex items-center justify-end gap-1.5">
+                                            <button
+                                              onClick={() => handleSaveEditCompany(company.id)}
+                                              className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition"
+                                              title="Kaydet"
+                                            >
+                                              <Check size={14} />
+                                            </button>
+                                            <button
+                                              onClick={() => setEditingCompanyId(null)}
+                                              className="p-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition"
+                                              title="İptal"
+                                            >
+                                              <X size={14} />
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center justify-end gap-1">
+                                            <button
+                                              onClick={() => handleStartEditCompany(company)}
+                                              className="p-1.5 hover:bg-slate-700 text-slate-400 hover:text-amber-400 rounded-lg transition"
+                                              title="Düzenle"
+                                            >
+                                              <Pencil size={14} />
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                if (confirm(`"${company.name}" firmasını silmek istediğinize emin misiniz?`)) {
+                                                  removeCompany(company.id);
+                                                }
+                                              }}
+                                              className="p-1.5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 rounded-lg transition"
+                                              title="Sil"
+                                            >
+                                              <Trash2 size={14} />
+                                            </button>
+                                          </div>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          );
                         })()}
                       </div>
                     </div>
                   </div>
-                </div>
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><PenTool className="text-amber-500" /> Kayıtlı İmzalar</h2>
-                        <div className="flex gap-2">
-                            <button onClick={() => setShowSignaturePad(true)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition shadow-sm border border-slate-600"><PenLine size={18} /> İmza Çiz</button>
-                            <label className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium transition shadow-lg shadow-amber-900/20 active:scale-95 transform">
-                                <Plus size={18} /> İmza Yükle
-                                <input type="file" accept="image/*" multiple className="hidden" onChange={handleSignatureUpload} />
-                            </label>
-                        </div>
-                    </div>
-                    {signatures.length === 0 ? (
-                        <div className="text-center py-10 border-2 border-dashed border-slate-700 rounded-xl bg-slate-800/50">
-                            <Upload className="mx-auto text-slate-600 mb-4" size={40} />
-                            <p className="text-slate-500 text-sm">Henüz hiç imza yüklenmemiş.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {signatures.map(sig => (
-                                <div key={sig.id} className="group relative bg-white rounded-xl p-4 flex flex-col items-center justify-between min-h-[160px] shadow-sm border border-slate-600 transition hover:border-amber-500/50 overflow-hidden">
-                                    <div className="h-16 w-full flex items-center justify-center mb-2 z-10 relative">
-                                        <img src={sig.url} alt={sig.name} className="max-h-full max-w-full object-contain" />
-                                    </div>
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm z-20">
-                                        <button onClick={() => deleteSignature(sig.id)} className="bg-red-500 p-2 rounded-full text-white hover:bg-red-600 shadow-lg transform active:scale-95 transition">
-                                            <Trash2 size={20} />
-                                        </button>
-                                    </div>
-                                    <div className="w-full bg-slate-900 rounded-lg p-2 border border-slate-700 z-10 relative">
-                                        <span className="text-[10px] text-white truncate block text-center mb-1">{sig.name}</span>
-                                        
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><QrCode className="text-teal-500" /> Doğrulama ve QR Ayarları</h2>
-                    </div>
-                    <p className="text-sm text-slate-400 mb-4">Sertifikalar oluşturulurken QR kodlara eklenecek temel web sitesi adresini buradan düzeltebilirsiniz. Sertifika üzerindeki QR kod, bu adres ve sertifika seri numarası ile oluşturulacaktır.</p>
-                    <div className="flex flex-col md:flex-row gap-4 items-start md:items-end">
-                        <div className="w-full md:flex-1 space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase">Sistem Doğrulama URL'si</label>
-                            <input 
-                                type="text"
-                                value={qrBaseUrl}
-                                onChange={(e) => {
-                                    setQrBaseUrl(e.target.value);
-                                    localStorage.setItem('vps_qr_base_url', e.target.value);
-                                }}
-                                className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-teal-500 outline-none font-mono text-sm"
-                                placeholder="http://194.146.36.153:5555/dogrula.html"
-                            />
-                        </div>
-                    </div>
-                </div>
+                )}
 
-
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><ShieldCheck className="text-red-500" /> Güvenlik Ayarları</h2>
-                    </div>
-                    <p className="text-sm text-slate-400 mb-4">Uygulamanıza erişim sağlayan yönetici şifrenizi buradan değiştirebilirsiniz. Değiştirdiğiniz şifre tarayıcınızda veya sistemde yerel olarak saklanacaktır.</p>
-                    <div className="flex flex-col md:flex-row gap-4 items-start md:items-end">
-                        <div className="w-full md:flex-1 space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase">Yeni Şifre</label>
-                            <input 
-                                type="password" 
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-red-500 outline-none"
-                                placeholder="Yeni Şifre Girin"
-                            />
+                {/* TAB 2: USERS */}
+                {settingsSubTab === 'users' && (
+                  <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-700">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                          <ShieldCheck size={24} />
                         </div>
+                        <div>
+                          <h2 className="text-lg font-bold text-white">Kullanıcı & Rol Yönetimi</h2>
+                          <p className="text-xs text-slate-400">
+                            Sistemde sertifika düzenleyecek İSG uzmanlarını ve yöneticileri ekleyin veya şifrelerini düzenleyin.
+                          </p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => setShowUserModal(true)} 
+                        className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs md:text-sm transition shadow-lg shadow-amber-500/20 active:scale-95 shrink-0"
+                      >
+                        <Plus size={16} /> Kullanıcıları Yönet & Ekle
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                      <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-700/80">
+                        <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">Yönetici (Admin) Rolü</h4>
+                        <p className="text-xs text-slate-400">
+                          Tüm şablonları düzenleyebilir, firma ve kullanıcı ekleyebilir/silebilir, sistem yedeklerini indirebilir ve güncellemeleri yönetebilir.
+                        </p>
+                      </div>
+                      <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-700/80">
+                        <h4 className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-1">İSG Uzmanı / Kullanıcı Rolü</h4>
+                        <p className="text-xs text-slate-400">
+                          Kendi hesabı ile sisteme girerek tanımlı firmalar için sertifika düzenleyebilir, PDF indirebilir ve çalışan evraklarını görüntüleyebilir.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: SIGNATURES */}
+                {settingsSubTab === 'signatures' && (
+                  <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-700">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                          <PenTool size={24} />
+                        </div>
+                        <div>
+                          <h2 className="text-lg font-bold text-white">Kayıtlı İmzalar</h2>
+                          <p className="text-xs text-slate-400">
+                            Sertifika şablonlarında İSG Uzmanı veya Eğitici imzası olarak kullanılacak imzaları yükleyin veya çizin.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
                         <button 
-                            onClick={handlePasswordChange}
-                            className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition shadow-lg shadow-red-900/20 active:scale-95 w-full md:w-auto shrink-0"
+                          onClick={() => setShowSignaturePad(true)} 
+                          className="bg-slate-700 hover:bg-slate-600 text-white px-3.5 py-2 rounded-xl flex items-center gap-2 font-medium text-xs transition border border-slate-600"
                         >
-                            Şifreyi Değiştir
+                          <PenLine size={16} /> İmza Çiz
                         </button>
+                        <label className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 font-bold text-xs transition shadow-lg shadow-amber-900/20 active:scale-95">
+                          <Plus size={16} /> İmza Yükle
+                          <input type="file" accept="image/*" multiple className="hidden" onChange={handleSignatureUpload} />
+                        </label>
+                      </div>
                     </div>
-                    <div className="mt-6 pt-4 border-t border-slate-700">
-                         <button 
-                            onClick={handleAdminLogout}
-                            className="text-sm text-amber-500 hover:text-amber-400 flex items-center gap-2 font-medium transition"
-                        >
-                            <Lock size={15} /> Yönetici Oturumunu Kapat ve Kilitle (Doldur Ekranına Dön)
-                        </button>
-                    </div>
-                    {passwordMessage && (
-                        <p className={`mt-3 text-sm ${passwordMessage.includes('başarıyla') ? 'text-green-500' : 'text-red-500'}`}>{passwordMessage}</p>
+
+                    {signatures.length === 0 ? (
+                      <div className="text-center py-12 border-2 border-dashed border-slate-700 rounded-xl bg-slate-900/40">
+                        <Upload className="mx-auto text-slate-600 mb-3" size={36} />
+                        <p className="text-slate-400 text-sm font-medium">Henüz kayıtlı imza bulunmuyor.</p>
+                        <p className="text-slate-500 text-xs mt-1">Yukarıdaki butonları kullanarak yeni imza yükleyebilir veya çizebilirsiniz.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                        {signatures.map(sig => (
+                          <div key={sig.id} className="group relative bg-white rounded-xl p-3 flex flex-col items-center justify-between min-h-[150px] shadow-sm border border-slate-600 transition hover:border-amber-500 overflow-hidden">
+                            <div className="h-20 w-full flex items-center justify-center mb-2 z-10 relative">
+                              <img src={sig.url} alt={sig.name} className="max-h-full max-w-full object-contain" />
+                            </div>
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm z-20">
+                              <button 
+                                onClick={() => deleteSignature(sig.id)} 
+                                className="bg-rose-500 p-2.5 rounded-full text-white hover:bg-rose-600 shadow-lg transform active:scale-95 transition"
+                                title="İmzayı Sil"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                            <div className="w-full bg-slate-900 rounded-lg p-1.5 border border-slate-700 z-10 relative">
+                              <span className="text-[11px] text-white font-medium truncate block text-center">{sig.name}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
-                </div>
+                  </div>
+                )}
 
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                    <h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white">
-                        <Database className="text-blue-500" /> Yedekleme ve Geri Yükleme
-                    </h2>
-                    <p className="text-sm text-slate-400 mb-6">
-                        Tüm projelerinizi, şablonlarınızı, ayarlarınızı ve yüklediğiniz görselleri (imzalar dahil) tek bir dosya olarak yedekleyin veya başka bir cihaza taşıyın.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition">
-                            <DownloadCloud size={40} className="text-green-500 mb-4" />
-                            <h3 className="font-bold text-white mb-2">Sistemi Yedekle</h3>
-                            <p className="text-xs text-slate-400 mb-4">Tüm verileri (projeler, görseller, ayarlar) içeren tek bir .json dosyası indirir.</p>
-                            <button onClick={handleExportBackup} className="mt-auto bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition w-full shadow-lg shadow-green-900/20 active:scale-95">Yedek Dosyasını İndir</button>
-                        </div>
-                        <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition">
-                            <UploadCloud size={40} className="text-blue-500 mb-4" />
-                            <h3 className="font-bold text-white mb-2">Yedeği Geri Yükle</h3>
-                            <p className="text-xs text-slate-400 mb-4">Daha önce aldığınız yedek dosyasını seçerek tüm verilerinizi geri yükleyin.</p>
-                            <div className="mt-auto w-full relative">
-                                <input ref={backupInputRef} type="file" accept=".json" onChange={handleImportBackup} className="hidden" id="backup-upload" />
-                                <label htmlFor="backup-upload" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition w-full flex items-center justify-center cursor-pointer shadow-lg shadow-blue-900/20 active:scale-95">Dosya Seç ve Yükle</label>
-                            </div>
-                            <div className="flex items-center gap-2 mt-3 text-[10px] text-amber-500">
-                                <AlertTriangle size={12} /><span>Dikkat: Mevcut verilerin üzerine yazılacaktır.</span>
-                            </div>
-                        </div>
+                {/* TAB 4: SECURITY & SYSTEM */}
+                {settingsSubTab === 'security' && (
+                  <div className="space-y-6">
+                    {/* Active Project Management */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <h2 className="text-lg font-bold flex items-center gap-2 text-white mb-4">
+                        <FileText className="text-blue-500" size={20} /> Aktif Proje Yönetimi
+                      </h2>
+                      <div className="max-w-xl space-y-2">
+                        <label className="text-xs text-slate-300 font-semibold block">Proje Adı</label>
+                        <input 
+                          type="text" 
+                          value={activeProject.name} 
+                          onChange={(e) => updateProjectMeta({ name: e.target.value })} 
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-white focus:border-amber-500 outline-none transition" 
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          Proje şablonlarını ve detaylarını yönetmek için sol menüdeki <button onClick={() => setCurrentView('projects')} className="text-amber-400 hover:underline">Projeler</button> sayfasını kullanabilirsiniz.
+                        </p>
+                      </div>
                     </div>
-                </div>
 
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                     <h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white">
-                         <Github className="text-white" /> Sunucu / GitHub Otomatik Güncelleme
-                     </h2>
-                     <p className="text-sm text-slate-400 mb-6">
-                         Uygulamanın en son sürümünü GitHub deposundan (<span className="font-mono text-slate-300">szgnemin1/ProCertify</span>) çeker, arka planda otomatik olarak yeniden derler ve sunucu sürecini PM2 ile yeniden başlatır. Mevcut verileriniz (projeler, şablonlar, imzalar vb.) bu işlemden **etkilenmez**.
-                     </p>
-                     
-                     <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 space-y-4">
-                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                             <div>
-                                 <h3 className="font-bold text-white mb-1">Tek Tıkla Otomatik Güncelleme</h3>
-                                 <p className="text-xs text-slate-400">
-                                     Mevcut Çalışan Sürüm: <span className="bg-slate-800 text-amber-500 px-2 py-0.5 rounded font-mono font-bold ml-1">{APP_VERSION}</span>
-                                 </p>
-                             </div>
-                             <button 
-                                 onClick={handleUpdateApp}
-                                 disabled={isUpdating}
-                                 className={`px-6 py-3 rounded-lg font-bold transition flex items-center justify-center gap-2 select-none shadow-lg active:scale-95 ${
-                                     isUpdating 
-                                         ? 'bg-slate-700 text-slate-400 cursor-not-allowed animate-pulse' 
-                                         : 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-900/20'
-                                 }`}
-                             >
-                                 {isUpdating ? 'Güncelleniyor...' : 'Sürümü Otomatik Güncelle'}
-                             </button>
-                         </div>
-                         
-                         {updateMessage && (
-                             <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex items-start gap-2">
-                                 <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
-                                 <span className="text-sm text-slate-300 font-medium">{updateMessage}</span>
-                             </div>
-                         )}
-                         
-                         {updateLogs && (
-                             <div className="space-y-2 mt-4">
-                                 <div className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
-                                     <span>GÜNCELLEME LOGLARI</span>
-                                     <span className={`text-[10px] px-2 py-0.5 rounded ${
-                                         updateLogs.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                                     }`}>
-                                         {updateLogs.success ? 'KABUL EDİLDİ / BAŞARILI' : 'BAĞLANTI VEYA DERLEME HATASI'}
-                                     </span>
-                                 </div>
-                                 <div className="bg-black/80 font-mono text-xs text-slate-300 p-4 rounded-lg border border-slate-800 overflow-x-auto max-h-60 custom-scrollbar space-y-1">
-                                     {updateLogs.stdout && (
-                                         <div>
-                                             <span className="text-green-500 font-bold">[Komut Çıktısı]:</span>
-                                             <pre className="whitespace-pre-wrap mt-1 opacity-70">{updateLogs.stdout}</pre>
-                                         </div>
-                                     )}
-                                     {updateLogs.stderr && (
-                                         <div className="mt-2 pt-2 border-t border-slate-900">
-                                             <span className="text-cyan-500 font-bold">[Bildirimler / Günlükler]:</span>
-                                             <pre className="whitespace-pre-wrap mt-1 text-red-400 opacity-90">{updateLogs.stderr}</pre>
-                                         </div>
-                                     )}
-                                 </div>
-                             </div>
-                         )}
-                     </div>
-                 </div>
+                    {/* QR Code Base URL */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <h2 className="text-lg font-bold flex items-center gap-2 text-white mb-2">
+                        <QrCode className="text-teal-400" size={20} /> Doğrulama ve QR Kod Ayarları
+                      </h2>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Sertifikalar oluşturulurken QR kodlara gömülecek temel web doğrulama adresini buradan düzenleyebilirsiniz.
+                      </p>
+                      <div className="max-w-xl space-y-2">
+                        <label className="text-xs font-semibold text-slate-300 block">Sistem Doğrulama URL'si</label>
+                        <input 
+                          type="text"
+                          value={qrBaseUrl}
+                          onChange={(e) => {
+                            setQrBaseUrl(e.target.value);
+                            localStorage.setItem('vps_qr_base_url', e.target.value);
+                          }}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:border-teal-500 outline-none font-mono text-xs"
+                          placeholder="http://194.146.36.153:5555/dogrula.html"
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          Örnek QR içeriği: <span className="font-mono text-slate-400">{qrBaseUrl || 'http://.../dogrula.html'}?s=ISG-2026-0001</span>
+                        </p>
+                      </div>
+                    </div>
 
-                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                     <h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white">
-                         <Github className="text-white" /> Hakkında & GitHub
-                     </h2>
-                     <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex items-start gap-4">
-                         <div className="p-3 bg-slate-800 rounded-full">
-                             <Monitor size={24} className="text-slate-400" />
-                         </div>
-                         <div className="flex-1">
-                             <h3 className="font-bold text-white text-lg">
-                                 ProCertify Studio <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full ml-2">{APP_VERSION}</span>
-                             </h3>
-                             <p className="text-sm text-slate-400 mt-1 mb-4">
-                                 Açık kaynak kodlu, profesyonel sertifika tasarım ve yönetim aracı. Projeyi GitHub üzerinde destekleyebilir hoặc katkıda bulunabilirsiniz.
-                             </p>
-                             <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-white bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg transition border border-slate-600">
-                                 <Github size={16} /> GitHub Deposuna Git
-                             </a>
-                         </div>
-                     </div>
-                   </div>
+                    {/* Password Management */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <h2 className="text-lg font-bold flex items-center gap-2 text-white mb-2">
+                        <Lock className="text-rose-400" size={20} /> Yönetici Şifresi Değiştir
+                      </h2>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Uygulama ayarlarına ve tasarımlara erişim sağlayan yönetici şifresini buradan güncelleyebilirsiniz.
+                      </p>
+                      <div className="max-w-xl flex flex-col sm:flex-row gap-3">
+                        <input 
+                          type="password" 
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-white focus:border-rose-500 outline-none transition"
+                          placeholder="Yeni Yönetici Şifresi"
+                        />
+                        <button 
+                          onClick={handlePasswordChange}
+                          disabled={!newPassword.trim()}
+                          className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold px-5 py-3 rounded-xl text-xs transition shadow-lg shadow-rose-900/20 active:scale-95 shrink-0"
+                        >
+                          Şifreyi Değiştir
+                        </button>
+                      </div>
+                      {passwordMessage && (
+                        <p className={`mt-3 text-xs font-semibold ${passwordMessage.includes('başarıyla') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {passwordMessage}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 5: BACKUP & UPDATE */}
+                {settingsSubTab === 'backup' && (
+                  <div className="space-y-6">
+                    {/* Backup & Restore */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <h2 className="text-lg font-bold flex items-center gap-2 mb-2 text-white">
+                        <Database className="text-blue-400" size={20} /> Yedekleme ve Geri Yükleme
+                      </h2>
+                      <p className="text-xs text-slate-400 mb-6">
+                        Tüm projelerinizi, şablonlarınızı, ayarlarınızı ve yüklediğiniz görselleri (imzalar dahil) tek bir dosya olarak yedekleyin veya başka bir cihaza taşıyın.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition">
+                          <DownloadCloud size={36} className="text-emerald-400 mb-3" />
+                          <h3 className="font-bold text-white text-sm mb-1">Sistemi Yedekle</h3>
+                          <p className="text-xs text-slate-400 mb-4">Tüm verileri (projeler, görseller, ayarlar) içeren tek bir .json dosyası indirir.</p>
+                          <button onClick={handleExportBackup} className="mt-auto bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full shadow-lg shadow-emerald-900/20 active:scale-95">
+                            Yedek Dosyasını İndir
+                          </button>
+                        </div>
+                        <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition">
+                          <UploadCloud size={36} className="text-blue-400 mb-3" />
+                          <h3 className="font-bold text-white text-sm mb-1">Yedeği Geri Yükle</h3>
+                          <p className="text-xs text-slate-400 mb-4">Daha önce aldığınız yedek dosyasını seçerek tüm verilerinizi geri yükleyin.</p>
+                          <div className="mt-auto w-full relative">
+                            <input ref={backupInputRef} type="file" accept=".json" onChange={handleImportBackup} className="hidden" id="backup-upload" />
+                            <label htmlFor="backup-upload" className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full flex items-center justify-center cursor-pointer shadow-lg shadow-blue-900/20 active:scale-95">
+                              Dosya Seç ve Yükle
+                            </label>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-3 text-[10px] text-amber-400">
+                            <AlertTriangle size={12} /><span>Dikkat: Mevcut verilerin üzerine yazılacaktır.</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* GitHub PM2 Auto Update */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <h2 className="text-lg font-bold flex items-center gap-2 mb-2 text-white">
+                        <Github className="text-white" size={20} /> Sunucu / GitHub Otomatik Güncelleme
+                      </h2>
+                      <p className="text-xs text-slate-400 mb-6">
+                        Uygulamanın en son sürümünü GitHub deposundan (<span className="font-mono text-slate-300">szgnemin1/ProCertify</span>) çeker, arka planda derler ve sunucu sürecini PM2 ile yeniden başlatır. Mevcut verileriniz bu işlemden etkilenmez.
+                      </p>
+                      
+                      <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700 space-y-4">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <h3 className="font-bold text-white text-sm mb-1">Tek Tıkla Otomatik Güncelleme</h3>
+                            <p className="text-xs text-slate-400">
+                              Mevcut Çalışan Sürüm: <span className="bg-slate-800 text-amber-400 px-2 py-0.5 rounded font-mono font-bold ml-1">{APP_VERSION}</span>
+                            </p>
+                          </div>
+                          <button 
+                            onClick={handleUpdateApp}
+                            disabled={isUpdating}
+                            className={`px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm transition flex items-center justify-center gap-2 select-none shadow-lg active:scale-95 ${
+                              isUpdating 
+                                ? 'bg-slate-700 text-slate-400 cursor-not-allowed animate-pulse' 
+                                : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/20'
+                            }`}
+                          >
+                            {isUpdating ? 'Güncelleniyor...' : 'Sürümü Otomatik Güncelle'}
+                          </button>
+                        </div>
+                        
+                        {updateMessage && (
+                          <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg flex items-start gap-2">
+                            <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
+                            <span className="text-xs text-slate-300 font-medium">{updateMessage}</span>
+                          </div>
+                        )}
+                        
+                        {updateLogs && (
+                          <div className="space-y-2 mt-4">
+                            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                              <span>GÜNCELLEME LOGLARI</span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded ${
+                                updateLogs.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                              }`}>
+                                {updateLogs.success ? 'KABUL EDİLDİ / BAŞARILI' : 'BAĞLANTI VEYA DERLEME HATASI'}
+                              </span>
+                            </div>
+                            <div className="bg-black/80 font-mono text-xs text-slate-300 p-4 rounded-xl border border-slate-800 overflow-x-auto max-h-60 custom-scrollbar space-y-1">
+                              {updateLogs.stdout && (
+                                <div>
+                                  <span className="text-emerald-400 font-bold">[Komut Çıktısı]:</span>
+                                  <pre className="whitespace-pre-wrap mt-1 opacity-70">{updateLogs.stdout}</pre>
+                                </div>
+                              )}
+                              {updateLogs.stderr && (
+                                <div className="mt-2 pt-2 border-t border-slate-900">
+                                  <span className="text-cyan-400 font-bold">[Bildirimler / Günlükler]:</span>
+                                  <pre className="whitespace-pre-wrap mt-1 text-rose-400 opacity-90">{updateLogs.stderr}</pre>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* About Card */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700 flex items-start gap-4">
+                        <div className="p-3 bg-slate-800 rounded-xl text-slate-400">
+                          <Monitor size={24} />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-white text-base">
+                            ProCertify Studio <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full ml-2">{APP_VERSION}</span>
+                          </h3>
+                          <p className="text-xs text-slate-400 mt-1 mb-4">
+                            Açık kaynak kodlu, profesyonel sertifika tasarım ve yönetim aracı. Projeyi GitHub üzerinde destekleyebilir veya katkıda bulunabilirsiniz.
+                          </p>
+                          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-xl transition border border-slate-700">
+                            <Github size={14} /> GitHub Deposuna Git
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
              </div>
           </div>
         )}
