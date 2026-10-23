@@ -62,7 +62,8 @@ import {
   Lock,
   Unlock,
   Eye,
-  EyeOff
+  EyeOff,
+  Pencil
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
@@ -91,6 +92,7 @@ import { CompaniesView } from './views/CompaniesView';
 import { CompanyDetailView } from './views/CompanyDetailView';
 import { LoginView } from './views/LoginView';
 import { UserManagementModal } from './components/UserManagementModal';
+import { EmployeeModal } from './components/EmployeeModal';
 import { 
   calculateExpiryDate, 
   getValidityYears, 
@@ -295,6 +297,11 @@ const App = () => {
   // User Management Modal state
   const [showUserModal, setShowUserModal] = useState(false);
 
+  // Edit Certificate & Employee Modal State
+  const [editingCertificate, setEditingCertificate] = useState<IssuedCertificate | null>(null);
+  const [activeEmployeeIdOrTc, setActiveEmployeeIdOrTc] = useState<string | null>(null);
+  const [showEmployeeModal, setShowEmployeeModal] = useState(false);
+
   // All Certificates & Dashboard Stats
   const [allCertificates, setAllCertificates] = useState<IssuedCertificate[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
@@ -362,6 +369,58 @@ const App = () => {
 
   const handleAdminLogout = () => {
     handleLogout();
+  };
+
+  const handleEditCertificate = (cert: IssuedCertificate) => {
+    setEditingCertificate(cert);
+    setCurrentView('fill');
+
+    // Prepopulate fill values from certificate
+    const populated: Record<string, string> = { ...(cert.fields || {}) };
+
+    if (cert.recipientName) {
+      populated['Ad Soyad'] = cert.recipientName;
+      populated['ad soyad'] = cert.recipientName;
+      populated['ad_soyad'] = cert.recipientName;
+    }
+    if (cert.recipientTc) {
+      populated['TC Kimlik No'] = cert.recipientTc;
+      populated['tc kimlik no'] = cert.recipientTc;
+      populated['tc'] = cert.recipientTc;
+    }
+    if (cert.company) {
+      populated['Firma'] = cert.company;
+      populated['firma'] = cert.company;
+    }
+    if (cert.trainingDate) {
+      populated['Eğitim Tarihi'] = cert.trainingDate;
+      populated['egitim tarihi'] = cert.trainingDate;
+    }
+    if (cert.expiryDate) {
+      populated['Geçerlilik Tarihi'] = cert.expiryDate;
+      populated['geçerlilik tarihi'] = cert.expiryDate;
+    }
+
+    setFillValues(populated);
+
+    // If projects are known, select matching project IDs
+    if (cert.projects && Array.isArray(cert.projects) && cert.projects.length > 0) {
+      const matchedProjectIds = projects
+        .filter(p => cert.projects.some(pn => turkishToLower(pn) === turkishToLower(p.name)))
+        .map(p => p.id);
+      if (matchedProjectIds.length > 0) {
+        setSelectedFillProjectIds(matchedProjectIds);
+        setActiveProjectId(matchedProjectIds[0]);
+      }
+    }
+
+    // Switch to classic form mode so user sees all fields right away
+    setIsChatMode(false);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCertificate(null);
+    setFillValues({});
   };
 
   const handleFillFieldChange = (fieldLabel: string, value: string, fieldType?: ElementType) => {
@@ -1945,8 +2004,9 @@ const App = () => {
 
     try {
         // 1. Generate ONE unified bundle serial number (shared across all certificates for this person)
+        // If editing, reuse existing serial number to update record in-place
         const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
-        const bundleSerialNo = `PRC-${baseSerial}`;
+        const bundleSerialNo = editingCertificate?.serialNo || `PRC-${baseSerial}`;
         const activeValues = { 
             ...fillValues, 
             'seri no': bundleSerialNo, 
@@ -2130,6 +2190,9 @@ const App = () => {
             });
             // Immediately reload fresh certificates into state so Firmalar & Dashboard reflect them!
             await fetchCertificatesAndStats();
+            if (editingCertificate) {
+                setEditingCertificate(null);
+            }
         } catch (e) {
             console.error("Backend issue error", e);
         }
@@ -2211,6 +2274,11 @@ const App = () => {
                 fetchCertificatesAndStats();
               }
             }}
+            onEditCertificate={handleEditCertificate}
+            onOpenEmployee={(tcOrName) => {
+              setActiveEmployeeIdOrTc(tcOrName);
+              setShowEmployeeModal(true);
+            }}
             getApiUrl={getApiUrl}
           />
         )}
@@ -2244,6 +2312,12 @@ const App = () => {
               handleFillFieldChange('firma', companyName, ElementType.COMPANY);
               setCurrentView('fill');
             }}
+            onEditCertificate={handleEditCertificate}
+            onOpenEmployee={(tcOrName) => {
+              setActiveEmployeeIdOrTc(tcOrName);
+              setShowEmployeeModal(true);
+            }}
+            getApiUrl={getApiUrl}
           />
         )}
 
@@ -3039,6 +3113,38 @@ const App = () => {
         {/* VIEW: FILL & EXPORT */}
         {currentView === 'fill' && (
            <div className="flex-1 flex flex-col overflow-hidden relative">
+              {/* Düzenleme Modu Bilgilendirme Çubuğu */}
+              {editingCertificate && (
+                <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0 z-30">
+                  <div className="flex items-center gap-2 text-amber-300">
+                    <Pencil size={14} className="text-amber-400 shrink-0" />
+                    <span>
+                      <strong>Sertifika Düzenleme Modu:</strong>{' '}
+                      <span className="text-white font-bold">{editingCertificate.recipientName || 'İsimsiz'}</span>{' '}
+                      (Seri No: <code className="bg-amber-500/20 px-1.5 py-0.5 rounded font-mono font-bold text-amber-200">{editingCertificate.serialNo}</code>)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingCertificate(null)}
+                      className="text-[11px] font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-lg transition"
+                      title="Mevcut seri numarasını güncellemek yerine yeni bir kayıt üret"
+                    >
+                      Yeni Kayıt Olarak Üret
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelEdit}
+                      className="text-[11px] font-semibold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 px-2.5 py-1 rounded-lg transition"
+                    >
+                      Düzenlemeyi İptal Et
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Mobile Steps Navigator */}
               <div className="md:hidden flex bg-slate-950 border-b border-slate-800 shrink-0 select-none z-30">
                   <button onClick={() => setMobileFillStep(0)} className={`flex-1 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition ${mobileFillStep === 0 ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>1. Sertifikalar</button>
@@ -3732,6 +3838,21 @@ const App = () => {
         isOpen={showUserModal} 
         onClose={() => setShowUserModal(false)} 
         getApiUrl={getApiUrl} 
+      />
+
+      {/* EMPLOYEE MODAL (ÇALIŞAN KARTI & EVRAKLAR) */}
+      <EmployeeModal
+        isOpen={showEmployeeModal}
+        employeeIdOrTc={activeEmployeeIdOrTc || ''}
+        onClose={() => {
+          setShowEmployeeModal(false);
+          setActiveEmployeeIdOrTc(null);
+        }}
+        onEditCertificate={handleEditCertificate}
+        onStatusChanged={() => {
+          fetchCertificatesAndStats();
+        }}
+        getApiUrl={getApiUrl}
       />
     </div>
   );

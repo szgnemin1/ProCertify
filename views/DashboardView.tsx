@@ -8,6 +8,7 @@ import {
   Building2, 
   RefreshCw,
   Plus,
+  Pencil,
   X
 } from 'lucide-react';
 import { IssuedCertificate, DashboardStats } from '../types';
@@ -16,12 +17,16 @@ import { getCertificateStatus, getDaysRemaining, getStatusBadge, formatDateTR } 
 interface DashboardViewProps {
   onNavigateToFill: () => void;
   onNavigateToCompany: (companyName: string) => void;
+  onEditCertificate?: (cert: IssuedCertificate) => void;
+  onOpenEmployee?: (tcOrName: string) => void;
   getApiUrl: (path: string) => string;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateToFill,
   onNavigateToCompany,
+  onEditCertificate,
+  onOpenEmployee,
   getApiUrl
 }) => {
   const [stats, setStats] = useState<DashboardStats>({
@@ -312,7 +317,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <th className="py-2 px-2 w-24">Eğitim Trh</th>
                   <th className="py-2 px-2 w-24">Bitiş Trh</th>
                   <th className="py-2 px-2 w-28">Durum</th>
-                  <th className="py-2 px-2 w-12 text-right">İşlem</th>
+                  <th className="py-2 px-2 w-16 text-right">İşlem</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50 font-medium text-xs">
@@ -328,12 +333,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {cert.serialNo}
                       </td>
 
-                      {/* Alıcı ve Eğitim Rozetleri */}
+                      {/* Alıcı ve Eğitim Rozetleri (İsme tıklandığında Çalışan Kartı açılır) */}
                       <td className="py-2 px-2.5">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-bold text-white text-xs">
-                            {cert.recipientName || 'İsimsiz Alıcı'}
-                          </span>
+                          {onOpenEmployee ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenEmployee(cert.recipientTc || cert.recipientName || '')}
+                              className="font-bold text-white text-xs hover:text-amber-400 hover:underline transition text-left cursor-pointer"
+                              title="Çalışan Kartını Aç"
+                            >
+                              {cert.recipientName || 'İsimsiz Alıcı'}
+                            </button>
+                          ) : (
+                            <span className="font-bold text-white text-xs">
+                              {cert.recipientName || 'İsimsiz Alıcı'}
+                            </span>
+                          )}
                           {cert.recipientTc && (
                             <span className="text-[10px] text-slate-500 font-mono">
                               ({cert.recipientTc})
@@ -385,17 +401,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         </span>
                       </td>
 
-                      {/* İşlem (Doğrulama Linki) */}
+                      {/* İşlem (Düzenle & Doğrula Butonları) */}
                       <td className="py-2 px-2 text-right">
-                        <a
-                          href={`/dogrula?id=${cert.serialNo}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Sertifikayı Doğrula"
-                          className="inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:text-amber-400 hover:bg-slate-700/60 transition"
-                        >
-                          <ExternalLink size={14} />
-                        </a>
+                        <div className="inline-flex items-center gap-1 justify-end">
+                          {onEditCertificate && (
+                            <button
+                              type="button"
+                              onClick={() => onEditCertificate(cert)}
+                              title="Sertifikayı Düzenle / Doldur Ekranına Yükle"
+                              className="p-1 rounded-md text-slate-400 hover:text-amber-400 hover:bg-slate-700/60 transition"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                          )}
+                          <a
+                            href={`/dogrula?id=${cert.serialNo}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Sertifikayı Doğrula"
+                            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/60 transition"
+                          >
+                            <ExternalLink size={13} />
+                          </a>
+                        </div>
                       </td>
                     </tr>
                   );

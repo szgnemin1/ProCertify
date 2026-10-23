@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, 
   ArrowLeft, 
@@ -12,9 +12,12 @@ import {
   Award,
   FileCheck2,
   Flame,
+  UserX,
+  UserCheck,
+  Pencil,
   X
 } from 'lucide-react';
-import { Company, IssuedCertificate } from '../types';
+import { Company, IssuedCertificate, Employee } from '../types';
 import { 
   getCertificateStatus, 
   getDaysRemaining, 
@@ -29,6 +32,9 @@ interface CompanyDetailViewProps {
   certificates: IssuedCertificate[];
   onBack: () => void;
   onNavigateToFillWithCompany: (companyName: string) => void;
+  onEditCertificate?: (cert: IssuedCertificate) => void;
+  onOpenEmployee?: (tcOrName: string) => void;
+  getApiUrl: (path: string) => string;
 }
 
 const turkishToLower = (str: string): string => {
@@ -49,10 +55,57 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
   company,
   certificates,
   onBack,
-  onNavigateToFillWithCompany
+  onNavigateToFillWithCompany,
+  onEditCertificate,
+  onOpenEmployee,
+  getApiUrl
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'valid' | 'expiring' | 'expired'>('all');
+  const [employeeStatusFilter, setEmployeeStatusFilter] = useState<'all' | 'active' | 'passive'>('all');
+  const [employees, setEmployees] = useState<Employee[]>([]);
+
+  // Fetch employees for this company to identify active vs passive employees
+  const fetchEmployees = async () => {
+    try {
+      const token = localStorage.getItem('vps_session_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(getApiUrl(`/api/employees?company=${encodeURIComponent(company.id)}&status=all`), { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setEmployees(data || []);
+      }
+    } catch (e) {
+      console.error("Error fetching company employees:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchEmployees();
+  }, [company.id]);
+
+  // Map employee status by TC and Name for fast lookup
+  const employeeStatusMap = useMemo(() => {
+    const map = new Map<string, 'active' | 'passive'>();
+    for (const emp of employees) {
+      if (emp.tc) map.set(emp.tc.trim(), emp.status);
+      if (emp.name) map.set(turkishToLower(emp.name), emp.status);
+    }
+    return map;
+  }, [employees]);
+
+  // Counts of active vs passive employees
+  const employeeCounts = useMemo(() => {
+    let active = 0;
+    let passive = 0;
+    for (const emp of employees) {
+      if (emp.status === 'passive') passive++;
+      else active++;
+    }
+    return { active, passive, total: employees.length };
+  }, [employees]);
 
   // Filter certificates strictly for this company (matched by ID, exact name or shortName)
   const companyCertificates = useMemo(() => {
@@ -92,7 +145,7 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
     };
   }, [companyCertificates]);
 
-  // Apply search & status filter
+  // Apply search, validity status and employee active/passive filter
   const filteredCertificates = useMemo(() => {
     return companyCertificates.filter(cert => {
       const status = getCertificateStatus(cert.expiryDate);
@@ -100,6 +153,15 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
       if (statusFilter === 'valid' && status !== 'valid') return false;
       if (statusFilter === 'expiring' && status !== 'expiring_soon') return false;
       if (statusFilter === 'expired' && status !== 'expired') return false;
+
+      // Filter by employee active/passive status
+      if (employeeStatusFilter !== 'all') {
+        const empStatus = (cert.recipientTc && employeeStatusMap.get(cert.recipientTc.trim())) ||
+                          (cert.recipientName && employeeStatusMap.get(turkishToLower(cert.recipientName))) ||
+                          'active';
+        if (employeeStatusFilter === 'active' && empStatus === 'passive') return false;
+        if (employeeStatusFilter === 'passive' && empStatus !== 'passive') return false;
+      }
 
       if (searchTerm.trim()) {
         const q = searchTerm.trim().toLowerCase();
@@ -111,7 +173,7 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
 
       return true;
     });
-  }, [companyCertificates, statusFilter, searchTerm]);
+  }, [companyCertificates, statusFilter, employeeStatusFilter, employeeStatusMap, searchTerm]);
 
   // Monogram initials
   const initials = company.shortName 
@@ -201,53 +263,86 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
           )}
         </div>
 
-        {/* Durum Filtre Butonları */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
-              statusFilter === 'all'
-                ? 'bg-amber-500 text-slate-950'
-                : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            Tümü ({companyStats.total})
-          </button>
+        {/* Durum Filtre Butonları & Personel Aktif/Pasif Filtresi */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Personel Aktif / Pasif Seçimi */}
+          <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+            <button
+              onClick={() => setEmployeeStatusFilter('all')}
+              className={`px-2 py-0.5 rounded font-medium transition ${
+                employeeStatusFilter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Tüm Personel
+            </button>
+            <button
+              onClick={() => setEmployeeStatusFilter('active')}
+              className={`px-2 py-0.5 rounded font-medium transition ${
+                employeeStatusFilter === 'active' ? 'bg-emerald-500/20 text-emerald-300 font-bold' : 'text-slate-400 hover:text-emerald-300'
+              }`}
+            >
+              Aktifler ({employeeCounts.active})
+            </button>
+            <button
+              onClick={() => setEmployeeStatusFilter('passive')}
+              className={`px-2 py-0.5 rounded font-medium transition ${
+                employeeStatusFilter === 'passive' ? 'bg-red-500/20 text-red-300 font-bold' : 'text-slate-400 hover:text-red-300'
+              }`}
+            >
+              Ayrılanlar ({employeeCounts.passive})
+            </button>
+          </div>
 
-          <button
-            onClick={() => setStatusFilter('valid')}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
-              statusFilter === 'valid'
-                ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
-                : 'bg-slate-800/70 text-slate-400 hover:text-emerald-300'
-            }`}
-          >
-            Geçerli ({companyStats.valid})
-          </button>
+          <div className="h-4 w-px bg-slate-800 hidden sm:block" />
 
-          <button
-            onClick={() => setStatusFilter('expiring')}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
-              statusFilter === 'expiring'
-                ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50'
-                : 'bg-slate-800/70 text-slate-400 hover:text-amber-300'
-            }`}
-          >
-            Yaklaşanlar ({companyStats.expiring})
-          </button>
+          {/* Sertifika Geçerlilik Filtresi */}
+          <div className="flex flex-wrap items-center gap-1">
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition ${
+                statusFilter === 'all'
+                  ? 'bg-amber-500 text-slate-950'
+                  : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              Tüm Sertifikalar
+            </button>
 
-          <button
-            onClick={() => setStatusFilter('expired')}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
-              statusFilter === 'expired'
-                ? 'bg-red-500/30 text-red-300 border border-red-500/50'
-                : 'bg-slate-800/70 text-slate-400 hover:text-red-300'
-            }`}
-          >
-            Süresi Dolanlar ({companyStats.expired})
-          </button>
+            <button
+              onClick={() => setStatusFilter('valid')}
+              className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition ${
+                statusFilter === 'valid'
+                  ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
+                  : 'bg-slate-800/70 text-slate-400 hover:text-emerald-300'
+              }`}
+            >
+              Geçerli ({companyStats.valid})
+            </button>
 
-          <span className="text-[11px] text-slate-400 ml-1 font-mono">
+            <button
+              onClick={() => setStatusFilter('expiring')}
+              className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition ${
+                statusFilter === 'expiring'
+                  ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50'
+                  : 'bg-slate-800/70 text-slate-400 hover:text-amber-300'
+              }`}
+            >
+              Yaklaşanlar ({companyStats.expiring})
+            </button>
+
+            <button
+              onClick={() => setStatusFilter('expired')}
+              className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition ${
+                statusFilter === 'expired'
+                  ? 'bg-red-500/30 text-red-300 border border-red-500/50'
+                  : 'bg-slate-800/70 text-slate-400 hover:text-red-300'
+              }`}
+            >
+              Süresi Dolanlar ({companyStats.expired})
+            </button>
+          </div>
+
+          <span className="text-[11px] text-slate-400 ml-auto font-mono">
             {filteredCertificates.length} kayıt
           </span>
         </div>
@@ -283,7 +378,7 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
                   <th className="py-2 px-2 w-24">Eğitim Trh</th>
                   <th className="py-2 px-2 w-24">Bitiş Trh</th>
                   <th className="py-2 px-2 w-28">Durum</th>
-                  <th className="py-2 px-2 w-14 text-right">İşlem</th>
+                  <th className="py-2 px-2 w-16 text-right">İşlem</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50 font-medium text-xs">
@@ -292,6 +387,11 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
                   const daysLeft = getDaysRemaining(cert.expiryDate);
                   const badge = getStatusBadge(status, daysLeft);
 
+                  const empStatus = (cert.recipientTc && employeeStatusMap.get(cert.recipientTc.trim())) ||
+                                    (cert.recipientName && employeeStatusMap.get(turkishToLower(cert.recipientName))) ||
+                                    'active';
+                  const isPassive = empStatus === 'passive';
+
                   return (
                     <tr key={cert.serialNo} className="hover:bg-slate-800/60 transition-colors duration-100">
                       {/* Seri No */}
@@ -299,12 +399,31 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
                         {cert.serialNo}
                       </td>
 
-                      {/* Alıcı ve Sertifika Rozetleri */}
+                      {/* Alıcı ve Sertifika Rozetleri (İsme tıklanarak Çalışan Kartı açılır) */}
                       <td className="py-2 px-2.5">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-bold text-white text-xs">
-                            {cert.recipientName || 'İsimsiz Alıcı'}
-                          </span>
+                          {onOpenEmployee ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenEmployee(cert.recipientTc || cert.recipientName || '')}
+                              className="font-bold text-white text-xs hover:text-amber-400 hover:underline transition text-left cursor-pointer"
+                              title="Çalışan Kartını Aç"
+                            >
+                              {cert.recipientName || 'İsimsiz Alıcı'}
+                            </button>
+                          ) : (
+                            <span className="font-bold text-white text-xs">
+                              {cert.recipientName || 'İsimsiz Alıcı'}
+                            </span>
+                          )}
+
+                          {/* Pasif / İşten Ayrıldı Rozeti */}
+                          {isPassive && (
+                            <span className="text-[9px] bg-red-500/15 text-red-400 border border-red-500/30 px-1.5 py-0.2 rounded font-bold">
+                              İşten Ayrıldı
+                            </span>
+                          )}
+
                           {/* Mobil/küçük ekranda TC'yi isim yanına küçük yaz */}
                           {cert.recipientTc && (
                             <span className="text-[10px] text-slate-500 font-mono sm:hidden">
@@ -346,17 +465,29 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
                         </span>
                       </td>
 
-                      {/* Doğrulama Bağlantısı */}
+                      {/* İşlem (Düzenle & Doğrula Butonları) */}
                       <td className="py-2 px-2 text-right">
-                        <a
-                          href={`/dogrula?id=${cert.serialNo}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Sertifikayı Doğrula"
-                          className="inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:text-amber-400 hover:bg-slate-700/60 transition"
-                        >
-                          <ExternalLink size={14} />
-                        </a>
+                        <div className="inline-flex items-center gap-1 justify-end">
+                          {onEditCertificate && (
+                            <button
+                              type="button"
+                              onClick={() => onEditCertificate(cert)}
+                              title="Sertifikayı Düzenle / Doldur Ekranına Yükle"
+                              className="p-1 rounded-md text-slate-400 hover:text-amber-400 hover:bg-slate-700/60 transition"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                          )}
+                          <a
+                            href={`/dogrula?id=${cert.serialNo}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Sertifikayı Doğrula"
+                            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/60 transition"
+                          >
+                            <ExternalLink size={13} />
+                          </a>
+                        </div>
                       </td>
                     </tr>
                   );

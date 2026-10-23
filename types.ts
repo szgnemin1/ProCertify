@@ -131,6 +131,31 @@ export interface CertificateTemplate {
   height: number;
 }
 
+export interface EmployeeDocument {
+  id: string;
+  name: string;
+  fileName: string;
+  fileUrl: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedAt: number;
+}
+
+export type EmployeeStatus = 'active' | 'passive';
+
+export interface Employee {
+  id: string;
+  tc: string;
+  name: string;
+  companyId?: string;
+  companyName: string;
+  status: EmployeeStatus;
+  terminatedAt?: number;
+  terminationNote?: string;
+  createdAt: number;
+  documents: EmployeeDocument[];
+}
+
 export interface SavedSignature {
   id: string;
   name: string;

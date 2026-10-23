@@ -15,9 +15,14 @@ async function startServer() {
   const DATA_FILE = path.join(process.cwd(), 'data.json')
   const CERT_FILE = path.join(process.cwd(), 'certificates.json')
   const CERTS_DIR = path.join(process.cwd(), 'storage', 'certs')
+  const EMPLOYEES_FILE = path.join(process.cwd(), 'employees.json')
+  const DOCUMENTS_DIR = path.join(process.cwd(), 'storage', 'documents')
 
   if (!fs.existsSync(CERTS_DIR)) {
     try { fs.mkdirSync(CERTS_DIR, { recursive: true }) } catch (e) { /* ignore */ }
+  }
+  if (!fs.existsSync(DOCUMENTS_DIR)) {
+    try { fs.mkdirSync(DOCUMENTS_DIR, { recursive: true }) } catch (e) { /* ignore */ }
   }
   
   const isProduction = process.env.NODE_ENV === "production"
@@ -52,6 +57,87 @@ async function startServer() {
   if (!fs.existsSync(CERT_FILE)) {
     writeJsonFile(CERT_FILE, {})
   }
+  if (!fs.existsSync(EMPLOYEES_FILE)) {
+    writeJsonFile(EMPLOYEES_FILE, {})
+  }
+
+  const turkishToLower = (str: string): string => {
+    if (!str) return ''
+    return str
+      .replace(/İ/g, 'i')
+      .replace(/I/g, 'ı')
+      .replace(/Ğ/g, 'ğ')
+      .replace(/Ü/g, 'ü')
+      .replace(/Ş/g, 'ş')
+      .replace(/Ö/g, 'ö')
+      .replace(/Ç/g, 'ç')
+      .toLowerCase()
+      .trim()
+  }
+
+  const syncEmployeesFromCerts = () => {
+    try {
+      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
+      const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
+      let updated = false
+
+      for (const cert of Object.values(certs)) {
+        if (!cert || (!cert.recipientName && !cert.recipientTc)) continue
+        
+        const tc = (cert.recipientTc || '').trim()
+        const name = (cert.recipientName || '').trim()
+        const company = (cert.company || '').trim()
+        const companyId = cert.companyId || ''
+
+        let empKey = tc ? tc : `emp_${turkishToLower(name).replace(/\s+/g, '_')}`
+        
+        if (!employees[empKey]) {
+          const existingKey = Object.keys(employees).find(k => {
+            const e = employees[k]
+            if (tc && e.tc === tc) return true
+            return turkishToLower(e.name) === turkishToLower(name) && 
+                   turkishToLower(e.companyName) === turkishToLower(company)
+          })
+
+          if (existingKey) {
+            empKey = existingKey
+          } else {
+            employees[empKey] = {
+              id: empKey,
+              tc: tc,
+              name: name,
+              companyId: companyId,
+              companyName: company,
+              status: 'active',
+              createdAt: Date.now(),
+              documents: []
+            }
+            updated = true
+          }
+        } else {
+          // If company or name was missing, update it
+          if (!employees[empKey].companyName && company) {
+            employees[empKey].companyName = company
+            employees[empKey].companyId = companyId
+            updated = true
+          }
+          if (!employees[empKey].name && name) {
+            employees[empKey].name = name
+            updated = true
+          }
+        }
+      }
+
+      if (updated) {
+        writeJsonFile(EMPLOYEES_FILE, employees)
+      }
+    } catch (err) {
+      console.error("Error syncing employees from certificates:", err)
+    }
+  }
+
+  // Run initial sync on startup
+  syncEmployeesFromCerts()
 
   const verifyToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const authHeader = req.headers['authorization']
@@ -381,10 +467,263 @@ async function startServer() {
         certs[records.serialNo] = records
       }
       writeJsonFile(CERT_FILE, certs)
+      syncEmployeesFromCerts()
       res.json({ success: true })
     } catch (e) {
       console.error(e)
       res.status(500).json({ error: "Failed to issue certificates" })
+    }
+  })
+
+  // Update existing certificate (Edit mode)
+  app.put('/api/certificates/:serialNo', verifyToken, (req, res) => {
+    try {
+      const { serialNo } = req.params
+      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
+      if (!certs[serialNo]) {
+        return res.status(404).json({ error: "Sertifika bulunamadı." })
+      }
+      const callingUser = (req as any).user
+      const updatedData = { ...certs[serialNo], ...req.body, serialNo }
+      enrichRecord(updatedData, callingUser)
+      certs[serialNo] = updatedData
+      writeJsonFile(CERT_FILE, certs)
+      syncEmployeesFromCerts()
+      res.json({ success: true, certificate: updatedData })
+    } catch (err: any) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+
+  // --- EMPLOYEE (ÇALIŞAN KARTI & EVRAK) MANAGEMENT ---
+  app.get('/api/employees', verifyToken, (req, res) => {
+    try {
+      const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
+      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
+      const certList = Object.values(certs)
+
+      let list = Object.values(employees)
+
+      const company = req.query.company as string
+      const status = req.query.status as string // 'active' | 'passive' | 'all'
+      const search = req.query.search as string
+
+      if (company) {
+        const compNorm = turkishToLower(company)
+        list = list.filter(e => {
+          if (e.companyId && e.companyId === company) return true
+          const eCompNorm = turkishToLower(e.companyName || '')
+          return eCompNorm === compNorm || eCompNorm.includes(compNorm) || compNorm.includes(eCompNorm)
+        })
+      }
+
+      if (status && status !== 'all') {
+        list = list.filter(e => (e.status || 'active') === status)
+      }
+
+      if (search) {
+        const q = turkishToLower(search)
+        list = list.filter(e => 
+          turkishToLower(e.name || '').includes(q) || 
+          (e.tc && e.tc.includes(q)) || 
+          turkishToLower(e.companyName || '').includes(q)
+        )
+      }
+
+      const enriched = list.map(emp => {
+        const empCerts = certList.filter(c => {
+          if (emp.tc && c.recipientTc && c.recipientTc.trim() === emp.tc.trim()) return true
+          return turkishToLower(c.recipientName || '') === turkishToLower(emp.name || '')
+        })
+        return {
+          ...emp,
+          certificatesCount: empCerts.length,
+          latestCertificate: empCerts[0] || null
+        }
+      })
+
+      enriched.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'tr-TR'))
+      res.json(enriched)
+    } catch (err: any) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+
+  app.get('/api/employees/:id', verifyToken, (req, res) => {
+    try {
+      const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
+      let emp = employees[req.params.id]
+
+      if (!emp) {
+        const paramNorm = turkishToLower(req.params.id)
+        emp = Object.values(employees).find((e: any) => 
+          (e.tc && e.tc.trim() === req.params.id.trim()) ||
+          turkishToLower(e.name || '') === paramNorm
+        )
+      }
+
+      if (!emp) {
+        return res.status(404).json({ error: "Çalışan bulunamadı." })
+      }
+
+      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
+      const empCerts = Object.values(certs).filter((c: any) => {
+        if (emp.tc && c.recipientTc && c.recipientTc.trim() === emp.tc.trim()) return true
+        return turkishToLower(c.recipientName || '') === turkishToLower(emp.name || '')
+      })
+
+      empCerts.sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+
+      res.json({
+        ...emp,
+        certificates: empCerts
+      })
+    } catch (err: any) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+
+  app.post('/api/employees/:id/status', verifyToken, (req, res) => {
+    try {
+      const { status, note } = req.body
+      if (!status || (status !== 'active' && status !== 'passive')) {
+        return res.status(400).json({ error: "Geçersiz durum. 'active' veya 'passive' olmalı." })
+      }
+
+      const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
+      let empKey = req.params.id
+      if (!employees[empKey]) {
+        const foundKey = Object.keys(employees).find(k => 
+          employees[k].tc === req.params.id || turkishToLower(employees[k].name || '') === turkishToLower(req.params.id)
+        )
+        if (foundKey) empKey = foundKey
+      }
+
+      if (!employees[empKey]) {
+        return res.status(404).json({ error: "Çalışan bulunamadı." })
+      }
+
+      employees[empKey].status = status
+      if (status === 'passive') {
+        employees[empKey].terminatedAt = Date.now()
+        employees[empKey].terminationNote = note || ''
+      } else {
+        employees[empKey].terminatedAt = undefined
+        employees[empKey].terminationNote = undefined
+      }
+
+      writeJsonFile(EMPLOYEES_FILE, employees)
+      res.json({ success: true, employee: employees[empKey] })
+    } catch (err: any) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+
+  app.post('/api/employees/:id/documents', verifyToken, (req, res) => {
+    try {
+      const { name, fileName, fileData, mimeType } = req.body
+      if (!name || !fileData) {
+        return res.status(400).json({ error: "Belge adı ve dosya içeriği zorunludur." })
+      }
+
+      const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
+      let empKey = req.params.id
+      if (!employees[empKey]) {
+        const foundKey = Object.keys(employees).find(k => 
+          employees[k].tc === req.params.id || turkishToLower(employees[k].name || '') === turkishToLower(req.params.id)
+        )
+        if (foundKey) empKey = foundKey
+      }
+
+      if (!employees[empKey]) {
+        return res.status(404).json({ error: "Çalışan bulunamadı." })
+      }
+
+      const base64PrefixMatch = fileData.match(/^data:([a-zA-Z0-9_\-\.\/]+);base64,/)
+      const rawBase64 = base64PrefixMatch ? fileData.replace(/^data:([a-zA-Z0-9_\-\.\/]+);base64,/, '') : fileData
+      const resolvedMime = mimeType || (base64PrefixMatch ? base64PrefixMatch[1] : 'application/octet-stream')
+
+      const buffer = Buffer.from(rawBase64, 'base64')
+      const fileSize = buffer.length
+
+      if (fileSize > 25 * 1024 * 1024) {
+        return res.status(400).json({ error: "Dosya boyutu 25 MB'den büyük olamaz." })
+      }
+
+      const originalExt = path.extname(fileName || name) || (resolvedMime.includes('pdf') ? '.pdf' : resolvedMime.includes('png') ? '.png' : '.jpg')
+      const safeDocId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+      const diskFileName = `${safeDocId}${originalExt}`
+      const diskFilePath = path.join(DOCUMENTS_DIR, diskFileName)
+
+      fs.writeFileSync(diskFilePath, buffer)
+
+      const newDoc = {
+        id: safeDocId,
+        name: name.trim(),
+        fileName: diskFileName,
+        fileUrl: `/api/documents/${diskFileName}`,
+        fileSize,
+        mimeType: resolvedMime,
+        uploadedAt: Date.now()
+      }
+
+      if (!employees[empKey].documents) {
+        employees[empKey].documents = []
+      }
+      employees[empKey].documents.push(newDoc)
+
+      writeJsonFile(EMPLOYEES_FILE, employees)
+      res.json({ success: true, document: newDoc })
+    } catch (err: any) {
+      console.error("Document upload error:", err)
+      res.status(500).json({ error: err.message })
+    }
+  })
+
+  app.delete('/api/employees/:id/documents/:docId', verifyToken, (req, res) => {
+    try {
+      const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
+      let empKey = req.params.id
+      if (!employees[empKey]) {
+        const foundKey = Object.keys(employees).find(k => 
+          employees[k].tc === req.params.id || turkishToLower(employees[k].name || '') === turkishToLower(req.params.id)
+        )
+        if (foundKey) empKey = foundKey
+      }
+
+      if (!employees[empKey]) {
+        return res.status(404).json({ error: "Çalışan bulunamadı." })
+      }
+
+      employees[empKey].documents = employees[empKey].documents || []
+      const docIndex = employees[empKey].documents.findIndex((d: any) => d.id === req.params.docId)
+
+      if (docIndex === -1) {
+        return res.status(404).json({ error: "Belge bulunamadı." })
+      }
+
+      const doc = employees[empKey].documents[docIndex]
+      const diskPath = path.join(DOCUMENTS_DIR, doc.fileName)
+      if (fs.existsSync(diskPath)) {
+        try { fs.unlinkSync(diskPath) } catch (e) { /* ignore */ }
+      }
+
+      employees[empKey].documents.splice(docIndex, 1)
+      writeJsonFile(EMPLOYEES_FILE, employees)
+
+      res.json({ success: true })
+    } catch (err: any) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+
+  app.get('/api/documents/:fileName', optionalToken, (req, res) => {
+    const safeName = path.basename(req.params.fileName)
+    const filePath = path.join(DOCUMENTS_DIR, safeName)
+    if (fs.existsSync(filePath)) {
+      res.sendFile(filePath)
+    } else {
+      res.status(404).send('Belge bulunamadı.')
     }
   })
 
