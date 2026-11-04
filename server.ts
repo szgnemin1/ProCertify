@@ -3,6 +3,7 @@ import path from "path"
 import fs from "fs"
 import jwt from "jsonwebtoken"
 import { exec } from "child_process"
+import JSZip from "jszip"
 
 const JWT_SECRET = "procertify-super-secret-key-2024-static"
 
@@ -81,50 +82,73 @@ async function startServer() {
       const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
       let updated = false
 
-      for (const cert of Object.values(certs)) {
+      // Sort certs chronologically so latest certificate data takes precedence
+      const sortedCerts = Object.values(certs).sort((a: any, b: any) => {
+        const timeA = new Date(a.date || a.trainingDate || a.createdAt || 0).getTime()
+        const timeB = new Date(b.date || b.trainingDate || b.createdAt || 0).getTime()
+        return timeA - timeB
+      })
+
+      for (const cert of sortedCerts) {
         if (!cert || (!cert.recipientName && !cert.recipientTc)) continue
         
-        const tc = (cert.recipientTc || '').trim()
+        const tc = cert.recipientTc ? String(cert.recipientTc).replace(/\s+/g, '').trim() : ''
         const name = (cert.recipientName || '').trim()
         const company = (cert.company || '').trim()
         const companyId = cert.companyId || ''
 
-        let empKey = tc ? tc : `emp_${turkishToLower(name).replace(/\s+/g, '_')}`
-        
-        if (!employees[empKey]) {
-          const existingKey = Object.keys(employees).find(k => {
+        // Find existing employee by TC first!
+        let existingKey: string | undefined = undefined
+        if (tc) {
+          existingKey = Object.keys(employees).find(k => {
             const e = employees[k]
-            if (tc && e.tc === tc) return true
-            return turkishToLower(e.name) === turkishToLower(name) && 
-                   turkishToLower(e.companyName) === turkishToLower(company)
+            return e.tc && e.tc.replace(/\s+/g, '').trim() === tc
           })
+        }
+        if (!existingKey && name) {
+          existingKey = Object.keys(employees).find(k => {
+            const e = employees[k]
+            return turkishToLower(e.name || '') === turkishToLower(name) && 
+                   (!company || turkishToLower(e.companyName || '') === turkishToLower(company))
+          })
+        }
 
-          if (existingKey) {
-            empKey = existingKey
-          } else {
-            employees[empKey] = {
-              id: empKey,
-              tc: tc,
-              name: name,
-              companyId: companyId,
-              companyName: company,
-              status: 'active',
-              createdAt: Date.now(),
-              documents: []
-            }
+        if (existingKey) {
+          const emp = employees[existingKey]
+          if (tc && !emp.tc) {
+            emp.tc = tc
+            updated = true
+          }
+          if (name && !emp.name) {
+            emp.name = name
+            updated = true
+          }
+          if (company) {
+            emp.companyName = company
+            if (companyId) emp.companyId = companyId
+            emp.updatedAt = cert.date ? new Date(cert.date).getTime() : Date.now()
+            updated = true
+          }
+          // If existing key was not the TC but we now have a TC, migrate key to TC
+          if (tc && existingKey !== tc && !employees[tc]) {
+            employees[tc] = { ...emp, id: tc, tc: tc }
+            delete employees[existingKey]
             updated = true
           }
         } else {
-          // If company or name was missing, update it
-          if (!employees[empKey].companyName && company) {
-            employees[empKey].companyName = company
-            employees[empKey].companyId = companyId
-            updated = true
+          const empKey = tc || `emp_${turkishToLower(name).replace(/\s+/g, '_')}`
+          employees[empKey] = {
+            id: empKey,
+            tc: tc,
+            name: name,
+            companyId: companyId,
+            companyName: company,
+            status: 'active',
+            createdAt: cert.date ? new Date(cert.date).getTime() : Date.now(),
+            updatedAt: Date.now(),
+            documents: []
           }
-          if (!employees[empKey].name && name) {
-            employees[empKey].name = name
-            updated = true
-          }
+          updated = true
         }
       }
 
@@ -400,13 +424,39 @@ async function startServer() {
       }
     }
 
+    if (r.recipientTc) {
+      r.recipientTc = String(r.recipientTc).replace(/\s+/g, '').trim()
+      try {
+        const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
+        const matched = Object.values(employees).find((e: any) => 
+          e.tc && e.tc.replace(/\s+/g, '').trim() === r.recipientTc
+        )
+        if (matched) {
+          r.employeeId = matched.id
+          if (!r.recipientName && matched.name) r.recipientName = matched.name
+          if (!r.company && matched.companyName) r.company = matched.companyName
+          if (!r.companyId && matched.companyId) r.companyId = matched.companyId
+        }
+      } catch (e) {}
+    }
+
     if (!r.trainingDate && r.fields) {
+      const dateCandidates: { raw: string; ts: number }[] = []
       for (const [k, v] of Object.entries(r.fields)) {
         const lk = k.toLowerCase()
-        if (lk.includes('egitim tarihi') || lk.includes('eğitim tarihi') || lk === 'tarih') {
-          r.trainingDate = v
-          break
+        if ((lk.includes('tarih') || lk.includes('date')) && !lk.includes('gecerli') && !lk.includes('geçerli') && !lk.includes('bitis') && !lk.includes('bitiş') && typeof v === 'string') {
+          const m = v.match(/\b(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})\b/)
+          if (m) {
+            const dt = new Date(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10), 12, 0, 0)
+            if (!isNaN(dt.getTime())) {
+              dateCandidates.push({ raw: `${String(m[1]).padStart(2, '0')}.${String(m[2]).padStart(2, '0')}.${m[3]}`, ts: dt.getTime() })
+            }
+          }
         }
+      }
+      if (dateCandidates.length > 0) {
+        dateCandidates.sort((a, b) => a.ts - b.ts)
+        r.trainingDate = dateCandidates[0].raw
       }
     }
 
@@ -531,10 +581,20 @@ async function startServer() {
       }
 
       const enriched = list.map(emp => {
+        const cleanEmpTc = emp.tc ? String(emp.tc).replace(/\s+/g, '').trim() : ''
         const empCerts = certList.filter(c => {
-          if (emp.tc && c.recipientTc && c.recipientTc.trim() === emp.tc.trim()) return true
+          const cleanCertTc = c.recipientTc ? String(c.recipientTc).replace(/\s+/g, '').trim() : ''
+          if (cleanEmpTc && cleanCertTc && cleanCertTc === cleanEmpTc) return true
+          if (c.employeeId && (c.employeeId === emp.id || (cleanEmpTc && c.employeeId === cleanEmpTc))) return true
           return turkishToLower(c.recipientName || '') === turkishToLower(emp.name || '')
         })
+
+        empCerts.sort((a: any, b: any) => {
+          const timeB = new Date(b.date || b.trainingDate || b.createdAt || 0).getTime()
+          const timeA = new Date(a.date || a.trainingDate || a.createdAt || 0).getTime()
+          return timeB - timeA
+        })
+
         return {
           ...emp,
           certificatesCount: empCerts.length,
@@ -556,8 +616,9 @@ async function startServer() {
 
       if (!emp) {
         const paramNorm = turkishToLower(req.params.id)
+        const cleanParam = req.params.id.replace(/\s+/g, '').trim()
         emp = Object.values(employees).find((e: any) => 
-          (e.tc && e.tc.trim() === req.params.id.trim()) ||
+          (e.tc && String(e.tc).replace(/\s+/g, '').trim() === cleanParam) ||
           turkishToLower(e.name || '') === paramNorm
         )
       }
@@ -567,12 +628,19 @@ async function startServer() {
       }
 
       const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
+      const cleanEmpTc = emp.tc ? String(emp.tc).replace(/\s+/g, '').trim() : ''
       const empCerts = Object.values(certs).filter((c: any) => {
-        if (emp.tc && c.recipientTc && c.recipientTc.trim() === emp.tc.trim()) return true
+        const cleanCertTc = c.recipientTc ? String(c.recipientTc).replace(/\s+/g, '').trim() : ''
+        if (cleanEmpTc && cleanCertTc && cleanCertTc === cleanEmpTc) return true
+        if (c.employeeId && (c.employeeId === emp.id || (cleanEmpTc && c.employeeId === cleanEmpTc))) return true
         return turkishToLower(c.recipientName || '') === turkishToLower(emp.name || '')
       })
 
-      empCerts.sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+      empCerts.sort((a: any, b: any) => {
+        const timeB = new Date(b.date || b.trainingDate || b.createdAt || 0).getTime()
+        const timeA = new Date(a.date || a.trainingDate || a.createdAt || 0).getTime()
+        return timeB - timeA
+      })
 
       res.json({
         ...emp,
@@ -967,6 +1035,151 @@ async function startServer() {
     } catch (error: any) {
       console.error("File save error:", error)
       res.status(500).json({ error: error.message })
+    }
+  })
+
+  // FULL SYSTEM BACKUP (ZIP: data.json, certificates.json, employees.json and all uploaded documents)
+  app.get('/api/backup/full-zip', verifyToken, async (req, res) => {
+    try {
+      const zip = new JSZip()
+
+      // 1. Add data.json
+      if (fs.existsSync(DATA_FILE)) {
+        zip.file('data.json', fs.readFileSync(DATA_FILE, 'utf-8'))
+      }
+
+      // 2. Add certificates.json
+      if (fs.existsSync(CERT_FILE)) {
+        zip.file('certificates.json', fs.readFileSync(CERT_FILE, 'utf-8'))
+      }
+
+      // 3. Add employees.json
+      if (fs.existsSync(EMPLOYEES_FILE)) {
+        zip.file('employees.json', fs.readFileSync(EMPLOYEES_FILE, 'utf-8'))
+      }
+
+      // 4. Add storage/documents files
+      if (fs.existsSync(DOCUMENTS_DIR)) {
+        const docFolder = zip.folder('storage/documents')
+        const docFiles = fs.readdirSync(DOCUMENTS_DIR)
+        for (const file of docFiles) {
+          const fullPath = path.join(DOCUMENTS_DIR, file)
+          if (fs.statSync(fullPath).isFile()) {
+            docFolder?.file(file, fs.readFileSync(fullPath))
+          }
+        }
+      }
+
+      // 5. Add storage/certs files
+      if (fs.existsSync(CERTS_DIR)) {
+        const certFolder = zip.folder('storage/certs')
+        const certFiles = fs.readdirSync(CERTS_DIR)
+        for (const file of certFiles) {
+          const fullPath = path.join(CERTS_DIR, file)
+          if (fs.statSync(fullPath).isFile()) {
+            certFolder?.file(file, fs.readFileSync(fullPath))
+          }
+        }
+      }
+
+      // 6. Add manifest
+      const manifest = {
+        app: "ProCertify Studio",
+        version: "1.7.3",
+        backupType: "full_archive",
+        createdAt: Date.now(),
+        dateStr: new Date().toISOString()
+      }
+      zip.file('manifest.json', JSON.stringify(manifest, null, 2))
+
+      const zipBuffer = await zip.generateAsync({
+        type: 'nodebuffer',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 }
+      })
+
+      const dateStr = new Date().toISOString().replace(/[:.]/g, '-')
+      res.setHeader('Content-Type', 'application/zip')
+      res.setHeader('Content-Disposition', `attachment; filename="ProCertify_Tam_Yedek_${dateStr}.zip"`)
+      return res.send(zipBuffer)
+    } catch (err: any) {
+      console.error("Full zip backup error:", err)
+      res.status(500).json({ error: "Tam yedek oluşturulurken sunucu hatası meydana geldi: " + err.message })
+    }
+  })
+
+  // RESTORE FULL SYSTEM BACKUP (ZIP)
+  app.post('/api/backup/full-restore', verifyToken, requireAdmin, async (req, res) => {
+    try {
+      const { zipBase64 } = req.body
+      if (!zipBase64) {
+        return res.status(400).json({ error: "Yedek zip verisi eksik." })
+      }
+
+      const zipData = Buffer.from(zipBase64, 'base64')
+      const zip = await JSZip.loadAsync(zipData)
+
+      let restoredData = false
+      let restoredCerts = false
+      let restoredEmployees = false
+      let docCount = 0
+      let certFileCount = 0
+
+      // Ensure storage directories exist
+      if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true })
+      if (!fs.existsSync(CERTS_DIR)) fs.mkdirSync(CERTS_DIR, { recursive: true })
+
+      // Iterate through zip entries
+      for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
+        if (zipEntry.dir) continue
+
+        const normalizedPath = relativePath.replace(/\\/g, '/')
+
+        if (normalizedPath === 'data.json') {
+          const content = await zipEntry.async('string')
+          writeJsonFile(DATA_FILE, JSON.parse(content))
+          restoredData = true
+        } else if (normalizedPath === 'certificates.json') {
+          const content = await zipEntry.async('string')
+          writeJsonFile(CERT_FILE, JSON.parse(content))
+          restoredCerts = true
+        } else if (normalizedPath === 'employees.json') {
+          const content = await zipEntry.async('string')
+          writeJsonFile(EMPLOYEES_FILE, JSON.parse(content))
+          restoredEmployees = true
+        } else if (normalizedPath.startsWith('storage/documents/')) {
+          const fileName = path.basename(normalizedPath)
+          if (fileName) {
+            const fileBuffer = await zipEntry.async('nodebuffer')
+            fs.writeFileSync(path.join(DOCUMENTS_DIR, fileName), fileBuffer)
+            docCount++
+          }
+        } else if (normalizedPath.startsWith('storage/certs/')) {
+          const fileName = path.basename(normalizedPath)
+          if (fileName) {
+            const fileBuffer = await zipEntry.async('nodebuffer')
+            fs.writeFileSync(path.join(CERTS_DIR, fileName), fileBuffer)
+            certFileCount++
+          }
+        }
+      }
+
+      syncEmployeesFromCerts()
+
+      return res.json({
+        success: true,
+        message: "Tam sistem yedeği başarıyla geri yüklendi.",
+        stats: {
+          restoredData,
+          restoredCerts,
+          restoredEmployees,
+          documentFilesRestored: docCount,
+          certFilesRestored: certFileCount
+        }
+      })
+    } catch (err: any) {
+      console.error("Full zip restore error:", err)
+      res.status(500).json({ error: "Yedek dosyası açılırken veya geri yüklenirken hata oluştu: " + err.message })
     }
   })
 

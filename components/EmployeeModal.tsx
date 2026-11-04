@@ -30,6 +30,7 @@ interface EmployeeModalProps {
   isOpen: boolean;
   onClose: () => void;
   onEditCertificate?: (cert: IssuedCertificate) => void;
+  onRenewCertificate?: (cert: IssuedCertificate) => void;
   onStatusChanged?: (updatedEmployee: Employee) => void;
   getApiUrl: (path: string) => string;
 }
@@ -40,6 +41,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
   isOpen,
   onClose,
   onEditCertificate,
+  onRenewCertificate,
   onStatusChanged,
   getApiUrl
 }) => {
@@ -389,10 +391,14 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
               </div>
             ) : (
               <div className="space-y-2">
-                {certificates.map((cert) => {
+                {certificates.map((cert, certIdx) => {
                   const status = getCertificateStatus(cert.expiryDate);
                   const daysLeft = getDaysRemaining(cert.expiryDate);
                   const badge = getStatusBadge(status, daysLeft);
+                  
+                  const isNewestForAnyProject = certificates.findIndex(c => 
+                    c.projects && cert.projects && c.projects.some(p => cert.projects.includes(p))
+                  ) === certIdx;
 
                   return (
                     <div
@@ -407,6 +413,16 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${badge.className}`}>
                             {badge.label}
                           </span>
+                          {certIdx === 0 && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                              ⭐ En Son Kayıt
+                            </span>
+                          )}
+                          {!isNewestForAnyProject && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                              🔄 Önceki Kayıt (Yenilendi)
+                            </span>
+                          )}
                         </div>
 
                         {cert.projects && Array.isArray(cert.projects) && cert.projects.length > 0 && (
@@ -427,6 +443,20 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
 
                       {/* İşlem Butonları */}
                       <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        {onRenewCertificate && (
+                          <button
+                            onClick={() => {
+                              onRenewCertificate(cert);
+                              onClose();
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 border border-emerald-400/30 px-2.5 py-1.5 rounded-lg transition"
+                            title="Bu çalışan için yeni bir sertifika düzenle"
+                          >
+                            <Plus size={12} />
+                            <span>Yenile (Yeni Sertifika)</span>
+                          </button>
+                        )}
+
                         {onEditCertificate && (
                           <button
                             onClick={() => {
@@ -434,7 +464,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
                               onClose();
                             }}
                             className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 px-2.5 py-1.5 rounded-lg transition"
-                            title="Sertifikayı Düzenle / Doldur Ekranına Yükle"
+                            title="Sertifikayı Düzenle / Hata Düzelt"
                           >
                             <Pencil size={12} />
                             <span>Düzenle</span>

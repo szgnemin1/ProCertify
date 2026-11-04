@@ -628,22 +628,6 @@
             "textAlign": "center"
           },
           {
-            "id": "1766783209472",
-            "type": "TEXT",
-            "content": "{TARİHyç}",
-            "x": 1365.534450651769,
-            "y": 481.11173184357546,
-            "width": 400,
-            "height": 100,
-            "fontSize": 36,
-            "fontFamily": "Cinzel, serif",
-            "color": "#000000",
-            "label": "TARİH YÇ",
-            "fontWeight": 700,
-            "fontStyle": "normal",
-            "textAlign": "left"
-          },
-          {
             "id": "1768301904660",
             "type": "TCKN",
             "content": "{TCKN}",
@@ -698,19 +682,21 @@
           {
             "id": "1792764662159",
             "type": "DATE",
-            "content": "{Eğitim Tarihi}",
-            "x": 840,
-            "y": 677,
-            "width": 320,
-            "height": 60,
-            "fontSize": 48,
-            "fontFamily": "Inter, sans-serif",
+            "content": "{Eğitim Tarihiyc}",
+            "x": 1367.3492286115006,
+            "y": 477.84151472650774,
+            "width": 417.8021978021978,
+            "height": 124.83516483516483,
+            "fontSize": 30,
+            "fontFamily": "Cinzel, serif",
             "color": "#000000",
-            "label": "Eğitim Tarihi",
-            "fontWeight": 400,
+            "label": "Eğitim TarihiYÇ",
+            "fontWeight": 700,
             "fontStyle": "normal",
-            "textAlign": "center",
-            "dateKind": "training"
+            "textAlign": "left",
+            "dateKind": "training",
+            "secondaryX": 1467.3492286115006,
+            "secondaryY": 477.84151472650774
           }
         ]
       },
@@ -921,22 +907,6 @@
             "textAlign": "left"
           },
           {
-            "id": "1766748372855",
-            "type": "TEXT",
-            "content": "{TARİHkç}",
-            "x": 1360.765811965812,
-            "y": 481.71282051282054,
-            "width": 400,
-            "height": 100,
-            "fontSize": 36,
-            "fontFamily": "Cinzel, serif",
-            "color": "#000000",
-            "label": "TARİH KÇ",
-            "fontWeight": 700,
-            "fontStyle": "normal",
-            "textAlign": "left"
-          },
-          {
             "id": "1766748433017",
             "type": "DROPDOWN",
             "content": "{SEÇENEK}",
@@ -1071,6 +1041,25 @@
               "17858298564900.12121039143682333",
               "17890224640370.4150943280662903"
             ]
+          },
+          {
+            "id": "1792766471011",
+            "type": "DATE",
+            "content": "{Eğitim Tarihi}",
+            "x": 1362.111269614836,
+            "y": 490.49144079885883,
+            "width": 1047.5320970042796,
+            "height": 20,
+            "fontSize": 30,
+            "fontFamily": "Cinzel, serif",
+            "color": "#000000",
+            "label": "Eğitim TarihiKÇ",
+            "fontWeight": 700,
+            "fontStyle": "normal",
+            "textAlign": "left",
+            "dateKind": "training",
+            "secondaryX": 1462.111269614836,
+            "secondaryY": 490.49144079885883
           }
         ]
       },
@@ -1392,22 +1381,6 @@
             "secondaryY": 1709.5641952983726
           },
           {
-            "id": "1766777466353",
-            "type": "TEXT",
-            "content": "{TARİHözt}",
-            "x": 1002.1139240506329,
-            "y": 1778.8933092224233,
-            "width": 244.4846292947559,
-            "height": 96.38336347197107,
-            "fontSize": 30,
-            "fontFamily": "Cinzel, serif",
-            "color": "#000000",
-            "label": "TARİH ÖZT",
-            "fontWeight": 700,
-            "fontStyle": "normal",
-            "textAlign": "left"
-          },
-          {
             "id": "1766777631559",
             "type": "COMPANY",
             "content": "{FİRMA}",
@@ -1620,6 +1593,25 @@
               "17858298564900.12121039143682333",
               "17890224640370.4150943280662903"
             ]
+          },
+          {
+            "id": "1792766537599",
+            "type": "DATE",
+            "content": "{Sağlık Tarihi}",
+            "x": 1001.3728872323829,
+            "y": 1776.7175175522232,
+            "width": 320,
+            "height": 60,
+            "fontSize": 30,
+            "fontFamily": "Cinzel, serif",
+            "color": "#000000",
+            "label": "Eğitim TarihiÖZT",
+            "fontWeight": 700,
+            "fontStyle": "normal",
+            "textAlign": "left",
+            "dateKind": "training",
+            "secondaryX": 1101.372887232383,
+            "secondaryY": 1776.7175175522232
           }
         ]
       },
@@ -3255,6 +3247,14 @@
       "id": "17919823567260.3307301933550668",
       "name": "CUNDA TEKSTİL GIDA SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
       "shortName": "CUNDA_TEKSTİL"
+    },
+    {
+      "id": "1793012213947.768333",
+      "name": "Test Sirketi",
+      "shortName": "TEST_SIRKETI",
+      "dangerClass": "cok_tehlikeli",
+      "validityYears": 1,
+      "createdAt": 1793012213947
     }
   ],
   "serverSettings": {},
@@ -3266,6 +3266,14 @@
       "name": "Ahmet Demir (ISG Uzmani)",
       "role": "user",
       "createdAt": 1792673019850
+    },
+    {
+      "id": "usr-1793009723217-0hfnt",
+      "username": "szgn_emin",
+      "password": "196304",
+      "name": "mehmet",
+      "role": "user",
+      "createdAt": 1793009723217
     }
   ]
 }

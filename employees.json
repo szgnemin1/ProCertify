@@ -7,7 +7,8 @@
     "companyName": "ABANT HAYVANCILIK ENTEGRE TARIM VE ORMAN ÜRÜNLERİ SANAYİ VE TİCARET ANONİM ŞİRKETİ",
     "status": "active",
     "createdAt": 1792759701203,
-    "documents": []
+    "documents": [],
+    "updatedAt": 1792675749359
   },
   "9885151485184518": {
     "id": "9885151485184518",
@@ -17,6 +18,7 @@
     "companyName": "ABANT HAYVANCILIK ENTEGRE TARIM VE ORMAN ÜRÜNLERİ SANAYİ VE TİCARET ANONİM ŞİRKETİ",
     "status": "active",
     "createdAt": 1792759701204,
-    "documents": []
+    "documents": [],
+    "updatedAt": 1792761779958
   }
 }

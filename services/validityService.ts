@@ -58,12 +58,13 @@ export interface ParsedDateInfo {
   month: number; // 0-indexed (0=Ocak, 11=Aralık)
   year: number;
   isMultiDay: boolean;
-  effectiveDate: Date; // Training completion date (last day)
+  startDate: Date;     // Earliest / first day of training (ilk gün)
+  effectiveDate: Date; // Last day of training (bitiş günü)
 }
 
 /**
  * Parses single or multi-day Turkish dates:
- * - 22.25/10/2026, 22.25.10.2026, 22-25/10/2026, 22,25/10/2026, 22/25/10/2026
+ * - 22.25/10/2026, 19.21.22/01/2026, 22.25.10.2026, 22-25/10/2026, 22,25/10/2026, 22/25/10/2026
  * - 22.10.2026 - 25.10.2026
  * - 25.10.2026, 25/10/2026, 25-10-2026
  * - 2026-10-25
@@ -80,22 +81,27 @@ export const parseDateDetailed = (dateStr?: string): ParsedDateInfo | null => {
   let year: number | null = null;
   let isMultiDay = false;
 
-  // 1. Multi-day Turkish format: 22.25/10/2026, 22.25.10.2026, 22-25/10/2026, 22,25/10/2026, 22/25/10/2026
-  const multiDayMatch = raw.match(/^(\d{1,2})[\.\-,\/](\d{1,2})[\.\-\/](\d{1,2})[\.\-\/](\d{4})$/);
+  // 1. Multi-day Turkish format: 22.25/10/2026, 19.21.22/01/2026, 22-25/10/2026, 22,25/10/2026
+  const multiDayMatch = raw.match(/^((?:\d{1,2}[\.\-,\/])+)(\d{1,2})[\.\-\/](\d{4})$/);
   if (multiDayMatch) {
-    startDay = parseInt(multiDayMatch[1], 10);
-    endDay = parseInt(multiDayMatch[2], 10);
-    month = parseInt(multiDayMatch[3], 10) - 1;
-    year = parseInt(multiDayMatch[4], 10);
-    isMultiDay = true;
+    const dayTokens = multiDayMatch[1].split(/[\.\-,\/]/).filter(Boolean).map(n => parseInt(n, 10));
+    if (dayTokens.length >= 2) {
+      startDay = Math.min(...dayTokens);
+      endDay = Math.max(...dayTokens);
+      month = parseInt(multiDayMatch[2], 10) - 1;
+      year = parseInt(multiDayMatch[3], 10);
+      isMultiDay = true;
+    }
   }
 
   // 2. Range format: 22.10.2026 - 25.10.2026 or 22/10/2026 - 25/10/2026
   if (!year) {
     const rangeMatch = raw.match(/^(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})\s*[-–—]\s*(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})$/);
     if (rangeMatch) {
-      startDay = parseInt(rangeMatch[1], 10);
-      endDay = parseInt(rangeMatch[4], 10);
+      const d1 = parseInt(rangeMatch[1], 10);
+      const d2 = parseInt(rangeMatch[4], 10);
+      startDay = Math.min(d1, d2);
+      endDay = Math.max(d1, d2);
       month = parseInt(rangeMatch[5], 10) - 1;
       year = parseInt(rangeMatch[6], 10);
       isMultiDay = true;
@@ -130,8 +136,10 @@ export const parseDateDetailed = (dateStr?: string): ParsedDateInfo | null => {
   if (!year) {
     const textMatch = raw.match(/(?:(\d{1,2})\s*[-–—]\s*)?(\d{1,2})\s+([a-zA-ZçğıöşüÇĞİÖŞÜ]+)\s+(\d{4})/);
     if (textMatch) {
-      startDay = textMatch[1] ? parseInt(textMatch[1], 10) : parseInt(textMatch[2], 10);
-      endDay = parseInt(textMatch[2], 10);
+      const d1 = textMatch[1] ? parseInt(textMatch[1], 10) : parseInt(textMatch[2], 10);
+      const d2 = parseInt(textMatch[2], 10);
+      startDay = Math.min(d1, d2);
+      endDay = Math.max(d1, d2);
       const mStr = textMatch[3].toLocaleLowerCase('tr-TR');
       if (TR_MONTHS[mStr] !== undefined) {
         month = TR_MONTHS[mStr];
@@ -148,8 +156,10 @@ export const parseDateDetailed = (dateStr?: string): ParsedDateInfo | null => {
       year = parseInt(yearMatch[1], 10);
       const nums = raw.match(/\b(\d{1,2})\b/g);
       if (nums && nums.length >= 2) {
-        endDay = parseInt(nums[nums.length - 2], 10);
-        startDay = parseInt(nums[0], 10);
+        const d1 = parseInt(nums[0], 10);
+        const d2 = parseInt(nums[nums.length - 2], 10);
+        startDay = Math.min(d1, d2);
+        endDay = Math.max(d1, d2);
         month = 0;
         isMultiDay = nums.length > 2;
       }
@@ -166,23 +176,27 @@ export const parseDateDetailed = (dateStr?: string): ParsedDateInfo | null => {
         month: std.getMonth(),
         year: std.getFullYear(),
         isMultiDay: false,
+        startDate: std,
         effectiveDate: std
       };
     }
     return null;
   }
 
-  const safeDay = endDay && endDay >= 1 && endDay <= 31 ? endDay : 1;
+  const safeStartDay = startDay && startDay >= 1 && startDay <= 31 ? startDay : (endDay || 1);
+  const safeEndDay = endDay && endDay >= 1 && endDay <= 31 ? endDay : safeStartDay;
   const safeMonth = month !== null && month >= 0 && month <= 11 ? month : 0;
-  const effectiveDate = new Date(year, safeMonth, safeDay, 12, 0, 0);
+  const startDate = new Date(year, safeMonth, safeStartDay, 12, 0, 0);
+  const effectiveDate = new Date(year, safeMonth, safeEndDay, 12, 0, 0);
 
   return {
     raw,
-    startDay: startDay || safeDay,
-    endDay: safeDay,
+    startDay: safeStartDay,
+    endDay: safeEndDay,
     month: safeMonth,
     year,
     isMultiDay,
+    startDate,
     effectiveDate
   };
 };
@@ -245,10 +259,11 @@ export const calculateExpiryDate = (
     };
   }
 
+  const baseDay = parsed.startDay || parsed.endDay;
   const targetYear = parsed.year + years;
-  const targetEffective = new Date(targetYear, parsed.month, parsed.endDay, 12, 0, 0);
+  const targetEffective = new Date(targetYear, parsed.month, baseDay, 12, 0, 0);
 
-  const padDay = String(parsed.endDay).padStart(2, '0');
+  const padDay = String(baseDay).padStart(2, '0');
   const padMonth = String(parsed.month + 1).padStart(2, '0');
   const singleDateDisplay = `${padDay}.${padMonth}.${targetYear}`;
 
@@ -268,6 +283,114 @@ export const calculateExpiryDate = (
     years,
     isMultiDay: parsed.isMultiDay,
     parsedInfo: parsed
+  };
+};
+
+export interface EarliestDateResult {
+  date: Date;
+  formatted: string; // "19.01.2026"
+  raw: string;
+  key?: string;
+  day: number;
+  month: number; // 1-indexed (1..12)
+  year: number;
+}
+
+/**
+ * Extracts all valid dates found in a text string.
+ * Supports comma-separated, range, slash, multi-day, and standard dates.
+ */
+export const extractDatesFromString = (str: string): { date: Date; formatted: string; raw: string }[] => {
+  if (!str || typeof str !== 'string') return [];
+  const results: { date: Date; formatted: string; raw: string }[] = [];
+  
+  // Split on delimiters that separate distinct dates (commas, semicolons, newlines, "ve", "and", "ile")
+  const segments = str.split(/[,;\n\r]+|\s+(?:ve|and|ile)\s+/i).map(s => s.trim()).filter(Boolean);
+  
+  for (const seg of segments) {
+    const parsed = parseDateDetailed(seg);
+    if (parsed) {
+      const fmtStart = formatDateTR(parsed.startDate);
+      if (!results.some(r => r.formatted === fmtStart)) {
+        results.push({
+          date: parsed.startDate,
+          formatted: fmtStart,
+          raw: seg
+        });
+      }
+      if (parsed.isMultiDay && parsed.effectiveDate.getTime() !== parsed.startDate.getTime()) {
+        const fmtEnd = formatDateTR(parsed.effectiveDate);
+        if (!results.some(r => r.formatted === fmtEnd)) {
+          results.push({
+            date: parsed.effectiveDate,
+            formatted: fmtEnd,
+            raw: seg
+          });
+        }
+      }
+    }
+  }
+
+  // Regex fallback: find standalone DD.MM.YYYY or YYYY-MM-DD
+  const regexMatches = str.matchAll(/\b(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})\b/g);
+  for (const m of regexMatches) {
+    const d = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10) - 1;
+    const y = parseInt(m[3], 10);
+    if (d >= 1 && d <= 31 && mo >= 0 && mo <= 11 && y >= 1950 && y <= 2100) {
+      const dt = new Date(y, mo, d, 12, 0, 0);
+      const fmt = formatDateTR(dt);
+      if (!results.some(r => r.formatted === fmt)) {
+        results.push({ date: dt, formatted: fmt, raw: m[0] });
+      }
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Finds the chronologically earliest (first day) training date from multiple candidates.
+ * E.g., if one cert is 21.01.2026, another 22.01.2026, another 19.01.2026,
+ * this function returns 19.01.2026 as the earliest date.
+ */
+export const findEarliestTrainingDate = (
+  candidates: (string | { key?: string; value?: string } | null | undefined)[]
+): EarliestDateResult | null => {
+  if (!candidates || !Array.isArray(candidates) || candidates.length === 0) return null;
+
+  const allFound: { date: Date; formatted: string; raw: string; key?: string }[] = [];
+
+  for (const item of candidates) {
+    if (!item) continue;
+    const rawVal = typeof item === 'string' ? item : item.value;
+    const key = typeof item === 'object' ? item.key : undefined;
+
+    if (!rawVal || typeof rawVal !== 'string') continue;
+
+    const extracted = extractDatesFromString(rawVal);
+    for (const ext of extracted) {
+      allFound.push({
+        ...ext,
+        key
+      });
+    }
+  }
+
+  if (allFound.length === 0) return null;
+
+  // Sort ascending: smallest timestamp (earliest date / ilk gün) first
+  allFound.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  const earliest = allFound[0];
+  return {
+    date: earliest.date,
+    formatted: earliest.formatted,
+    raw: earliest.raw,
+    key: earliest.key,
+    day: earliest.date.getDate(),
+    month: earliest.date.getMonth() + 1,
+    year: earliest.date.getFullYear()
   };
 };
 

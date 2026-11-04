@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   Download, 
   Type, 
@@ -38,6 +38,7 @@ import {
   RectangleHorizontal,
   RectangleVertical,
   RotateCcw,
+  Loader2,
   Copy,
   FileCode,
   Import,
@@ -59,6 +60,9 @@ import {
   ZoomOut,
   Maximize,
   ArrowLeft,
+  Undo2,
+  Redo2,
+  Archive,
   Menu,
   Folder,
   Lock,
@@ -68,7 +72,9 @@ import {
   Pencil,
   Flame,
   Search,
-  Building2
+  Building2,
+  UserCheck,
+  UserX
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
@@ -102,6 +108,7 @@ import {
   calculateExpiryDate, 
   getValidityYears, 
   findBestTrainingDateField, 
+  findEarliestTrainingDate,
   isValidityDateField,
   parseDateDetailed,
   formatDateTR
@@ -194,6 +201,35 @@ const downloadFile = async (blob: Blob | ArrayBuffer, defaultFilename: string, m
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   return true;
+};
+
+// --- Global Pure Utilities ---
+const normalizeKey = (key: any): string => {
+  if (!key || typeof key !== 'string') return '';
+  return key.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
+};
+
+const turkishToLower = (str: any): string => {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'ı')
+    .replace(/Ğ/g, 'ğ')
+    .replace(/Ü/g, 'ü')
+    .replace(/Ş/g, 'ş')
+    .replace(/Ö/g, 'ö')
+    .replace(/Ç/g, 'ç')
+    .toLocaleLowerCase('tr-TR');
+};
+
+const maskTCKN = (tckn: any): string => {
+  if (!tckn) return '';
+  const s = String(tckn);
+  if (s.length < 5) return s;
+  const first2 = s.substring(0, 2);
+  const last2 = s.substring(s.length - 2);
+  const mask = '*'.repeat(s.length - 4);
+  return `${first2}${mask}${last2}`;
 };
 
 const App = () => {
@@ -374,6 +410,22 @@ const App = () => {
     handleLogout();
   };
 
+  // --- Fill State ---
+  const [mobileFillStep, setMobileFillStep] = useState<0 | 1 | 2>(0);
+  const [fillValues, setFillValues] = useState<Record<string, string>>({});
+  const [isChatMode, setIsChatMode] = useState(true);
+  const [chatHistory, setChatHistory] = useState<{id: string, sender: 'bot'|'user', text: string}[]>([]);
+  const [currentChatStep, setCurrentChatStep] = useState(0);
+  const [chatInputValue, setChatInputValue] = useState('');
+  const [chatOptionSearch, setChatOptionSearch] = useState('');
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [isFillSidebarOpen, setIsFillSidebarOpen] = useState(true);
+  const [selectedTrainingDateKey, setSelectedTrainingDateKey] = useState<string>('');
+  const [preferSingleDateExpiry, setPreferSingleDateExpiry] = useState<boolean>(false);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const unifiedFieldsRef = useRef<string>('');
+
   const handleEditCertificate = (cert: IssuedCertificate) => {
     setEditingCertificate(cert);
     setCurrentView('fill');
@@ -387,9 +439,13 @@ const App = () => {
       populated['ad_soyad'] = cert.recipientName;
     }
     if (cert.recipientTc) {
-      populated['TC Kimlik No'] = cert.recipientTc;
-      populated['tc kimlik no'] = cert.recipientTc;
-      populated['tc'] = cert.recipientTc;
+      const cleanTc = String(cert.recipientTc).replace(/\s+/g, '').trim();
+      populated['TC Kimlik No'] = cleanTc;
+      populated['tc kimlik no'] = cleanTc;
+      populated['TCKN'] = cleanTc;
+      populated['tckn'] = cleanTc;
+      populated['tc'] = cleanTc;
+      populated['tc no'] = cleanTc;
     }
     if (cert.company) {
       populated['Firma'] = cert.company;
@@ -398,10 +454,18 @@ const App = () => {
     if (cert.trainingDate) {
       populated['Eğitim Tarihi'] = cert.trainingDate;
       populated['egitim tarihi'] = cert.trainingDate;
+      populated['tarih'] = cert.trainingDate;
+      populated['Tarih'] = cert.trainingDate;
     }
     if (cert.expiryDate) {
       populated['Geçerlilik Tarihi'] = cert.expiryDate;
       populated['geçerlilik tarihi'] = cert.expiryDate;
+    }
+    if (cert.serialNo) {
+      populated['Seri No'] = cert.serialNo;
+      populated['seri no'] = cert.serialNo;
+      populated['seri numarası'] = cert.serialNo;
+      populated['sertifika no'] = cert.serialNo;
     }
 
     setFillValues(populated);
@@ -409,7 +473,7 @@ const App = () => {
     // If projects are known, select matching project IDs
     if (cert.projects && Array.isArray(cert.projects) && cert.projects.length > 0) {
       const matchedProjectIds = projects
-        .filter(p => cert.projects.some(pn => turkishToLower(pn) === turkishToLower(p.name)))
+        .filter(p => p && p.name && cert.projects.some(pn => pn && turkishToLower(String(pn)) === turkishToLower(p.name)))
         .map(p => p.id);
       if (matchedProjectIds.length > 0) {
         setSelectedFillProjectIds(matchedProjectIds);
@@ -421,10 +485,159 @@ const App = () => {
     setIsChatMode(false);
   };
 
-  const handleCancelEdit = () => {
-    setEditingCertificate(null);
+  // Clear all fill data helper (resets form completely)
+  const clearFillData = useCallback(() => {
     setFillValues({});
+    setEditingCertificate(null);
+    setCurrentChatStep(0);
+    setChatInputValue('');
+    setChatOptionSearch('');
+    setChatHistory([]);
+    setProjectFrontSelections({});
+    setProjectBackSelections({});
+  }, []);
+
+  // Clear fill data when navigating away from the fill screen
+  const prevViewRef = useRef<ViewMode>(currentView);
+  useEffect(() => {
+    if (prevViewRef.current === 'fill' && currentView !== 'fill') {
+      clearFillData();
+    }
+    prevViewRef.current = currentView;
+  }, [currentView, clearFillData]);
+
+  const handleRenewCertificate = (cert: IssuedCertificate) => {
+    clearFillData();
+    setEditingCertificate(null); // Fresh issue, creates a brand new certificate!
+    setCurrentView('fill');
+
+    const populated: Record<string, string> = { ...(cert.fields || {}) };
+
+    if (cert.recipientName) {
+      populated['Ad Soyad'] = cert.recipientName;
+      populated['ad soyad'] = cert.recipientName;
+      populated['ad_soyad'] = cert.recipientName;
+    }
+    if (cert.recipientTc) {
+      const cleanTc = cert.recipientTc.replace(/\s+/g, '').trim();
+      populated['TCKN'] = cleanTc;
+      populated['tckn'] = cleanTc;
+      populated['tc'] = cleanTc;
+      populated['tc no'] = cleanTc;
+      populated['TC Kimlik No'] = cleanTc;
+    }
+    if (cert.company) {
+      populated['Firma'] = cert.company;
+      populated['firma'] = cert.company;
+    }
+
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+    const todayStr = `${day}.${month}.${year}`;
+    populated['Eğitim Tarihi'] = todayStr;
+    populated['egitim tarihi'] = todayStr;
+    populated['tarih'] = todayStr;
+    populated['Tarih'] = todayStr;
+
+    setFillValues(populated);
+
+    if (cert.projects && Array.isArray(cert.projects) && cert.projects.length > 0) {
+      const matchedProjectIds = projects
+        .filter(p => p && p.name && cert.projects.some(pn => pn && turkishToLower(String(pn)) === turkishToLower(p.name)))
+        .map(p => p.id);
+      if (matchedProjectIds.length > 0) {
+        setSelectedFillProjectIds(matchedProjectIds);
+        setActiveProjectId(matchedProjectIds[0]);
+      }
+    }
+
+    setIsChatMode(false);
   };
+
+  const handleCancelEdit = () => {
+    clearFillData();
+  };
+
+  const getActiveFillTc = (values: Record<string, string>) => {
+    for (const [k, v] of Object.entries(values)) {
+      const lk = k.toLowerCase();
+      if ((lk.includes('tc') || lk.includes('tckn') || lk.includes('kimlik')) && typeof v === 'string') {
+        const clean = v.replace(/\s+/g, '').trim();
+        if (clean.length >= 11) return clean;
+      }
+    }
+    return '';
+  };
+
+  const matchedEmployee = useMemo(() => {
+    const activeTc = getActiveFillTc(fillValues);
+    if (!activeTc || activeTc.length < 11) return null;
+    const foundCert = allCertificates.find(c => c.recipientTc && c.recipientTc.replace(/\s+/g, '').trim() === activeTc);
+    if (foundCert) {
+      return {
+        name: foundCert.recipientName || '',
+        company: foundCert.company || '',
+        tc: activeTc,
+        existingCerts: allCertificates.filter(c => c.recipientTc && c.recipientTc.replace(/\s+/g, '').trim() === activeTc)
+      };
+    }
+    return null;
+  }, [fillValues, allCertificates]);
+
+  const alreadyHasSelectedProject = useMemo(() => {
+    if (!matchedEmployee) return null;
+    const targetProjects = projects.filter(p => p && p.name && selectedFillProjectIds.includes(p.id));
+    const targetProjectNames = targetProjects.map(p => turkishToLower(p.name));
+    
+    return matchedEmployee.existingCerts.find(c => 
+      c.projects && Array.isArray(c.projects) && c.projects.some(pn => pn && targetProjectNames.includes(turkishToLower(String(pn))))
+    ) || null;
+  }, [matchedEmployee, selectedFillProjectIds, projects]);
+
+  // Toplu üretimde veya formda birden fazla eğitim tarihi varsa en erken (ilk gün) tarih tespiti
+  const { groupEarliestDate, multipleDistinctDates } = useMemo(() => {
+    const candidateList: { key?: string; value: string }[] = [];
+    const distinctDates = new Set<string>();
+
+    for (const [k, v] of Object.entries(fillValues)) {
+      const lk = k.toLowerCase();
+      if ((lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk) && typeof v === 'string' && v.trim()) {
+        candidateList.push({ key: k, value: v });
+        const parsed = parseDateDetailed(v);
+        if (parsed) {
+          distinctDates.add(formatDateTR(parsed.startDate));
+        }
+      }
+    }
+
+    const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
+    for (const proj of targetProjects) {
+      for (const s of [proj.front, getActiveSideData(proj, 'back')]) {
+        if (!s) continue;
+        for (const el of s.elements) {
+          if (el.type === ElementType.DATE && el.dateKind !== 'validity') {
+            const k = normalizeKey(el.label || el.id);
+            const val = fillValues[k] || el.content;
+            if (val && typeof val === 'string' && val.trim()) {
+              candidateList.push({ key: k, value: val });
+              const parsed = parseDateDetailed(val);
+              if (parsed) {
+                distinctDates.add(formatDateTR(parsed.startDate));
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const earliest = findEarliestTrainingDate(candidateList);
+    return {
+      groupEarliestDate: earliest,
+      multipleDistinctDates: distinctDates.size > 1 ? Array.from(distinctDates) : null
+    };
+  }, [fillValues, selectedFillProjectIds, projects]);
 
   const handleFillFieldChange = (fieldLabel: string, value: string, fieldType?: ElementType) => {
     setFillValues(prev => {
@@ -432,15 +645,71 @@ const App = () => {
       const normKey = fieldLabel.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
       updated[normKey] = value;
 
+      // TC Kimlik No girildiğinde veya değiştiğinde: kayıtlı çalışan varsa Ad Soyad ve Firma'yı otomatik öner/doldur
+      const isTcField = normKey.includes('tc') || normKey.includes('tckn') || normKey.includes('kimlik');
+      if (isTcField && value) {
+        const cleanTc = value.replace(/\s+/g, '').trim();
+        if (cleanTc.length === 11) {
+          const matched = allCertificates.find(c => c.recipientTc && c.recipientTc.replace(/\s+/g, '').trim() === cleanTc);
+          if (matched) {
+            if ((!updated['Ad Soyad'] || updated['Ad Soyad'] === '') && matched.recipientName) {
+              updated['Ad Soyad'] = matched.recipientName;
+              updated['ad soyad'] = matched.recipientName;
+            }
+            if ((!updated['Firma'] || updated['Firma'] === '') && matched.company) {
+              updated['Firma'] = matched.company;
+              updated['firma'] = matched.company;
+            }
+          }
+        }
+      }
+
       const isDateComponent = fieldType === ElementType.DATE || 
         normKey.includes('başlangıç') || normKey.includes('baslangic') || 
         normKey.includes('başlama') || normKey.includes('baslama') ||
         normKey.includes('eğitim tarihi') || normKey.includes('egitim tarihi');
 
-      // Tarih bileşeni veya açıkça başlangıç/eğitim tarihi girildiğinde bunu referans başlangıç tarihi kabul et
-      // ve gruptaki diğer sertifikaların ortak tarih etiketlerine ({Tarih}, {Eğitim Tarihi}) otomatik aktar
       if (isDateComponent && value.trim()) {
         setSelectedTrainingDateKey(fieldLabel);
+      }
+
+      // Toplu sertifika üretiminde veya formda birden fazla eğitim tarihi varsa EN ERKEN / İLK GÜN dikkate alınır
+      const allDateCandidates: { key?: string; value: string }[] = [];
+      for (const [k, v] of Object.entries(updated)) {
+        const lk = k.toLowerCase();
+        if ((lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk) && typeof v === 'string' && v.trim()) {
+          allDateCandidates.push({ key: k, value: v });
+        }
+      }
+
+      const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
+      for (const proj of targetProjects) {
+        for (const s of [proj.front, getActiveSideData(proj, 'back')]) {
+          if (!s) continue;
+          for (const el of s.elements) {
+            if (el.type === ElementType.DATE && el.dateKind !== 'validity') {
+              const k = normalizeKey(el.label || el.id);
+              const val = updated[k] || el.content;
+              if (val && typeof val === 'string' && val.trim()) {
+                allDateCandidates.push({ key: k, value: val });
+              }
+            }
+          }
+        }
+      }
+
+      const earliestTr = findEarliestTrainingDate(allDateCandidates);
+      const effectiveTrKey = selectedTrainingDateKey && updated[selectedTrainingDateKey] !== undefined
+        ? selectedTrainingDateKey
+        : findBestTrainingDateField(Object.keys(updated).filter(k => {
+            const lk = k.toLowerCase();
+            return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
+          }));
+
+      const dateVal = earliestTr ? earliestTr.formatted : (effectiveTrKey ? (updated[effectiveTrKey] || '') : '');
+
+      // Ortak grup tarih etiketlerine en erken günü senkronize et
+      if (isDateComponent && earliestTr) {
         const syncKeys = [
           'tarih', 'tarihi', 'eğitim tarihi', 'egitim tarihi', 'egitim_tarihi',
           'başlangıç tarihi', 'baslangic tarihi', 'baslangic_tarihi',
@@ -448,7 +717,7 @@ const App = () => {
         ];
         for (const sk of syncKeys) {
           if (!updated[sk] || updated[sk] === prev[fieldLabel]) {
-            updated[sk] = value;
+            updated[sk] = earliestTr.formatted;
           }
         }
       }
@@ -461,18 +730,7 @@ const App = () => {
         }
       }
 
-      const dateCandidates = Object.keys(updated).filter(k => {
-        const lk = k.toLowerCase();
-        return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
-      });
-
-      const effectiveTrKey = selectedTrainingDateKey && updated[selectedTrainingDateKey] !== undefined
-        ? selectedTrainingDateKey
-        : findBestTrainingDateField(dateCandidates);
-
-      const dateVal = effectiveTrKey ? (updated[effectiveTrKey] || '') : '';
-
-      if (compVal) {
+      if (compVal && dateVal) {
         const matched = companies.find(c => 
           c.name.toLowerCase() === compVal.toLowerCase() || 
           (c.shortName && c.shortName.toLowerCase() === compVal.toLowerCase())
@@ -506,8 +764,18 @@ const App = () => {
           compVal = v;
         }
       }
-      const dateVal = updated[newKey] || '';
-      if (compVal) {
+
+      const allDateCandidates: { key?: string; value: string }[] = [];
+      for (const [k, v] of Object.entries(updated)) {
+        const lk = k.toLowerCase();
+        if ((lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk) && typeof v === 'string' && v.trim()) {
+          allDateCandidates.push({ key: k, value: v });
+        }
+      }
+      const earliestTr = findEarliestTrainingDate(allDateCandidates);
+      const dateVal = updated[newKey] || (earliestTr ? earliestTr.formatted : '');
+
+      if (compVal && dateVal) {
         const matched = companies.find(c => 
           c.name.toLowerCase() === compVal.toLowerCase() || 
           (c.shortName && c.shortName.toLowerCase() === compVal.toLowerCase())
@@ -539,15 +807,24 @@ const App = () => {
           compVal = v;
         }
       }
-      const dateCandidates = Object.keys(updated).filter(k => {
+
+      const allDateCandidates: { key?: string; value: string }[] = [];
+      for (const [k, v] of Object.entries(updated)) {
         const lk = k.toLowerCase();
-        return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
-      });
+        if ((lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk) && typeof v === 'string' && v.trim()) {
+          allDateCandidates.push({ key: k, value: v });
+        }
+      }
+      const earliestTr = findEarliestTrainingDate(allDateCandidates);
       const effectiveTrKey = selectedTrainingDateKey && updated[selectedTrainingDateKey] !== undefined
         ? selectedTrainingDateKey
-        : findBestTrainingDateField(dateCandidates);
-      const dateVal = effectiveTrKey ? (updated[effectiveTrKey] || '') : '';
-      if (compVal) {
+        : findBestTrainingDateField(Object.keys(updated).filter(k => {
+            const lk = k.toLowerCase();
+            return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
+          }));
+      const dateVal = earliestTr ? earliestTr.formatted : (effectiveTrKey ? (updated[effectiveTrKey] || '') : '');
+
+      if (compVal && dateVal) {
         const matched = companies.find(c => 
           c.name.toLowerCase() === compVal.toLowerCase() || 
           (c.shortName && c.shortName.toLowerCase() === compVal.toLowerCase())
@@ -587,10 +864,6 @@ const App = () => {
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const [editingCompanyName, setEditingCompanyName] = useState('');
   const [editingCompanyShortName, setEditingCompanyShortName] = useState('');
-
-  // Training date reference selection state for multiple date fields
-  const [selectedTrainingDateKey, setSelectedTrainingDateKey] = useState<string>('');
-  const [preferSingleDateExpiry, setPreferSingleDateExpiry] = useState<boolean>(false);
   
   // Settings - Password State
   const [newPassword, setNewPassword] = useState('');
@@ -614,6 +887,16 @@ const App = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scale, setScale] = useState(0.4);
   
+  // Undo / Redo History for Canvas Elements
+  const [undoStack, setUndoStack] = useState<CanvasElement[][]>([]);
+  const [redoStack, setRedoStack] = useState<CanvasElement[][]>([]);
+
+  // Clear undo/redo history when active project or active side changes
+  useEffect(() => {
+    setUndoStack([]);
+    setRedoStack([]);
+  }, [activeProjectId, activeSide]);
+  
   const handleZoomIn = () => setScale(prev => Math.min(Number((prev + 0.05).toFixed(2)), 1.5));
   const handleZoomOut = () => setScale(prev => Math.max(Number((prev - 0.05).toFixed(2)), 0.15));
   const handleZoomFit = () => {
@@ -631,22 +914,11 @@ const App = () => {
   const variantFileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const fullZipInputRef = useRef<HTMLInputElement>(null);
+  const [isExportingZip, setIsExportingZip] = useState(false);
+  const [isRestoringZip, setIsRestoringZip] = useState(false);
   const projectNameInputRef = useRef<HTMLInputElement>(null);
   const htmlTemplateInputRef = useRef<HTMLInputElement>(null);
-
-  // --- Fill State ---
-  const [mobileFillStep, setMobileFillStep] = useState<0 | 1 | 2>(0);
-  const [fillValues, setFillValues] = useState<Record<string, string>>({});
-  const [isChatMode, setIsChatMode] = useState(true);
-  const [chatHistory, setChatHistory] = useState<{id: string, sender: 'bot'|'user', text: string}[]>([]);
-  const [currentChatStep, setCurrentChatStep] = useState(0);
-  const [chatInputValue, setChatInputValue] = useState('');
-  const [chatOptionSearch, setChatOptionSearch] = useState('');
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [calendarDate, setCalendarDate] = useState(new Date());
-  const [isFillSidebarOpen, setIsFillSidebarOpen] = useState(true);
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-  const unifiedFieldsRef = useRef<string>('');
 
   // Helper to parse dates from chatInputValue
   const getSelectedDatesFromText = (text: string) => {
@@ -819,31 +1091,6 @@ const App = () => {
   }, [activeProject?.width, activeProject?.height, currentView]);
 
   // --- Functions ---
-  const normalizeKey = (key: string) => {
-      return key.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
-  };
-
-  const turkishToLower = (str: string): string => {
-      if (!str) return '';
-      return str
-          .replace(/İ/g, 'i')
-          .replace(/I/g, 'ı')
-          .replace(/Ğ/g, 'ğ')
-          .replace(/Ü/g, 'ü')
-          .replace(/Ş/g, 'ş')
-          .replace(/Ö/g, 'ö')
-          .replace(/Ç/g, 'ç')
-          .toLocaleLowerCase('tr-TR');
-  };
-
-  const maskTCKN = (tckn: string) => {
-      if (!tckn || tckn.length < 5) return tckn;
-      const first2 = tckn.substring(0, 2);
-      const last2 = tckn.substring(tckn.length - 2);
-      const mask = '*'.repeat(tckn.length - 4);
-      return `${first2}${mask}${last2}`;
-  };
-
   const updateProjectSide = (side: Side, updates: Partial<CertificateSide>) => {
     setProjects(prev => prev.map(p => {
       if (p.id === activeProjectId) {
@@ -1076,11 +1323,84 @@ const App = () => {
     e.target.value = '';
   };
 
+  // --- UNDO / REDO & DUPLICATE LOGIC ---
+  const pushUndoSnapshot = () => {
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const currentElements = sideData?.elements || [];
+    const serialized = JSON.stringify(currentElements);
+
+    setUndoStack(prev => {
+      if (prev.length > 0) {
+        const last = JSON.stringify(prev[prev.length - 1]);
+        if (last === serialized) return prev;
+      }
+      return [...prev.slice(-40), JSON.parse(serialized)];
+    });
+    setRedoStack([]);
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const currentElements = sideData?.elements || [];
+
+    const prevSnapshot = undoStack[undoStack.length - 1];
+    const newUndoStack = undoStack.slice(0, -1);
+
+    setRedoStack(prev => [...prev.slice(-40), JSON.parse(JSON.stringify(currentElements))]);
+    setUndoStack(newUndoStack);
+
+    updateProjectElements(activeSide, prevSnapshot);
+    if (selectedId && !prevSnapshot.some(el => el.id === selectedId)) {
+      setSelectedId(null);
+    }
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const currentElements = sideData?.elements || [];
+
+    const nextSnapshot = redoStack[redoStack.length - 1];
+    const newRedoStack = redoStack.slice(0, -1);
+
+    setUndoStack(prev => [...prev.slice(-40), JSON.parse(JSON.stringify(currentElements))]);
+    setRedoStack(newRedoStack);
+
+    updateProjectElements(activeSide, nextSnapshot);
+  };
+
+  const handleDuplicateElement = (idToDuplicate?: string | null) => {
+    const targetId = idToDuplicate || selectedId;
+    if (!targetId) return;
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const currentElements = sideData?.elements || [];
+    const el = currentElements.find(e => e.id === targetId);
+    if (!el) return;
+
+    pushUndoSnapshot();
+
+    const newEl: CanvasElement = {
+      ...JSON.parse(JSON.stringify(el)),
+      id: Date.now().toString(),
+      x: Math.min(el.x + 30, (activeProject?.width || 1200) - el.width),
+      y: Math.min(el.y + 30, (activeProject?.height || 800) - el.height),
+      secondaryX: el.secondaryX !== undefined ? el.secondaryX + 30 : undefined,
+      secondaryY: el.secondaryY !== undefined ? el.secondaryY + 30 : undefined,
+    };
+
+    updateProjectElements(activeSide, [...currentElements, newEl]);
+    setSelectedId(newEl.id);
+  };
+
   const addElement = (type: ElementType) => {
     if (type === ElementType.IMAGE) {
       logoInputRef.current?.click();
       return;
     }
+
+    pushUndoSnapshot();
+
     const content = type === ElementType.TEXT ? '{METİN}' 
                     : (type === ElementType.DROPDOWN ? '{SEÇENEK}' 
                     : (type === ElementType.COMPANY ? '{FİRMA}' 
@@ -1135,6 +1455,7 @@ const App = () => {
            const img = new Image();
            img.src = evt.target.result as string;
            img.onload = () => {
+             pushUndoSnapshot();
              const baseW = 300;
              const baseH = (img.height / img.width) * baseW;
              const newEl: CanvasElement = {
@@ -1165,41 +1486,79 @@ const App = () => {
   };
 
   const deleteElement = (id: string) => {
+    pushUndoSnapshot();
     const sideData = getActiveSideData(activeProject, activeSide);
     const elements = sideData?.elements || [];
     updateProjectElements(activeSide, elements.filter(el => el.id !== id));
     if (selectedId === id) setSelectedId(null);
   };
 
-  // Keyboard controls
+  // Keyboard controls (Undo/Redo, Duplicate, Delete, Arrow movements)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!selectedId || currentView !== 'template') return;
+      if (currentView !== 'template') return;
       const activeEl = document.activeElement as HTMLElement;
-      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')) return;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || (activeEl as any).isContentEditable)) return;
 
-      const step = e.shiftKey ? 10 : 1; 
-      let dx = 0; let dy = 0;
-      if (e.key === 'ArrowUp') dy = -step;
-      else if (e.key === 'ArrowDown') dy = step;
-      else if (e.key === 'ArrowLeft') dx = -step;
-      else if (e.key === 'ArrowRight') dx = step;
-      else return; 
-      e.preventDefault();
-      const sideData = getActiveSideData(activeProject, activeSide);
-      const currentElement = sideData?.elements.find(el => el.id === selectedId);
-      if (currentElement) {
-          const updates: Partial<CanvasElement> = { x: currentElement.x + dx, y: currentElement.y + dy };
-          if (currentElement.type === ElementType.CHOICE_BOX) {
-              updates.secondaryX = (currentElement.secondaryX || currentElement.x) + dx;
-              updates.secondaryY = (currentElement.secondaryY || currentElement.y) + dy;
-          }
-          updateElement(selectedId, updates);
+      // Undo: Ctrl+Z or Cmd+Z (without Shift)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Redo: Ctrl+Y or Ctrl+Shift+Z or Cmd+Shift+Z
+      if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') ||
+          ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      // Duplicate: Ctrl+D or Cmd+D
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+        if (selectedId) {
+          e.preventDefault();
+          handleDuplicateElement(selectedId);
+        }
+        return;
+      }
+
+      // Delete: Delete or Backspace
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedId) {
+          e.preventDefault();
+          deleteElement(selectedId);
+        }
+        return;
+      }
+
+      // Arrow keys (movement)
+      if (selectedId) {
+        const step = e.shiftKey ? 10 : 1; 
+        let dx = 0; let dy = 0;
+        if (e.key === 'ArrowUp') dy = -step;
+        else if (e.key === 'ArrowDown') dy = step;
+        else if (e.key === 'ArrowLeft') dx = -step;
+        else if (e.key === 'ArrowRight') dx = step;
+        else return; 
+        e.preventDefault();
+        pushUndoSnapshot();
+        const sideData = getActiveSideData(activeProject, activeSide);
+        const currentElement = sideData?.elements.find(el => el.id === selectedId);
+        if (currentElement) {
+            const updates: Partial<CanvasElement> = { x: currentElement.x + dx, y: currentElement.y + dy };
+            if (currentElement.type === ElementType.CHOICE_BOX) {
+                updates.secondaryX = (currentElement.secondaryX || currentElement.x) + dx;
+                updates.secondaryY = (currentElement.secondaryY || currentElement.y) + dy;
+            }
+            updateElement(selectedId, updates);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, activeProjectId, activeSide, projects, currentView]); 
+  }, [selectedId, activeProjectId, activeSide, projects, currentView, undoStack, redoStack]); 
 
   // --- Unified Fill Logic ---
   const getUnifiedFillFields = () => {
@@ -1874,6 +2233,83 @@ const App = () => {
     reader.readAsText(file);
   };
 
+  // FULL SYSTEM ZIP ARCHIVE EXPORT
+  const handleExportFullZipBackup = async () => {
+    setIsExportingZip(true);
+    try {
+      const token = localStorage.getItem('vps_session_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(getApiUrl('/api/backup/full-zip'), { headers });
+      if (!res.ok) {
+        throw new Error(`Yedek arşivi alınamadı (HTTP ${res.status})`);
+      }
+
+      const blob = await res.blob();
+      const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
+      await downloadFile(blob, `ProCertify_TamSistemArsivi_${dateStr}.zip`, 'application/zip');
+    } catch (error: any) {
+      console.error("Full ZIP export error:", error);
+      alert("Tam sistem arşivi indirilirken bir hata oluştu: " + (error?.message || error));
+    } finally {
+      setIsExportingZip(false);
+    }
+  };
+
+  // FULL SYSTEM ZIP ARCHIVE RESTORE
+  const handleImportFullZipBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm("DİKKAT: Tam sistem ZIP arşivi geri yüklenecektir!\n\nBu işlem tüm projeleri, şablonları, çalışan evraklarını (PDF/resim), oluşturulan sertifikaları ve veritabanını arşivdeki verilerle güncelleyecektir.\n\nDevam etmek istediğinize emin misiniz?")) {
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    setIsRestoringZip(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const dataUrl = evt.target?.result as string;
+        const base64 = dataUrl.split(',')[1];
+        if (!base64) {
+          throw new Error("ZIP dosya içeriği okunamadı.");
+        }
+
+        const token = localStorage.getItem('vps_session_token');
+        const res = await fetch(getApiUrl('/api/backup/full-restore'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ zipBase64: base64 })
+        });
+
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json.error || 'Geri yükleme başarısız oldu.');
+        }
+
+        alert(`Tam Sistem Arşivi Başarıyla Geri Yüklendi!\n\n• Veritabanı ve ayarlar güncellendi\n• ${json.docCount || 0} adet çalışan evrak dosyası yüklendi\n• ${json.certFileCount || 0} adet sertifika PDF/görseli geri yüklendi\n\nUygulama yenileniyor...`);
+        window.location.reload();
+      } catch (err: any) {
+        console.error("Full zip restore error:", err);
+        alert("Tam sistem arşivi geri yüklenirken bir hata oluştu: " + (err?.message || err));
+      } finally {
+        setIsRestoringZip(false);
+        if (e.target) e.target.value = '';
+      }
+    };
+    reader.onerror = () => {
+      alert("ZIP dosyası okunamadı.");
+      setIsRestoringZip(false);
+      if (e.target) e.target.value = '';
+    };
+    reader.readAsDataURL(file);
+  };
+
   const formatContent = (pattern: string, values: Record<string, string>) => {
       if (!pattern) return '';
       return pattern.replace(/{([^{}]+)}/g, (match, rawLabel) => {
@@ -1882,24 +2318,25 @@ const App = () => {
 
          const isShortRequest = label.endsWith('_kisa');
          const cleanLabel = isShortRequest ? label.replace('_kisa', '') : label;
-         let val = values[cleanLabel];
+         let val = values ? values[cleanLabel] : undefined;
          
          // Preview handling for system-generated fields
          if (val === undefined && (cleanLabel === normalizeKey('Seri No') || cleanLabel === normalizeKey('Seri Numarasi') || cleanLabel === normalizeKey('Sertifika No'))) {
+             if (editingCertificate?.serialNo) return editingCertificate.serialNo;
              return 'PRC-XXXXXXXX';
          }
          
-         if (val === undefined) return match;
-         if (val.startsWith('data:')) {
+         if (val === undefined || val === null) return match;
+         if (typeof val === 'string' && val.startsWith('data:')) {
              const sig = signatures.find(s => s.url === val);
              return sig ? sig.name : 'Gorsel'; 
          }
          if (isShortRequest) {
-             const company = companies.find(c => turkishToLower(c.name) === turkishToLower(val));
+             const company = companies.find(c => c && c.name && turkishToLower(c.name) === turkishToLower(String(val || '')));
              if (company) return company.shortName;
              return val; 
          }
-         return val; 
+         return String(val); 
       });
   };
 
@@ -2122,13 +2559,9 @@ const App = () => {
             }
         }
 
-        // 3. Resolve Training Date (Öncelikle gruptaki herhangi bir sertifikada bulunan Tarih bileşeni aranır)
-        const dateCandidates = Object.keys(activeValues).filter(k => {
-            const lk = k.toLowerCase();
-            return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
-        });
+        // 3. Resolve Training Date (Toplu sertifika üretiminde birden fazla tarih varsa EN ERKEN / İLK GÜN dikkate alınır)
+        const allDateCandidates: { key?: string; value: string }[] = [];
 
-        let explicitDateKey: string | null = null;
         for (const proj of targetProjects) {
             const bSide = getActiveSideData(proj, 'back');
             for (const s of [proj.front, bSide]) {
@@ -2136,21 +2569,41 @@ const App = () => {
                 for (const el of s.elements) {
                     if (el.type === ElementType.DATE && el.dateKind !== 'validity') {
                         const k = normalizeKey(el.label || el.id);
-                        if (activeValues[k]) {
-                            explicitDateKey = k;
-                            break;
+                        const val = activeValues[k] || el.content;
+                        if (val && typeof val === 'string' && val.trim()) {
+                            allDateCandidates.push({ key: k, value: val });
                         }
                     }
                 }
-                if (explicitDateKey) break;
             }
-            if (explicitDateKey) break;
         }
 
+        for (const [k, v] of Object.entries(activeValues)) {
+            const lk = k.toLowerCase();
+            if ((lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk) && typeof v === 'string' && v.trim()) {
+                allDateCandidates.push({ key: k, value: v });
+            }
+        }
+
+        const earliestTr = findEarliestTrainingDate(allDateCandidates);
         const resolvedTrKey = selectedTrainingDateKey && activeValues[selectedTrainingDateKey]
             ? selectedTrainingDateKey
-            : (explicitDateKey || findBestTrainingDateField(dateCandidates));
-        const trDate = (resolvedTrKey && typeof activeValues[resolvedTrKey] === 'string') ? activeValues[resolvedTrKey] : '';
+            : null;
+        const trDate = earliestTr 
+            ? earliestTr.formatted 
+            : (resolvedTrKey && typeof activeValues[resolvedTrKey] === 'string' ? activeValues[resolvedTrKey] : '');
+
+        // 3c. Ortak referans başlangıç tarihini en erken gün ile senkronize et
+        if (trDate) {
+            const syncKeys = [
+                'tarih', 'tarihi', 'eğitim tarihi', 'egitim tarihi', 'egitim_tarihi',
+                'başlangıç tarihi', 'baslangic tarihi', 'baslangic_tarihi',
+                'Tarih', 'Eğitim Tarihi', 'Başlangıç Tarihi'
+            ];
+            for (const sk of syncKeys) {
+                activeValues[sk] = trDate;
+            }
+        }
 
         // 4. Match Company (Turkish-aware)
         let matchedComp = companies.find(c => 
@@ -2161,7 +2614,18 @@ const App = () => {
 
         const dangerClass = matchedComp?.dangerClass || 'cok_tehlikeli';
         const years = matchedComp?.validityYears || getValidityYears(dangerClass);
-        const { expiryIso } = calculateExpiryDate(trDate, dangerClass, preferSingleDateExpiry);
+        const { expiryIso, expiryDisplay } = calculateExpiryDate(trDate, dangerClass, preferSingleDateExpiry);
+
+        // Update validity fields in activeValues before rendering PDFs
+        const expKeys = [
+            'gecerlilik tarihi', 'geçerlilik tarihi', 'gecerlilik_tarihi', 'geçerlilik_tarihi',
+            'bitiş tarihi', 'bitis tarihi', 'bitiş_tarihi', 'bitis_tarihi',
+            'gecerlilik', 'geçerlilik', 'bitis', 'bitiş',
+            'Geçerlilik Tarihi', 'Bitiş Tarihi'
+        ];
+        for (const ek of expKeys) {
+            activeValues[ek] = expiryDisplay;
+        }
 
         // Auto-register company if it doesn't exist yet so it appears in Firmalar
         if (!matchedComp && companyVal.trim()) {
@@ -2307,9 +2771,8 @@ const App = () => {
             });
             // Immediately reload fresh certificates into state so Firmalar & Dashboard reflect them!
             await fetchCertificatesAndStats();
-            if (editingCertificate) {
-                setEditingCertificate(null);
-            }
+            clearFillData();
+            alert(`Sertifika başarıyla oluşturuldu!\n\n${recipientName || 'Çalışan'} (TC: ${recipientTc || '-'}) kartına yeni sertifika olarak kaydedildi.`);
         } catch (e) {
             console.error("Backend issue error", e);
         }
@@ -2870,6 +3333,27 @@ const App = () => {
                         <button onClick={() => { setActiveSide('front'); setSelectedId(null); }} className={`px-3 py-1 text-xs rounded-md transition font-semibold ${activeSide === 'front' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Ön Yüz</button>
                         <button onClick={() => { setActiveSide('back'); setSelectedId(null); }} className={`px-3 py-1 text-xs rounded-md transition font-semibold ${activeSide === 'back' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Arka Yüz</button>
                     </div>
+
+                    <div className="w-[1px] h-5 bg-slate-700 mx-1 hidden sm:block"></div>
+                    {/* Undo / Redo controls */}
+                    <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-700 shrink-0">
+                        <button 
+                          onClick={handleUndo} 
+                          disabled={undoStack.length === 0} 
+                          className={`p-1.5 rounded-md transition ${undoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-slate-800' : 'text-slate-600 cursor-not-allowed'}`}
+                          title={`Geri Al (Ctrl+Z)${undoStack.length > 0 ? ` (${undoStack.length})` : ''}`}
+                        >
+                          <Undo2 size={14} />
+                        </button>
+                        <button 
+                          onClick={handleRedo} 
+                          disabled={redoStack.length === 0} 
+                          className={`p-1.5 rounded-md transition ${redoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-slate-800' : 'text-slate-600 cursor-not-allowed'}`}
+                          title={`İleri Al (Ctrl+Y / Ctrl+Shift+Z)${redoStack.length > 0 ? ` (${redoStack.length})` : ''}`}
+                        >
+                          <Redo2 size={14} />
+                        </button>
+                    </div>
                  </div>
 
                  {/* Center: Properties Toolbar or Document Info (min-w-0 + no-scrollbar ensures NO width blowouts) */}
@@ -2930,11 +3414,20 @@ const App = () => {
                         )}
                         {selectedElement.type === ElementType.SIGNATURE && (<button onClick={() => setShowSigPermissions(true)} className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded-lg text-xs text-white border border-slate-600 shrink-0 transition"><Filter size={13} /> İmza İzinleri ({selectedElement.allowedSignatureIds?.length || 'Tümü'})</button>)}
 
+                        {/* Duplicate Button */}
+                        <button 
+                          onClick={() => handleDuplicateElement(selectedElement.id)}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 shrink-0 transition ml-1"
+                          title="Bileşeni Çoğalt (Ctrl+D)"
+                        >
+                          <Copy size={14} />
+                        </button>
+
                         {/* Top bar delete shortcut */}
                         <button 
                           onClick={() => { deleteElement(selectedElement.id); setSelectedId(null); }}
-                          className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 shrink-0 transition ml-1"
-                          title="Seçili Bileşeni Sil"
+                          className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 shrink-0 transition"
+                          title="Seçili Bileşeni Sil (Delete)"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -2989,7 +3482,7 @@ const App = () => {
 
               {/* Canvas Container with Smooth Scroll and Absolute Zero Jitter */}
               <div ref={editorContainerRef} className="flex-1 overflow-auto relative flex items-center justify-center p-4 md:p-8 bg-dots-pattern min-w-0 custom-scrollbar" style={{ backgroundImage: 'radial-gradient(#1e293b 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' }}>
-                <CanvasEditor elements={currentSideElements} width={activeProject.width} height={activeProject.height} bgUrl={currentSideBg} selectedId={selectedId} onSelect={setSelectedId} onUpdateElement={updateElement} onDeleteElement={deleteElement} scale={scale} />
+                <CanvasEditor elements={currentSideElements} width={activeProject.width} height={activeProject.height} bgUrl={currentSideBg} selectedId={selectedId} onSelect={setSelectedId} onUpdateElement={updateElement} onDeleteElement={deleteElement} onActionStart={pushUndoSnapshot} scale={scale} />
               </div>
               {showSigPermissions && selectedElement && selectedElement.type === ElementType.SIGNATURE && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -3723,35 +4216,135 @@ const App = () => {
                 {/* TAB 5: BACKUP & UPDATE */}
                 {settingsSubTab === 'backup' && (
                   <div className="space-y-6">
-                    {/* Backup & Restore */}
-                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
-                      <h2 className="text-lg font-bold flex items-center gap-2 mb-2 text-white">
-                        <Database className="text-blue-400" size={20} /> Yedekleme ve Geri Yükleme
-                      </h2>
-                      <p className="text-xs text-slate-400 mb-6">
-                        Tüm projelerinizi, şablonlarınızı, ayarlarınızı ve yüklediğiniz görselleri (imzalar dahil) tek bir dosya olarak yedekleyin veya başka bir cihaza taşıyın.
+                    {/* FULL SYSTEM ARCHIVE BACKUP (.ZIP) - PRIMARY */}
+                    <div className="bg-gradient-to-br from-amber-500/10 via-slate-800/90 to-slate-800/90 rounded-2xl p-6 border-2 border-amber-500/30 shadow-2xl backdrop-blur-sm relative overflow-hidden">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300">
+                            <Archive size={22} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h2 className="text-lg font-bold text-white">Tam Sistem Arşiv Yedeği (.ZIP)</h2>
+                              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                Önerilen
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-300 mt-0.5">
+                              Tüm veritabanı, çalışan kartları, yüklenen tüm evraklar (PDF/Görsel) ve sertifikalar dahil
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-400 mb-6 leading-relaxed">
+                        Sisteminizi başka bir sunucuya taşımak veya eksiksiz bir felaket kurtarma yedeği almak için bu seçeneği kullanın. 
+                        Bu işlem; sistemdeki tüm projeleri, şablonları, şirketleri, imzaları, çalışan kayıtlarını, çalışanlara yüklenen tüm dosya ve evrakları (PDF, JPG, PNG) ve oluşturulan sertifikaları tek bir sıkıştırılmış <span className="font-mono text-amber-300 font-semibold">.zip</span> arşivi olarak paketler.
                       </p>
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition">
-                          <DownloadCloud size={36} className="text-emerald-400 mb-3" />
-                          <h3 className="font-bold text-white text-sm mb-1">Sistemi Yedekle</h3>
-                          <p className="text-xs text-slate-400 mb-4">Tüm verileri (projeler, görseller, ayarlar) içeren tek bir .json dosyası indirir.</p>
-                          <button onClick={handleExportBackup} className="mt-auto bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full shadow-lg shadow-emerald-900/20 active:scale-95">
-                            Yedek Dosyasını İndir
+                        {/* ZIP DOWNLOAD */}
+                        <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-700/80 flex flex-col items-center text-center hover:border-amber-500/40 transition">
+                          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-3">
+                            <DownloadCloud size={28} />
+                          </div>
+                          <h3 className="font-bold text-white text-sm mb-1">Tam Arşivi İndir (.ZIP)</h3>
+                          <p className="text-xs text-slate-400 mb-4">
+                            Veritabanı + Çalışan Evrakları + Sertifikalar tek bir ZIP dosyası olarak paketlenir.
+                          </p>
+                          <button 
+                            onClick={handleExportFullZipBackup} 
+                            disabled={isExportingZip}
+                            className="mt-auto bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full shadow-lg shadow-emerald-900/20 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {isExportingZip ? (
+                              <>
+                                <Loader2 size={16} className="animate-spin" /> Arşiv Paketleniyor...
+                              </>
+                            ) : (
+                              <>
+                                <Archive size={16} /> Tam Sistem ZIP Yedeği İndir
+                              </>
+                            )}
                           </button>
                         </div>
-                        <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition">
-                          <UploadCloud size={36} className="text-blue-400 mb-3" />
-                          <h3 className="font-bold text-white text-sm mb-1">Yedeği Geri Yükle</h3>
-                          <p className="text-xs text-slate-400 mb-4">Daha önce aldığınız yedek dosyasını seçerek tüm verilerinizi geri yükleyin.</p>
+
+                        {/* ZIP RESTORE */}
+                        <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-700/80 flex flex-col items-center text-center hover:border-blue-500/40 transition">
+                          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-3">
+                            <UploadCloud size={28} />
+                          </div>
+                          <h3 className="font-bold text-white text-sm mb-1">Tam Arşivi Geri Yükle (.ZIP)</h3>
+                          <p className="text-xs text-slate-400 mb-4">
+                            Daha önce indirdiğiniz .zip tam arşiv dosyasını seçerek tüm sistemi geri yükleyin.
+                          </p>
                           <div className="mt-auto w-full relative">
-                            <input ref={backupInputRef} type="file" accept=".json" onChange={handleImportBackup} className="hidden" id="backup-upload" />
-                            <label htmlFor="backup-upload" className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full flex items-center justify-center cursor-pointer shadow-lg shadow-blue-900/20 active:scale-95">
-                              Dosya Seç ve Yükle
+                            <input 
+                              ref={fullZipInputRef} 
+                              type="file" 
+                              accept=".zip" 
+                              onChange={handleImportFullZipBackup} 
+                              className="hidden" 
+                              id="full-zip-upload" 
+                              disabled={isRestoringZip}
+                            />
+                            <label 
+                              htmlFor="full-zip-upload" 
+                              className={`bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-blue-900/20 active:scale-95 ${isRestoringZip ? 'opacity-50 pointer-events-none' : ''}`}
+                            >
+                              {isRestoringZip ? (
+                                <>
+                                  <Loader2 size={16} className="animate-spin" /> Arşiv Açılıyor & Geri Yükleniyor...
+                                </>
+                              ) : (
+                                <>
+                                  <UploadCloud size={16} /> ZIP Arşivi Seç ve Yükle
+                                </>
+                              )}
                             </label>
                           </div>
                           <div className="flex items-center gap-1.5 mt-3 text-[10px] text-amber-400">
-                            <AlertTriangle size={12} /><span>Dikkat: Mevcut verilerin üzerine yazılacaktır.</span>
+                            <AlertTriangle size={12} className="shrink-0" />
+                            <span>Mevcut kayıtlar ve dosyalar arşiv içeriğiyle güncellenir.</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* LIGHTWEIGHT CONFIG BACKUP (.JSON) */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Database className="text-slate-400" size={20} />
+                        <h2 className="text-base font-bold text-white">Hafif Şablon & Ayarlar Yedeği (.JSON)</h2>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-700 text-slate-300">
+                          Sadece Şablonlar & Ayarlar
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mb-6">
+                        Evraklar ve sertifika çıktıları hariç; yalnızca şablon tasarımlarınızı, firma listesini ve kayıtlı imzaları içeren hafif bir <span className="font-mono text-slate-300 font-semibold">.json</span> yedeğidir.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700/80 flex flex-col items-center text-center hover:border-slate-600 transition">
+                          <DownloadCloud size={32} className="text-emerald-400 mb-3" />
+                          <h3 className="font-bold text-white text-sm mb-1">Şablon ve Ayarları İndir</h3>
+                          <p className="text-xs text-slate-400 mb-4">Projeler, imzalar ve firma ayarlarını içeren hafif .json dosyası.</p>
+                          <button onClick={handleExportBackup} className="mt-auto bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full shadow-md active:scale-95">
+                            JSON Yedeğini İndir
+                          </button>
+                        </div>
+                        <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700/80 flex flex-col items-center text-center hover:border-slate-600 transition">
+                          <UploadCloud size={32} className="text-blue-400 mb-3" />
+                          <h3 className="font-bold text-white text-sm mb-1">JSON Yedeğini Geri Yükle</h3>
+                          <p className="text-xs text-slate-400 mb-4">Daha önce aldığınız .json yedek dosyasını geri yükleyin.</p>
+                          <div className="mt-auto w-full relative">
+                            <input ref={backupInputRef} type="file" accept=".json" onChange={handleImportBackup} className="hidden" id="backup-upload" />
+                            <label htmlFor="backup-upload" className="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full flex items-center justify-center cursor-pointer shadow-md active:scale-95">
+                              JSON Dosyası Seç ve Yükle
+                            </label>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-3 text-[10px] text-slate-400">
+                            <AlertTriangle size={12} className="shrink-0" />
+                            <span>Mevcut şablonların üzerine yazılır.</span>
                           </div>
                         </div>
                       </div>
@@ -3940,15 +4533,87 @@ const App = () => {
               
               {/* Pillar 2: Data Entry */}
               <div className={`${mobileFillStep === 1 ? 'flex flex-1 w-full md:flex-none' : 'hidden md:flex'} md:w-[360px] bg-slate-800 border-r border-slate-700 flex-col z-20 overflow-hidden shadow-2xl shrink-0`}>
-                 <div className="p-5 border-b border-slate-700 bg-slate-900 shrink-0 flex justify-between items-center">
+                 <div className="p-4 border-b border-slate-700 bg-slate-900 shrink-0 flex justify-between items-center">
                    <div>
-                     <h2 className="text-lg font-bold text-white leading-tight">Veri Girişi</h2>
+                     <h2 className="text-base font-bold text-white leading-tight">Veri Girişi</h2>
                      <p className="text-[10px] text-slate-400 mt-0.5">Seçili {selectedFillProjectIds.length} sertifikayı doldurun.</p>
                    </div>
-                   <button onClick={() => setIsChatMode(!isChatMode)} className="text-[10px] text-amber-500 hover:text-amber-400 flex items-center gap-1.5 transition bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 font-bold uppercase tracking-tight">
-                     {isChatMode ? <><List size={12}/> Form</> : <><MessageSquare size={12}/> Sohbet</>}
-                   </button>
+                   <div className="flex items-center gap-1.5">
+                     {Object.keys(fillValues).length > 0 && (
+                       <button 
+                         type="button"
+                         onClick={clearFillData} 
+                         className="text-[10px] text-slate-400 hover:text-rose-400 flex items-center gap-1 transition bg-slate-800 hover:bg-rose-500/10 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-rose-500/30 font-semibold"
+                         title="Formdaki tüm verileri temizle"
+                       >
+                         <RotateCcw size={11} /> Temizle
+                       </button>
+                     )}
+                     <button onClick={() => setIsChatMode(!isChatMode)} className="text-[10px] text-amber-500 hover:text-amber-400 flex items-center gap-1.5 transition bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 font-bold uppercase tracking-tight">
+                       {isChatMode ? <><List size={12}/> Form</> : <><MessageSquare size={12}/> Sohbet</>}
+                     </button>
+                   </div>
                  </div>
+
+                 {/* TC MATCHED EMPLOYEE BANNER */}
+                 {matchedEmployee && (
+                   <div className="bg-slate-950/95 border-b border-amber-500/30 p-3 text-xs space-y-1.5 shrink-0 animate-in fade-in">
+                     <div className="flex items-center justify-between gap-2">
+                       <div className="flex items-center gap-2 truncate">
+                         <span className="w-5 h-5 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold shrink-0">
+                           <UserCheck size={12} />
+                         </span>
+                         <div className="truncate">
+                           <span className="font-bold text-white text-xs">{matchedEmployee.name || 'Kayıtlı Çalışan'}</span>
+                           {matchedEmployee.company && <span className="text-slate-400 text-[10px] ml-1.5">({matchedEmployee.company})</span>}
+                         </div>
+                       </div>
+                       {(!fillValues['Ad Soyad'] && !fillValues['ad soyad']) && (
+                         <button
+                           type="button"
+                           onClick={() => {
+                             handleFillFieldChange('Ad Soyad', matchedEmployee.name, ElementType.TEXT);
+                             if (matchedEmployee.company) {
+                               handleFillFieldChange('Firma', matchedEmployee.company, ElementType.COMPANY);
+                             }
+                           }}
+                           className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-2 py-0.5 rounded text-[10px] transition shrink-0 shadow-sm"
+                         >
+                           Doldur
+                         </button>
+                       )}
+                     </div>
+
+                     {alreadyHasSelectedProject ? (
+                       <div className="flex items-start gap-1.5 text-[11px] text-amber-300 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20">
+                         <AlertCircle size={13} className="shrink-0 mt-0.5 text-amber-400" />
+                         <div className="leading-tight">
+                           <span>Bu çalışan için daha önce <strong>"{alreadyHasSelectedProject.projects?.join(', ')}"</strong> sertifikası düzenlenmiş.</span>
+                           <div className="text-emerald-400 font-semibold mt-0.5">
+                             ✓ Yapılan işlem YENİ SERTİFİKA olarak çalışanın kartına eklenecektir.
+                           </div>
+                         </div>
+                       </div>
+                     ) : (
+                       <div className="text-[10px] text-slate-400">
+                         Bu çalışanın sistemde toplam <strong>{matchedEmployee.existingCerts.length}</strong> adet sertifikası bulunuyor.
+                       </div>
+                     )}
+                   </div>
+                 )}
+
+                 {/* MULTIPLE DATES EARLIEST DAY BANNER */}
+                 {multipleDistinctDates && groupEarliestDate && (
+                   <div className="bg-amber-500/10 border-b border-amber-500/30 p-3 text-xs space-y-1 shrink-0 animate-in fade-in">
+                     <div className="flex items-center gap-2 text-amber-300 font-bold">
+                       <Calendar size={13} className="text-amber-400 shrink-0" />
+                       <span>Farklı Eğitim Tarihleri Tespit Edildi</span>
+                     </div>
+                     <p className="text-[11px] text-slate-300 leading-snug">
+                       Toplu sertifikalarda girilen tarihler arasından ilk gün olan <strong className="text-amber-300 bg-amber-500/20 px-1 py-0.5 rounded font-mono">{groupEarliestDate.formatted}</strong> başlangıç ve geçerlilik referansı olarak kabul edildi.
+                     </p>
+                   </div>
+                 )}
 
                  {isChatMode ? (
                    <div className="flex-1 flex flex-col overflow-hidden p-4">
@@ -4485,6 +5150,7 @@ const App = () => {
           setActiveEmployeeIdOrTc(null);
         }}
         onEditCertificate={handleEditCertificate}
+        onRenewCertificate={handleRenewCertificate}
         onStatusChanged={() => {
           fetchCertificatesAndStats();
         }}

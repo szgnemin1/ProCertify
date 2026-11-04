@@ -14,6 +14,7 @@ interface CanvasEditorProps {
   onDeleteElement: (id: string) => void;
   scale: number;
   readOnly?: boolean;
+  onActionStart?: () => void;
 }
 
 const CanvasEditor: React.FC<CanvasEditorProps> = ({
@@ -26,7 +27,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
   onUpdateElement,
   onDeleteElement,
   scale,
-  readOnly = false
+  readOnly = false,
+  onActionStart
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
   
@@ -51,6 +53,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const resizeStartRef = useRef(resizeStart);
   const scaleRef = useRef(scale);
   const animationFrameRef = useRef<number | null>(null);
+  const actionStartedRef = useRef(false);
 
   // Sync refs with state/props
   useEffect(() => { elementsRef.current = elements; }, [elements]);
@@ -107,6 +110,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const element = elements.find(el => el.id === id);
     if (!element || !canvasRef.current) return;
 
+    actionStartedRef.current = false;
+
     onSelect(id);
     setDraggingId(id);
     setDragMode(mode);
@@ -134,6 +139,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     
     const element = elements.find(el => el.id === id);
     if (!element) return;
+
+    actionStartedRef.current = false;
 
     setResizingId(id);
     const startObj = {
@@ -163,6 +170,12 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
             const currentElements = elementsRef.current;
             const currentDragId = draggingIdRef.current;
             const currentResizingId = resizingIdRef.current;
+
+            // Trigger undo snapshot once right before the first position or size change
+            if (!actionStartedRef.current && (currentDragId || currentResizingId)) {
+                actionStartedRef.current = true;
+                onActionStart?.();
+            }
 
             // Handle Dragging
             if (currentDragId) {
@@ -225,6 +238,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     };
 
     const handleGlobalMouseUp = () => {
+        actionStartedRef.current = false;
         if (draggingIdRef.current || resizingIdRef.current) {
             setDraggingId(null);
             setResizingId(null);
