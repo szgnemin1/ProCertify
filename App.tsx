@@ -2837,7 +2837,7 @@ const App = () => {
       />
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative pb-14 md:pb-0">
         
         {/* VIEW: DASHBOARD */}
         {currentView === 'dashboard' && (
@@ -2915,7 +2915,7 @@ const App = () => {
                             <h1 className="text-3xl font-bold mb-1 text-white">Projelerim</h1>
                             <p className="text-slate-400">Tüm sertifika çalışmalarınız burada.</p>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-2.5">
                             <button 
                                 onClick={() => setCurrentView('fill')} 
                                 className="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 hover:border-amber-500/50 px-4 py-2.5 rounded-lg flex items-center gap-2 font-medium text-sm transition"
@@ -3871,7 +3871,7 @@ const App = () => {
                       </div>
 
                       {/* Companies Table */}
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto custom-scrollbar">
                         {(() => {
                           const filtered = companies.filter(c => {
                             const matchesSearch = !companySearchQuery.trim() || 
@@ -3893,7 +3893,7 @@ const App = () => {
                           }
 
                           return (
-                            <table className="w-full text-left border-collapse text-xs">
+                            <table className="w-full text-left border-collapse text-xs min-w-[650px]">
                               <thead>
                                 <tr className="border-b border-slate-700/60 bg-slate-900/60 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
                                   <th className="py-3 px-4 w-12 text-center">#</th>
@@ -5107,16 +5107,16 @@ const App = () => {
                 </div>
 
                 {selectedFillProjectIds.length > 0 && (
-                    <div className="text-slate-500 text-sm mb-4 select-none whitespace-nowrap">
+                    <div className="text-slate-400 text-xs md:text-sm mb-4 select-none text-center px-2">
                         Önizleme ({selectedFillProjectIds.length} Proje). Arka yüzü olan kartları çevirmek için üzerine tıklayın.
                     </div>
                 )}
-                <div className="flex flex-col items-center gap-10 min-w-max">
+                <div className="flex flex-col items-center gap-8 w-full max-w-full">
                   {projects.filter(p => selectedFillProjectIds.includes(p.id)).map(p => {
                     const side = previewSides[p.id] || 'front';
                     const activeBack = getActiveSideData(p, 'back', true);
                     const hasBack = activeBack && (activeBack.bgUrl || activeBack.elements.length > 0);
-                    const previewWidth = 700; 
+                    const previewWidth = typeof window !== 'undefined' ? Math.min(700, Math.max(280, window.innerWidth - 32)) : 700; 
                     const calcScale = previewWidth / p.width;
                     const activeSideData = getActiveSideData(p, side, true);
                     return (

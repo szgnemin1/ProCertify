@@ -442,7 +442,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
                       </div>
 
                       {/* İşlem Butonları */}
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0 self-end sm:self-center justify-end">
                         {onRenewCertificate && (
                           <button
                             onClick={() => {

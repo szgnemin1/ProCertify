@@ -254,8 +254,8 @@ export const CompaniesView: React.FC<CompaniesViewProps> = ({
             )}
           </div>
         ) : (
-          <div className="w-full">
-            <table className="w-full text-left border-collapse table-fixed">
+          <div className="w-full overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left border-collapse min-w-[600px]">
               <thead>
                 <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
                   <th className="py-2 px-2.5 w-10 text-center">#</th>

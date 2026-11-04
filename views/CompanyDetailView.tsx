@@ -408,8 +408,8 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
                 )}
               </div>
             ) : (
-              <div className="w-full">
-                <table className="w-full text-left border-collapse table-fixed">
+              <div className="w-full overflow-x-auto custom-scrollbar">
+                <table className="w-full text-left border-collapse min-w-[720px]">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
                       <th className="py-2 px-2.5 w-28 font-mono">Seri No</th>
@@ -576,8 +576,8 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
                 </p>
               </div>
             ) : (
-              <div className="w-full">
-                <table className="w-full text-left border-collapse table-fixed">
+              <div className="w-full overflow-x-auto custom-scrollbar">
+                <table className="w-full text-left border-collapse min-w-[720px]">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
                       <th className="py-2 px-2.5 w-10 text-center">#</th>
