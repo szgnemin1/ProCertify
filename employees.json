@@ -1,0 +1,24 @@
+{
+  "34789154012": {
+    "id": "34789154012",
+    "tc": "34789154012",
+    "name": "mehmet emin sezgib",
+    "companyId": "17772782026000.9292514099478226",
+    "companyName": "ABANT HAYVANCILIK ENTEGRE TARIM VE ORMAN ÜRÜNLERİ SANAYİ VE TİCARET ANONİM ŞİRKETİ",
+    "status": "active",
+    "createdAt": 1792759701203,
+    "documents": [],
+    "updatedAt": 1792675749359
+  },
+  "9885151485184518": {
+    "id": "9885151485184518",
+    "tc": "9885151485184518",
+    "name": "mdmdmdmd",
+    "companyId": "17772782026000.9292514099478226",
+    "companyName": "ABANT HAYVANCILIK ENTEGRE TARIM VE ORMAN ÜRÜNLERİ SANAYİ VE TİCARET ANONİM ŞİRKETİ",
+    "status": "active",
+    "createdAt": 1792759701204,
+    "documents": [],
+    "updatedAt": 1792761779958
+  }
+}

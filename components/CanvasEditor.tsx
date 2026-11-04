@@ -14,6 +14,7 @@ interface CanvasEditorProps {
   onDeleteElement: (id: string) => void;
   scale: number;
   readOnly?: boolean;
+  onActionStart?: () => void;
 }
 
 const CanvasEditor: React.FC<CanvasEditorProps> = ({
@@ -26,7 +27,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
   onUpdateElement,
   onDeleteElement,
   scale,
-  readOnly = false
+  readOnly = false,
+  onActionStart
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
   
@@ -51,6 +53,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const resizeStartRef = useRef(resizeStart);
   const scaleRef = useRef(scale);
   const animationFrameRef = useRef<number | null>(null);
+  const actionStartedRef = useRef(false);
 
   // Sync refs with state/props
   useEffect(() => { elementsRef.current = elements; }, [elements]);
@@ -107,6 +110,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const element = elements.find(el => el.id === id);
     if (!element || !canvasRef.current) return;
 
+    actionStartedRef.current = false;
+
     onSelect(id);
     setDraggingId(id);
     setDragMode(mode);
@@ -115,18 +120,15 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const mouseX = (e.clientX - rect.left) / scale;
     const mouseY = (e.clientY - rect.top) / scale;
 
-    if (mode === 'main') {
-        setDragOffset({
-            x: mouseX - element.x,
-            y: mouseY - element.y
-        });
-    } else {
-        // Dragging the secondary box
-        setDragOffset({
-            x: mouseX - (element.secondaryX || (element.x + 100)),
-            y: mouseY - (element.secondaryY || element.y)
-        });
-    }
+    const offset = mode === 'main'
+      ? { x: mouseX - element.x, y: mouseY - element.y }
+      : { x: mouseX - (element.secondaryX || (element.x + 100)), y: mouseY - (element.secondaryY || element.y) };
+
+    setDragOffset(offset);
+    // Sync refs immediately to eliminate any drag delay or stale coordinates
+    draggingIdRef.current = id;
+    dragModeRef.current = mode;
+    dragOffsetRef.current = offset;
   };
 
   // --- RESIZE HANDLERS ---
@@ -138,14 +140,19 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const element = elements.find(el => el.id === id);
     if (!element) return;
 
+    actionStartedRef.current = false;
+
     setResizingId(id);
-    setResizeStart({
+    const startObj = {
       x: e.clientX,
       y: e.clientY,
       w: element.width,
       h: element.height,
       fontSize: element.fontSize || 20
-    });
+    };
+    setResizeStart(startObj);
+    resizingIdRef.current = id;
+    resizeStartRef.current = startObj;
   };
 
   // --- GLOBAL MOVE/UP HANDLERS (OPTIMIZED WITH RAF) ---
@@ -163,6 +170,12 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
             const currentElements = elementsRef.current;
             const currentDragId = draggingIdRef.current;
             const currentResizingId = resizingIdRef.current;
+
+            // Trigger undo snapshot once right before the first position or size change
+            if (!actionStartedRef.current && (currentDragId || currentResizingId)) {
+                actionStartedRef.current = true;
+                onActionStart?.();
+            }
 
             // Handle Dragging
             if (currentDragId) {
@@ -214,7 +227,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                     height: newHeight
                 };
 
-                if (element.type === ElementType.TEXT || element.type === ElementType.DROPDOWN || element.type === ElementType.COMPANY || element.type === ElementType.TCKN) {
+                if (element.type === ElementType.TEXT || element.type === ElementType.DROPDOWN || element.type === ElementType.COMPANY || element.type === ElementType.TCKN || element.type === ElementType.DATE) {
                     const ratio = newWidth / start.w;
                     updates.fontSize = Math.max(10, start.fontSize * ratio);
                 }
@@ -225,6 +238,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     };
 
     const handleGlobalMouseUp = () => {
+        actionStartedRef.current = false;
         if (draggingIdRef.current || resizingIdRef.current) {
             setDraggingId(null);
             setResizingId(null);
@@ -248,10 +262,10 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   return (
     <div 
-        className="relative shadow-2xl transition-all duration-200 ease-out flex-shrink-0"
+        className="relative shadow-2xl flex-shrink-0"
         style={{
-            width: width * scale,
-            height: height * scale,
+            width: Math.round(width * scale),
+            height: Math.round(height * scale),
         }}
     >
         <div
@@ -375,8 +389,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 left: el.x,
                 top: el.y,
                 width: el.width,
-                height: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) ? 'auto' : el.height,
-                minHeight: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) ? undefined : el.height,
+                height: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN || el.type === ElementType.DATE) ? 'auto' : el.height,
+                minHeight: (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN || el.type === ElementType.DATE) ? undefined : el.height,
                 transform: 'translate(0, 0)', 
                 alignItems: el.textAlign === 'left' ? 'flex-start' : (el.textAlign === 'right' ? 'flex-end' : 'center')
             }}
@@ -408,8 +422,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 </>
             )}
 
-            {/* Content Rendering: TEXT, DROPDOWN, COMPANY, and TCKN */}
-            {(el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) && (
+            {/* Content Rendering: TEXT, DROPDOWN, COMPANY, TCKN, and DATE */}
+            {(el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN || el.type === ElementType.DATE) && (
                 <div
                 style={{
                     fontSize: `${el.fontSize}px`,
@@ -446,8 +460,15 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                         TC Kimlik No (Sansürlü)
                     </div>
                 )}
+
+                {/* Visual cue for DATE in Edit Mode */}
+                {!readOnly && el.type === ElementType.DATE && (
+                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] bg-amber-500 text-slate-950 font-bold px-2 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition shadow-md">
+                        {el.dateKind === 'validity' ? '⌛ Geçerlilik Tarihi (Hesaplanan)' : '📅 Başlangıç / Eğitim Tarihi'}
+                    </div>
+                )}
                 
-                {el.content ? el.content : (readOnly ? '' : (el.type === ElementType.DROPDOWN ? '{Seçenek}' : (el.type === ElementType.COMPANY ? '{Firma}' : (el.type === ElementType.TCKN ? '12*******01' : '{Metin}'))))}
+                {el.content ? el.content : (readOnly ? '' : (el.type === ElementType.DROPDOWN ? '{Seçenek}' : (el.type === ElementType.COMPANY ? '{Firma}' : (el.type === ElementType.TCKN ? '12*******01' : (el.type === ElementType.DATE ? '{Tarih}' : '{Metin}')))))}
                 </div>
             )}
 

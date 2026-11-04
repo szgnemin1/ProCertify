@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   Download, 
   Type, 
@@ -38,6 +38,7 @@ import {
   RectangleHorizontal,
   RectangleVertical,
   RotateCcw,
+  Loader2,
   Copy,
   FileCode,
   Import,
@@ -55,12 +56,25 @@ import {
   Bot,
   Send,
   Calendar,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  ArrowLeft,
+  Undo2,
+  Redo2,
+  Archive,
   Menu,
   Folder,
   Lock,
   Unlock,
   Eye,
-  EyeOff
+  EyeOff,
+  Pencil,
+  Flame,
+  Search,
+  Building2,
+  UserCheck,
+  UserX
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
@@ -72,13 +86,35 @@ import {
   SavedSignature, 
   CertificateProject, 
   CertificateSide,
-  Company 
+  BackgroundVariant,
+  Company,
+  DangerClass,
+  UserRole,
+  AppUser,
+  IssuedCertificate,
+  DashboardStats
 } from './types';
 import { TEMPLATES, FONTS, FONT_WEIGHTS } from './constants';
 import CanvasEditor from './components/CanvasEditor';
 import SignaturePad from './components/SignaturePad'; 
+import { Sidebar, ActiveNavTab } from './components/Sidebar';
+import { DashboardView } from './views/DashboardView';
+import { CompaniesView } from './views/CompaniesView';
+import { CompanyDetailView } from './views/CompanyDetailView';
+import { LoginView } from './views/LoginView';
+import { UserManagementModal } from './components/UserManagementModal';
+import { EmployeeModal } from './components/EmployeeModal';
+import { 
+  calculateExpiryDate, 
+  getValidityYears, 
+  findBestTrainingDateField, 
+  findEarliestTrainingDate,
+  isValidityDateField,
+  parseDateDetailed,
+  formatDateTR
+} from './services/validityService';
 
-type ViewMode = 'template' | 'settings' | 'fill' | 'projects';
+type ViewMode = ActiveNavTab;
 type Side = 'front' | 'back';
 type ExportMode = 'single' | 'separate';
 
@@ -167,6 +203,35 @@ const downloadFile = async (blob: Blob | ArrayBuffer, defaultFilename: string, m
   return true;
 };
 
+// --- Global Pure Utilities ---
+const normalizeKey = (key: any): string => {
+  if (!key || typeof key !== 'string') return '';
+  return key.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
+};
+
+const turkishToLower = (str: any): string => {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'ı')
+    .replace(/Ğ/g, 'ğ')
+    .replace(/Ü/g, 'ü')
+    .replace(/Ş/g, 'ş')
+    .replace(/Ö/g, 'ö')
+    .replace(/Ç/g, 'ç')
+    .toLocaleLowerCase('tr-TR');
+};
+
+const maskTCKN = (tckn: any): string => {
+  if (!tckn) return '';
+  const s = String(tckn);
+  if (s.length < 5) return s;
+  const first2 = s.substring(0, 2);
+  const last2 = s.substring(s.length - 2);
+  const mask = '*'.repeat(s.length - 4);
+  return `${first2}${mask}${last2}`;
+};
+
 const App = () => {
   const [projectFrontSelections, setProjectFrontSelections] = useState<Record<string, string>>({});
   const [projectBackSelections, setProjectBackSelections] = useState<Record<string, string>>({});
@@ -249,73 +314,535 @@ const App = () => {
   const [isEditingName, setIsEditingName] = useState(false); 
   const [showChoiceFields, setShowChoiceFields] = useState(false);
   
-  // Admin Authentication State (Separate access for Projeler, Şablon, Ayarlar)
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('vps_session') === 'authenticated' && !!localStorage.getItem('vps_session_token');
+  // User Session & Role
+  const [sessionUser, setSessionUser] = useState<{ id: string; username: string; role: UserRole; name: string } | null>(() => {
+    try {
+      const stored = localStorage.getItem('vps_user_info');
+      const token = localStorage.getItem('vps_session_token');
+      if (stored && token) return JSON.parse(stored);
+      if (token && localStorage.getItem('vps_session') === 'authenticated') {
+        return { id: 'admin', username: 'admin', role: 'admin', name: 'Sistem Yöneticisi' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
   });
-  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
-  const [adminTargetView, setAdminTargetView] = useState<ViewMode>('projects');
-  const [adminPasswordInput, setAdminPasswordInput] = useState('');
-  const [adminLoginError, setAdminLoginError] = useState('');
-  const [isAdminLoggingIn, setIsAdminLoggingIn] = useState(false);
-  const [showAdminPassword, setShowAdminPassword] = useState(false);
 
-  useEffect(() => {
-    if (!isAdminAuthenticated && currentView !== 'fill') {
-      setCurrentView('fill');
-    }
-  }, [isAdminAuthenticated, currentView]);
+  const isAuthenticated = !!sessionUser && !!localStorage.getItem('vps_session_token');
+  const isAdmin = sessionUser?.role === 'admin';
 
-  const handleRequestAdminView = (view: ViewMode) => {
-    if (isAdminAuthenticated) {
-      setCurrentView(view);
-      setIsMobileNavOpen(false);
-    } else {
-      setAdminTargetView(view);
-      setAdminPasswordInput('');
-      setAdminLoginError('');
-      setShowAdminLoginModal(true);
-      setIsMobileNavOpen(false);
+  // Selected company for detail view
+  const [selectedCompanyForDetail, setSelectedCompanyForDetail] = useState<Company | null>(null);
+
+  // User Management Modal state
+  const [showUserModal, setShowUserModal] = useState(false);
+
+  // Edit Certificate & Employee Modal State
+  const [editingCertificate, setEditingCertificate] = useState<IssuedCertificate | null>(null);
+  const [activeEmployeeIdOrTc, setActiveEmployeeIdOrTc] = useState<string | null>(null);
+  const [showEmployeeModal, setShowEmployeeModal] = useState(false);
+
+  // All Certificates & Dashboard Stats
+  const [allCertificates, setAllCertificates] = useState<IssuedCertificate[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
+    total: 0,
+    expired: 0,
+    expiringSoon: 0,
+    valid: 0
+  });
+
+  const fetchCertificatesAndStats = async () => {
+    try {
+      const token = localStorage.getItem('vps_session_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const [certsRes, statsRes] = await Promise.all([
+        fetch(getApiUrl('/api/certificates'), { headers }),
+        fetch(getApiUrl('/api/stats/dashboard'), { headers })
+      ]);
+
+      if (certsRes.ok) {
+        const certsData = await certsRes.json();
+        setAllCertificates(certsData || []);
+      }
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setDashboardStats(statsData);
+      }
+    } catch (err) {
+      console.error("Error loading certificates and stats:", err);
     }
   };
 
-  const handleAdminLoginSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!adminPasswordInput.trim()) {
-      setAdminLoginError('Lütfen şifrenizi girin.');
-      return;
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchCertificatesAndStats();
     }
-    setIsAdminLoggingIn(true);
-    setAdminLoginError('');
-    try {
-      const res = await fetch(getApiUrl('/api/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: adminPasswordInput })
-      });
-      const data = await res.json();
-      if (res.ok && data.success && data.token) {
-        localStorage.setItem('vps_session', 'authenticated');
-        localStorage.setItem('vps_session_token', data.token);
-        setIsAdminAuthenticated(true);
-        setShowAdminLoginModal(false);
-        setAdminPasswordInput('');
-        setCurrentView(adminTargetView);
-      } else {
-        setAdminLoginError(data.error || 'Hatalı şifre. Lütfen tekrar deneyin.');
+  }, [isAuthenticated]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('vps_session_token');
+    localStorage.removeItem('vps_session');
+    localStorage.removeItem('vps_user_info');
+    setSessionUser(null);
+    setCurrentView('dashboard');
+  };
+
+  useEffect(() => {
+    if (sessionUser && !isAdmin) {
+      if (currentView === 'template' || currentView === 'projects' || currentView === 'settings') {
+        setCurrentView('dashboard');
       }
-    } catch (err) {
-      setAdminLoginError('Sunucu ile iletişim kurulamadı.');
-    } finally {
-      setIsAdminLoggingIn(false);
     }
+  }, [sessionUser, isAdmin, currentView]);
+
+  const updateCompanyDangerClass = (companyId: string, dangerClass: DangerClass) => {
+    const years = getValidityYears(dangerClass);
+    setCompanies(prev => prev.map(c => {
+      if (c.id === companyId) {
+        return { ...c, dangerClass, validityYears: years };
+      }
+      return c;
+    }));
   };
 
   const handleAdminLogout = () => {
-    localStorage.removeItem('vps_session');
-    localStorage.removeItem('vps_session_token');
-    setIsAdminAuthenticated(false);
+    handleLogout();
+  };
+
+  // --- Fill State ---
+  const [mobileFillStep, setMobileFillStep] = useState<0 | 1 | 2>(0);
+  const [fillValues, setFillValues] = useState<Record<string, string>>({});
+  const [isChatMode, setIsChatMode] = useState(true);
+  const [chatHistory, setChatHistory] = useState<{id: string, sender: 'bot'|'user', text: string}[]>([]);
+  const [currentChatStep, setCurrentChatStep] = useState(0);
+  const [chatInputValue, setChatInputValue] = useState('');
+  const [chatOptionSearch, setChatOptionSearch] = useState('');
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [isFillSidebarOpen, setIsFillSidebarOpen] = useState(true);
+  const [selectedTrainingDateKey, setSelectedTrainingDateKey] = useState<string>('');
+  const [preferSingleDateExpiry, setPreferSingleDateExpiry] = useState<boolean>(false);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const unifiedFieldsRef = useRef<string>('');
+
+  const handleEditCertificate = (cert: IssuedCertificate) => {
+    setEditingCertificate(cert);
     setCurrentView('fill');
+
+    // Prepopulate fill values from certificate
+    const populated: Record<string, string> = { ...(cert.fields || {}) };
+
+    if (cert.recipientName) {
+      populated['Ad Soyad'] = cert.recipientName;
+      populated['ad soyad'] = cert.recipientName;
+      populated['ad_soyad'] = cert.recipientName;
+    }
+    if (cert.recipientTc) {
+      const cleanTc = String(cert.recipientTc).replace(/\s+/g, '').trim();
+      populated['TC Kimlik No'] = cleanTc;
+      populated['tc kimlik no'] = cleanTc;
+      populated['TCKN'] = cleanTc;
+      populated['tckn'] = cleanTc;
+      populated['tc'] = cleanTc;
+      populated['tc no'] = cleanTc;
+    }
+    if (cert.company) {
+      populated['Firma'] = cert.company;
+      populated['firma'] = cert.company;
+    }
+    if (cert.trainingDate) {
+      populated['Eğitim Tarihi'] = cert.trainingDate;
+      populated['egitim tarihi'] = cert.trainingDate;
+      populated['tarih'] = cert.trainingDate;
+      populated['Tarih'] = cert.trainingDate;
+    }
+    if (cert.expiryDate) {
+      populated['Geçerlilik Tarihi'] = cert.expiryDate;
+      populated['geçerlilik tarihi'] = cert.expiryDate;
+    }
+    if (cert.serialNo) {
+      populated['Seri No'] = cert.serialNo;
+      populated['seri no'] = cert.serialNo;
+      populated['seri numarası'] = cert.serialNo;
+      populated['sertifika no'] = cert.serialNo;
+    }
+
+    setFillValues(populated);
+
+    // If projects are known, select matching project IDs
+    if (cert.projects && Array.isArray(cert.projects) && cert.projects.length > 0) {
+      const matchedProjectIds = projects
+        .filter(p => p && p.name && cert.projects.some(pn => pn && turkishToLower(String(pn)) === turkishToLower(p.name)))
+        .map(p => p.id);
+      if (matchedProjectIds.length > 0) {
+        setSelectedFillProjectIds(matchedProjectIds);
+        setActiveProjectId(matchedProjectIds[0]);
+      }
+    }
+
+    // Switch to classic form mode so user sees all fields right away
+    setIsChatMode(false);
+  };
+
+  // Clear all fill data helper (resets form completely)
+  const clearFillData = useCallback(() => {
+    setFillValues({});
+    setEditingCertificate(null);
+    setCurrentChatStep(0);
+    setChatInputValue('');
+    setChatOptionSearch('');
+    setChatHistory([]);
+    setProjectFrontSelections({});
+    setProjectBackSelections({});
+  }, []);
+
+  // Clear fill data when navigating away from the fill screen
+  const prevViewRef = useRef<ViewMode>(currentView);
+  useEffect(() => {
+    if (prevViewRef.current === 'fill' && currentView !== 'fill') {
+      clearFillData();
+    }
+    prevViewRef.current = currentView;
+  }, [currentView, clearFillData]);
+
+  const handleRenewCertificate = (cert: IssuedCertificate) => {
+    clearFillData();
+    setEditingCertificate(null); // Fresh issue, creates a brand new certificate!
+    setCurrentView('fill');
+
+    const populated: Record<string, string> = { ...(cert.fields || {}) };
+
+    if (cert.recipientName) {
+      populated['Ad Soyad'] = cert.recipientName;
+      populated['ad soyad'] = cert.recipientName;
+      populated['ad_soyad'] = cert.recipientName;
+    }
+    if (cert.recipientTc) {
+      const cleanTc = cert.recipientTc.replace(/\s+/g, '').trim();
+      populated['TCKN'] = cleanTc;
+      populated['tckn'] = cleanTc;
+      populated['tc'] = cleanTc;
+      populated['tc no'] = cleanTc;
+      populated['TC Kimlik No'] = cleanTc;
+    }
+    if (cert.company) {
+      populated['Firma'] = cert.company;
+      populated['firma'] = cert.company;
+    }
+
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+    const todayStr = `${day}.${month}.${year}`;
+    populated['Eğitim Tarihi'] = todayStr;
+    populated['egitim tarihi'] = todayStr;
+    populated['tarih'] = todayStr;
+    populated['Tarih'] = todayStr;
+
+    setFillValues(populated);
+
+    if (cert.projects && Array.isArray(cert.projects) && cert.projects.length > 0) {
+      const matchedProjectIds = projects
+        .filter(p => p && p.name && cert.projects.some(pn => pn && turkishToLower(String(pn)) === turkishToLower(p.name)))
+        .map(p => p.id);
+      if (matchedProjectIds.length > 0) {
+        setSelectedFillProjectIds(matchedProjectIds);
+        setActiveProjectId(matchedProjectIds[0]);
+      }
+    }
+
+    setIsChatMode(false);
+  };
+
+  const handleCancelEdit = () => {
+    clearFillData();
+  };
+
+  const getActiveFillTc = (values: Record<string, string>) => {
+    for (const [k, v] of Object.entries(values)) {
+      const lk = k.toLowerCase();
+      if ((lk.includes('tc') || lk.includes('tckn') || lk.includes('kimlik')) && typeof v === 'string') {
+        const clean = v.replace(/\s+/g, '').trim();
+        if (clean.length >= 11) return clean;
+      }
+    }
+    return '';
+  };
+
+  const matchedEmployee = useMemo(() => {
+    const activeTc = getActiveFillTc(fillValues);
+    if (!activeTc || activeTc.length < 11) return null;
+    const foundCert = allCertificates.find(c => c.recipientTc && c.recipientTc.replace(/\s+/g, '').trim() === activeTc);
+    if (foundCert) {
+      return {
+        name: foundCert.recipientName || '',
+        company: foundCert.company || '',
+        tc: activeTc,
+        existingCerts: allCertificates.filter(c => c.recipientTc && c.recipientTc.replace(/\s+/g, '').trim() === activeTc)
+      };
+    }
+    return null;
+  }, [fillValues, allCertificates]);
+
+  const alreadyHasSelectedProject = useMemo(() => {
+    if (!matchedEmployee) return null;
+    const targetProjects = projects.filter(p => p && p.name && selectedFillProjectIds.includes(p.id));
+    const targetProjectNames = targetProjects.map(p => turkishToLower(p.name));
+    
+    return matchedEmployee.existingCerts.find(c => 
+      c.projects && Array.isArray(c.projects) && c.projects.some(pn => pn && targetProjectNames.includes(turkishToLower(String(pn))))
+    ) || null;
+  }, [matchedEmployee, selectedFillProjectIds, projects]);
+
+  // Toplu üretimde veya formda birden fazla eğitim tarihi varsa en erken (ilk gün) tarih tespiti
+  const { groupEarliestDate, multipleDistinctDates } = useMemo(() => {
+    const candidateList: { key?: string; value: string }[] = [];
+    const distinctDates = new Set<string>();
+
+    for (const [k, v] of Object.entries(fillValues)) {
+      const lk = k.toLowerCase();
+      if ((lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk) && typeof v === 'string' && v.trim()) {
+        candidateList.push({ key: k, value: v });
+        const parsed = parseDateDetailed(v);
+        if (parsed) {
+          distinctDates.add(formatDateTR(parsed.startDate));
+        }
+      }
+    }
+
+    const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
+    for (const proj of targetProjects) {
+      for (const s of [proj.front, getActiveSideData(proj, 'back')]) {
+        if (!s) continue;
+        for (const el of s.elements) {
+          if (el.type === ElementType.DATE && el.dateKind !== 'validity') {
+            const k = normalizeKey(el.label || el.id);
+            const val = fillValues[k] || el.content;
+            if (val && typeof val === 'string' && val.trim()) {
+              candidateList.push({ key: k, value: val });
+              const parsed = parseDateDetailed(val);
+              if (parsed) {
+                distinctDates.add(formatDateTR(parsed.startDate));
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const earliest = findEarliestTrainingDate(candidateList);
+    return {
+      groupEarliestDate: earliest,
+      multipleDistinctDates: distinctDates.size > 1 ? Array.from(distinctDates) : null
+    };
+  }, [fillValues, selectedFillProjectIds, projects]);
+
+  const handleFillFieldChange = (fieldLabel: string, value: string, fieldType?: ElementType) => {
+    setFillValues(prev => {
+      const updated = { ...prev, [fieldLabel]: value };
+      const normKey = fieldLabel.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
+      updated[normKey] = value;
+
+      // TC Kimlik No girildiğinde veya değiştiğinde: kayıtlı çalışan varsa Ad Soyad ve Firma'yı otomatik öner/doldur
+      const isTcField = normKey.includes('tc') || normKey.includes('tckn') || normKey.includes('kimlik');
+      if (isTcField && value) {
+        const cleanTc = value.replace(/\s+/g, '').trim();
+        if (cleanTc.length === 11) {
+          const matched = allCertificates.find(c => c.recipientTc && c.recipientTc.replace(/\s+/g, '').trim() === cleanTc);
+          if (matched) {
+            if ((!updated['Ad Soyad'] || updated['Ad Soyad'] === '') && matched.recipientName) {
+              updated['Ad Soyad'] = matched.recipientName;
+              updated['ad soyad'] = matched.recipientName;
+            }
+            if ((!updated['Firma'] || updated['Firma'] === '') && matched.company) {
+              updated['Firma'] = matched.company;
+              updated['firma'] = matched.company;
+            }
+          }
+        }
+      }
+
+      const isDateComponent = fieldType === ElementType.DATE || 
+        normKey.includes('başlangıç') || normKey.includes('baslangic') || 
+        normKey.includes('başlama') || normKey.includes('baslama') ||
+        normKey.includes('eğitim tarihi') || normKey.includes('egitim tarihi');
+
+      if (isDateComponent && value.trim()) {
+        setSelectedTrainingDateKey(fieldLabel);
+      }
+
+      // Toplu sertifika üretiminde veya formda birden fazla eğitim tarihi varsa EN ERKEN / İLK GÜN dikkate alınır
+      const allDateCandidates: { key?: string; value: string }[] = [];
+      for (const [k, v] of Object.entries(updated)) {
+        const lk = k.toLowerCase();
+        if ((lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk) && typeof v === 'string' && v.trim()) {
+          allDateCandidates.push({ key: k, value: v });
+        }
+      }
+
+      const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
+      for (const proj of targetProjects) {
+        for (const s of [proj.front, getActiveSideData(proj, 'back')]) {
+          if (!s) continue;
+          for (const el of s.elements) {
+            if (el.type === ElementType.DATE && el.dateKind !== 'validity') {
+              const k = normalizeKey(el.label || el.id);
+              const val = updated[k] || el.content;
+              if (val && typeof val === 'string' && val.trim()) {
+                allDateCandidates.push({ key: k, value: val });
+              }
+            }
+          }
+        }
+      }
+
+      const earliestTr = findEarliestTrainingDate(allDateCandidates);
+      const effectiveTrKey = selectedTrainingDateKey && updated[selectedTrainingDateKey] !== undefined
+        ? selectedTrainingDateKey
+        : findBestTrainingDateField(Object.keys(updated).filter(k => {
+            const lk = k.toLowerCase();
+            return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
+          }));
+
+      const dateVal = earliestTr ? earliestTr.formatted : (effectiveTrKey ? (updated[effectiveTrKey] || '') : '');
+
+      // Ortak grup tarih etiketlerine en erken günü senkronize et
+      if (isDateComponent && earliestTr) {
+        const syncKeys = [
+          'tarih', 'tarihi', 'eğitim tarihi', 'egitim tarihi', 'egitim_tarihi',
+          'başlangıç tarihi', 'baslangic tarihi', 'baslangic_tarihi',
+          'Tarih', 'Eğitim Tarihi', 'Başlangıç Tarihi'
+        ];
+        for (const sk of syncKeys) {
+          if (!updated[sk] || updated[sk] === prev[fieldLabel]) {
+            updated[sk] = earliestTr.formatted;
+          }
+        }
+      }
+
+      let compVal = '';
+      for (const [k, v] of Object.entries(updated)) {
+        const lk = k.toLowerCase();
+        if (!compVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket'))) {
+          compVal = v;
+        }
+      }
+
+      if (compVal && dateVal) {
+        const matched = companies.find(c => 
+          c.name.toLowerCase() === compVal.toLowerCase() || 
+          (c.shortName && c.shortName.toLowerCase() === compVal.toLowerCase())
+        );
+        const dangerClass = matched?.dangerClass || 'cok_tehlikeli';
+        const { expiryDisplay } = calculateExpiryDate(dateVal, dangerClass, preferSingleDateExpiry);
+
+        const expKeys = [
+          'gecerlilik tarihi', 'geçerlilik tarihi', 'gecerlilik_tarihi', 'geçerlilik_tarihi',
+          'bitiş tarihi', 'bitis tarihi', 'bitiş_tarihi', 'bitis_tarihi',
+          'gecerlilik', 'geçerlilik', 'bitis', 'bitiş',
+          'Geçerlilik Tarihi', 'Bitiş Tarihi'
+        ];
+        for (const ek of expKeys) {
+          updated[ek] = expiryDisplay;
+        }
+      }
+
+      return updated;
+    });
+  };
+
+  const handleTrainingDateKeyChange = (newKey: string) => {
+    setSelectedTrainingDateKey(newKey);
+    setFillValues(prev => {
+      const updated = { ...prev };
+      let compVal = '';
+      for (const [k, v] of Object.entries(updated)) {
+        const lk = k.toLowerCase();
+        if (!compVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket'))) {
+          compVal = v;
+        }
+      }
+
+      const allDateCandidates: { key?: string; value: string }[] = [];
+      for (const [k, v] of Object.entries(updated)) {
+        const lk = k.toLowerCase();
+        if ((lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk) && typeof v === 'string' && v.trim()) {
+          allDateCandidates.push({ key: k, value: v });
+        }
+      }
+      const earliestTr = findEarliestTrainingDate(allDateCandidates);
+      const dateVal = updated[newKey] || (earliestTr ? earliestTr.formatted : '');
+
+      if (compVal && dateVal) {
+        const matched = companies.find(c => 
+          c.name.toLowerCase() === compVal.toLowerCase() || 
+          (c.shortName && c.shortName.toLowerCase() === compVal.toLowerCase())
+        );
+        const dangerClass = matched?.dangerClass || 'cok_tehlikeli';
+        const { expiryDisplay } = calculateExpiryDate(dateVal, dangerClass, preferSingleDateExpiry);
+        const expKeys = [
+          'gecerlilik tarihi', 'geçerlilik tarihi', 'gecerlilik_tarihi', 'geçerlilik_tarihi',
+          'bitiş tarihi', 'bitis tarihi', 'bitiş_tarihi', 'bitis_tarihi',
+          'gecerlilik', 'geçerlilik', 'bitis', 'bitiş',
+          'Geçerlilik Tarihi', 'Bitiş Tarihi'
+        ];
+        for (const ek of expKeys) {
+          updated[ek] = expiryDisplay;
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleToggleSingleDateExpiry = (single: boolean) => {
+    setPreferSingleDateExpiry(single);
+    setFillValues(prev => {
+      const updated = { ...prev };
+      let compVal = '';
+      for (const [k, v] of Object.entries(updated)) {
+        const lk = k.toLowerCase();
+        if (!compVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket'))) {
+          compVal = v;
+        }
+      }
+
+      const allDateCandidates: { key?: string; value: string }[] = [];
+      for (const [k, v] of Object.entries(updated)) {
+        const lk = k.toLowerCase();
+        if ((lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk) && typeof v === 'string' && v.trim()) {
+          allDateCandidates.push({ key: k, value: v });
+        }
+      }
+      const earliestTr = findEarliestTrainingDate(allDateCandidates);
+      const effectiveTrKey = selectedTrainingDateKey && updated[selectedTrainingDateKey] !== undefined
+        ? selectedTrainingDateKey
+        : findBestTrainingDateField(Object.keys(updated).filter(k => {
+            const lk = k.toLowerCase();
+            return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
+          }));
+      const dateVal = earliestTr ? earliestTr.formatted : (effectiveTrKey ? (updated[effectiveTrKey] || '') : '');
+
+      if (compVal && dateVal) {
+        const matched = companies.find(c => 
+          c.name.toLowerCase() === compVal.toLowerCase() || 
+          (c.shortName && c.shortName.toLowerCase() === compVal.toLowerCase())
+        );
+        const dangerClass = matched?.dangerClass || 'cok_tehlikeli';
+        const { expiryDisplay } = calculateExpiryDate(dateVal, dangerClass, single);
+        const expKeys = [
+          'gecerlilik tarihi', 'geçerlilik tarihi', 'gecerlilik_tarihi', 'geçerlilik_tarihi',
+          'bitiş tarihi', 'bitis tarihi', 'bitiş_tarihi', 'bitis_tarihi',
+          'gecerlilik', 'geçerlilik', 'bitis', 'bitiş',
+          'Geçerlilik Tarihi', 'Bitiş Tarihi'
+        ];
+        for (const ek of expKeys) {
+          updated[ek] = expiryDisplay;
+        }
+      }
+      return updated;
+    });
   };
   
   // Signatures State
@@ -325,6 +852,18 @@ const App = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [tempCompanyInput, setTempCompanyInput] = useState('');
   const [companySearchQuery, setCompanySearchQuery] = useState('');
+  const [selectedDangerClassInput, setSelectedDangerClassInput] = useState<DangerClass>('cok_tehlikeli');
+
+  // Settings View Sub-Tab & Company Form States
+  const [settingsSubTab, setSettingsSubTab] = useState<'companies' | 'users' | 'signatures' | 'security' | 'backup'>('companies');
+  const [singleCompanyName, setSingleCompanyName] = useState('');
+  const [singleCompanyShortName, setSingleCompanyShortName] = useState('');
+  const [singleCompanyDangerClass, setSingleCompanyDangerClass] = useState<DangerClass>('cok_tehlikeli');
+  const [showBatchCompanyInput, setShowBatchCompanyInput] = useState(false);
+  const [companyDangerFilter, setCompanyDangerFilter] = useState<'all' | DangerClass>('all');
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
+  const [editingCompanyName, setEditingCompanyName] = useState('');
+  const [editingCompanyShortName, setEditingCompanyShortName] = useState('');
   
   // Settings - Password State
   const [newPassword, setNewPassword] = useState('');
@@ -348,27 +887,38 @@ const App = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scale, setScale] = useState(0.4);
   
+  // Undo / Redo History for Canvas Elements
+  const [undoStack, setUndoStack] = useState<CanvasElement[][]>([]);
+  const [redoStack, setRedoStack] = useState<CanvasElement[][]>([]);
+
+  // Clear undo/redo history when active project or active side changes
+  useEffect(() => {
+    setUndoStack([]);
+    setRedoStack([]);
+  }, [activeProjectId, activeSide]);
+  
+  const handleZoomIn = () => setScale(prev => Math.min(Number((prev + 0.05).toFixed(2)), 1.5));
+  const handleZoomOut = () => setScale(prev => Math.max(Number((prev - 0.05).toFixed(2)), 0.15));
+  const handleZoomFit = () => {
+    if (editorContainerRef.current && activeProject) {
+      const { clientWidth, clientHeight } = editorContainerRef.current;
+      const padding = 60;
+      const scaleX = (clientWidth - padding) / activeProject.width;
+      const scaleY = (clientHeight - padding) / activeProject.height;
+      setScale(Math.max(0.15, Math.min(scaleX, scaleY)));
+    }
+  };
+  
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const variantFileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const fullZipInputRef = useRef<HTMLInputElement>(null);
+  const [isExportingZip, setIsExportingZip] = useState(false);
+  const [isRestoringZip, setIsRestoringZip] = useState(false);
   const projectNameInputRef = useRef<HTMLInputElement>(null);
   const htmlTemplateInputRef = useRef<HTMLInputElement>(null);
-
-  // --- Fill State ---
-  const [mobileFillStep, setMobileFillStep] = useState<0 | 1 | 2>(0);
-  const [fillValues, setFillValues] = useState<Record<string, string>>({});
-  const [isChatMode, setIsChatMode] = useState(true);
-  const [chatHistory, setChatHistory] = useState<{id: string, sender: 'bot'|'user', text: string}[]>([]);
-  const [currentChatStep, setCurrentChatStep] = useState(0);
-  const [chatInputValue, setChatInputValue] = useState('');
-  const [chatOptionSearch, setChatOptionSearch] = useState('');
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [calendarDate, setCalendarDate] = useState(new Date());
-  const [isFillSidebarOpen, setIsFillSidebarOpen] = useState(true);
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-  const unifiedFieldsRef = useRef<string>('');
 
   // Helper to parse dates from chatInputValue
   const getSelectedDatesFromText = (text: string) => {
@@ -496,9 +1046,7 @@ const App = () => {
           body: JSON.stringify(dataObj)
         });
         if (result.status === 401) {
-          localStorage.removeItem('vps_session');
-          localStorage.removeItem('vps_session_token');
-          setIsAdminAuthenticated(false);
+          handleLogout();
           return;
         }
         console.log("SAVE DATA RESULT:", await result.text());
@@ -543,31 +1091,6 @@ const App = () => {
   }, [activeProject?.width, activeProject?.height, currentView]);
 
   // --- Functions ---
-  const normalizeKey = (key: string) => {
-      return key.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
-  };
-
-  const turkishToLower = (str: string): string => {
-      if (!str) return '';
-      return str
-          .replace(/İ/g, 'i')
-          .replace(/I/g, 'ı')
-          .replace(/Ğ/g, 'ğ')
-          .replace(/Ü/g, 'ü')
-          .replace(/Ş/g, 'ş')
-          .replace(/Ö/g, 'ö')
-          .replace(/Ç/g, 'ç')
-          .toLocaleLowerCase('tr-TR');
-  };
-
-  const maskTCKN = (tckn: string) => {
-      if (!tckn || tckn.length < 5) return tckn;
-      const first2 = tckn.substring(0, 2);
-      const last2 = tckn.substring(tckn.length - 2);
-      const mask = '*'.repeat(tckn.length - 4);
-      return `${first2}${mask}${last2}`;
-  };
-
   const updateProjectSide = (side: Side, updates: Partial<CertificateSide>) => {
     setProjects(prev => prev.map(p => {
       if (p.id === activeProjectId) {
@@ -687,7 +1210,7 @@ const App = () => {
         side.elements.forEach(el => {
             if (el.label) {
                 const norm = normalizeKey(el.label);
-                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.SIGNATURE || el.type === ElementType.TCKN || el.type === ElementType.COMPANY || el.type === ElementType.CHOICE_BOX) {
+                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.SIGNATURE || el.type === ElementType.TCKN || el.type === ElementType.COMPANY || el.type === ElementType.CHOICE_BOX || el.type === ElementType.DATE) {
                     if (!labelMap.has(norm)) labelMap.set(norm, el.label);
                 }
                 if (el.type === ElementType.COMPANY) {
@@ -800,20 +1323,94 @@ const App = () => {
     e.target.value = '';
   };
 
+  // --- UNDO / REDO & DUPLICATE LOGIC ---
+  const pushUndoSnapshot = () => {
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const currentElements = sideData?.elements || [];
+    const serialized = JSON.stringify(currentElements);
+
+    setUndoStack(prev => {
+      if (prev.length > 0) {
+        const last = JSON.stringify(prev[prev.length - 1]);
+        if (last === serialized) return prev;
+      }
+      return [...prev.slice(-40), JSON.parse(serialized)];
+    });
+    setRedoStack([]);
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const currentElements = sideData?.elements || [];
+
+    const prevSnapshot = undoStack[undoStack.length - 1];
+    const newUndoStack = undoStack.slice(0, -1);
+
+    setRedoStack(prev => [...prev.slice(-40), JSON.parse(JSON.stringify(currentElements))]);
+    setUndoStack(newUndoStack);
+
+    updateProjectElements(activeSide, prevSnapshot);
+    if (selectedId && !prevSnapshot.some(el => el.id === selectedId)) {
+      setSelectedId(null);
+    }
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const currentElements = sideData?.elements || [];
+
+    const nextSnapshot = redoStack[redoStack.length - 1];
+    const newRedoStack = redoStack.slice(0, -1);
+
+    setUndoStack(prev => [...prev.slice(-40), JSON.parse(JSON.stringify(currentElements))]);
+    setRedoStack(newRedoStack);
+
+    updateProjectElements(activeSide, nextSnapshot);
+  };
+
+  const handleDuplicateElement = (idToDuplicate?: string | null) => {
+    const targetId = idToDuplicate || selectedId;
+    if (!targetId) return;
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const currentElements = sideData?.elements || [];
+    const el = currentElements.find(e => e.id === targetId);
+    if (!el) return;
+
+    pushUndoSnapshot();
+
+    const newEl: CanvasElement = {
+      ...JSON.parse(JSON.stringify(el)),
+      id: Date.now().toString(),
+      x: Math.min(el.x + 30, (activeProject?.width || 1200) - el.width),
+      y: Math.min(el.y + 30, (activeProject?.height || 800) - el.height),
+      secondaryX: el.secondaryX !== undefined ? el.secondaryX + 30 : undefined,
+      secondaryY: el.secondaryY !== undefined ? el.secondaryY + 30 : undefined,
+    };
+
+    updateProjectElements(activeSide, [...currentElements, newEl]);
+    setSelectedId(newEl.id);
+  };
+
   const addElement = (type: ElementType) => {
     if (type === ElementType.IMAGE) {
       logoInputRef.current?.click();
       return;
     }
+
+    pushUndoSnapshot();
+
     const content = type === ElementType.TEXT ? '{METİN}' 
                     : (type === ElementType.DROPDOWN ? '{SEÇENEK}' 
                     : (type === ElementType.COMPANY ? '{FİRMA}' 
                     : (type === ElementType.TCKN ? '{TCKN}' 
                     : (type === ElementType.CHOICE_BOX ? 'Evet' 
-                    : (type === ElementType.QRCODE ? '{Sistem URL}?id={Seri No}' : '')))));
+                    : (type === ElementType.DATE ? '{Eğitim Tarihi}'
+                    : (type === ElementType.QRCODE ? '{Sistem URL}?id={Seri No}' : ''))))));
     
-    const width = (type === ElementType.SIGNATURE || type === ElementType.QRCODE) ? 200 : (type === ElementType.CHOICE_BOX ? 40 : 400);
-    const height = (type === ElementType.SIGNATURE) ? 100 : (type === ElementType.QRCODE ? 200 : (type === ElementType.CHOICE_BOX ? 40 : 100));
+    const width = (type === ElementType.SIGNATURE || type === ElementType.QRCODE) ? 200 : (type === ElementType.CHOICE_BOX ? 40 : (type === ElementType.DATE ? 320 : 400));
+    const height = (type === ElementType.SIGNATURE) ? 100 : (type === ElementType.QRCODE ? 200 : (type === ElementType.CHOICE_BOX ? 40 : (type === ElementType.DATE ? 60 : 100)));
     
     const newEl: CanvasElement = {
       id: Date.now().toString(),
@@ -823,7 +1420,7 @@ const App = () => {
       y: activeProject.height / 2 - (height/2),
       width,
       height,
-      fontSize: 60,
+      fontSize: type === ElementType.DATE ? 48 : 60,
       fontFamily: FontStyle.SANS,
       color: '#000000',
       label: type === ElementType.TEXT ? 'Metin' 
@@ -832,11 +1429,13 @@ const App = () => {
               : (type === ElementType.COMPANY ? 'Firma'
               : (type === ElementType.TCKN ? 'TC Kimlik No'
               : (type === ElementType.CHOICE_BOX ? 'Seçim Kutusu'
-              : (type === ElementType.QRCODE ? 'QR' : 'Görsel')))))),
+              : (type === ElementType.DATE ? 'Eğitim Tarihi'
+              : (type === ElementType.QRCODE ? 'QR' : 'Görsel'))))))),
       options: type === ElementType.DROPDOWN ? [] : (type === ElementType.CHOICE_BOX ? ['Evet', 'Hayır'] : undefined),
       fontWeight: 400,
       fontStyle: 'normal',
       textAlign: 'center',
+      dateKind: type === ElementType.DATE ? 'training' : undefined,
       secondaryX: type === ElementType.CHOICE_BOX ? (activeProject.width / 2 - (width/2)) + 150 : undefined,
       secondaryY: type === ElementType.CHOICE_BOX ? (activeProject.height / 2 - (height/2)) : undefined,
     };
@@ -856,6 +1455,7 @@ const App = () => {
            const img = new Image();
            img.src = evt.target.result as string;
            img.onload = () => {
+             pushUndoSnapshot();
              const baseW = 300;
              const baseH = (img.height / img.width) * baseW;
              const newEl: CanvasElement = {
@@ -886,41 +1486,79 @@ const App = () => {
   };
 
   const deleteElement = (id: string) => {
+    pushUndoSnapshot();
     const sideData = getActiveSideData(activeProject, activeSide);
     const elements = sideData?.elements || [];
     updateProjectElements(activeSide, elements.filter(el => el.id !== id));
     if (selectedId === id) setSelectedId(null);
   };
 
-  // Keyboard controls
+  // Keyboard controls (Undo/Redo, Duplicate, Delete, Arrow movements)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!selectedId || currentView !== 'template') return;
+      if (currentView !== 'template') return;
       const activeEl = document.activeElement as HTMLElement;
-      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')) return;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || (activeEl as any).isContentEditable)) return;
 
-      const step = e.shiftKey ? 10 : 1; 
-      let dx = 0; let dy = 0;
-      if (e.key === 'ArrowUp') dy = -step;
-      else if (e.key === 'ArrowDown') dy = step;
-      else if (e.key === 'ArrowLeft') dx = -step;
-      else if (e.key === 'ArrowRight') dx = step;
-      else return; 
-      e.preventDefault();
-      const sideData = getActiveSideData(activeProject, activeSide);
-      const currentElement = sideData?.elements.find(el => el.id === selectedId);
-      if (currentElement) {
-          const updates: Partial<CanvasElement> = { x: currentElement.x + dx, y: currentElement.y + dy };
-          if (currentElement.type === ElementType.CHOICE_BOX) {
-              updates.secondaryX = (currentElement.secondaryX || currentElement.x) + dx;
-              updates.secondaryY = (currentElement.secondaryY || currentElement.y) + dy;
-          }
-          updateElement(selectedId, updates);
+      // Undo: Ctrl+Z or Cmd+Z (without Shift)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Redo: Ctrl+Y or Ctrl+Shift+Z or Cmd+Shift+Z
+      if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') ||
+          ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      // Duplicate: Ctrl+D or Cmd+D
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+        if (selectedId) {
+          e.preventDefault();
+          handleDuplicateElement(selectedId);
+        }
+        return;
+      }
+
+      // Delete: Delete or Backspace
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedId) {
+          e.preventDefault();
+          deleteElement(selectedId);
+        }
+        return;
+      }
+
+      // Arrow keys (movement)
+      if (selectedId) {
+        const step = e.shiftKey ? 10 : 1; 
+        let dx = 0; let dy = 0;
+        if (e.key === 'ArrowUp') dy = -step;
+        else if (e.key === 'ArrowDown') dy = step;
+        else if (e.key === 'ArrowLeft') dx = -step;
+        else if (e.key === 'ArrowRight') dx = step;
+        else return; 
+        e.preventDefault();
+        pushUndoSnapshot();
+        const sideData = getActiveSideData(activeProject, activeSide);
+        const currentElement = sideData?.elements.find(el => el.id === selectedId);
+        if (currentElement) {
+            const updates: Partial<CanvasElement> = { x: currentElement.x + dx, y: currentElement.y + dy };
+            if (currentElement.type === ElementType.CHOICE_BOX) {
+                updates.secondaryX = (currentElement.secondaryX || currentElement.x) + dx;
+                updates.secondaryY = (currentElement.secondaryY || currentElement.y) + dy;
+            }
+            updateElement(selectedId, updates);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, activeProjectId, activeSide, projects, currentView]); 
+  }, [selectedId, activeProjectId, activeSide, projects, currentView, undoStack, redoStack]); 
 
   // --- Unified Fill Logic ---
   const getUnifiedFillFields = () => {
@@ -933,7 +1571,8 @@ const App = () => {
         variantOptions?: { id: string; name: string }[],
         allowedSignatureIds?: string[],
         options?: string[],
-        defaultValue?: string
+        defaultValue?: string,
+        dateKind?: 'training' | 'validity'
     }> = {};
     const targetProjects = projects.filter(p => selectedFillProjectIds.includes(p.id));
 
@@ -991,7 +1630,7 @@ const App = () => {
                 const normalizeCheck = normalizeKey(rawLabelOriginal);
                 if (normalizeCheck === normalizeKey('Seri No') || normalizeCheck === normalizeKey('Seri Numarasi') || normalizeCheck === normalizeKey('Sertifika No')) return;
 
-                if (el.type === ElementType.SIGNATURE || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.CHOICE_BOX || el.type === ElementType.TCKN) {
+                if (el.type === ElementType.SIGNATURE || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.CHOICE_BOX || el.type === ElementType.TCKN || el.type === ElementType.DATE) {
                     const rawLabel = el.label || el.id;
                     const key = normalizeKey(rawLabel); 
                     const structuredField = {
@@ -1000,13 +1639,15 @@ const App = () => {
                         displayLabel: rawLabel, 
                         allowedSignatureIds: el.allowedSignatureIds,
                         options: el.options,
-                        defaultValue: el.content
+                        defaultValue: el.content,
+                        dateKind: el.dateKind || (el.type === ElementType.DATE ? 'training' : undefined)
                     };
                     if (!fields[key]) fields[key] = structuredField;
                     else if (fields[key].type === ElementType.TEXT) fields[key] = structuredField;
                     else if (fields[key].type === el.type) {
                         if (el.allowedSignatureIds) fields[key].allowedSignatureIds = Array.from(new Set([...(fields[key].allowedSignatureIds || []), ...el.allowedSignatureIds]));
                         if (el.options) fields[key].options = Array.from(new Set([...(fields[key].options || []), ...el.options]));
+                        if (el.dateKind) fields[key].dateKind = el.dateKind;
                     }
                 }
                 if (el.type === ElementType.TEXT || el.type === ElementType.QRCODE) {
@@ -1016,7 +1657,7 @@ const App = () => {
                         const rawKey = match[1];
                         const key = normalizeKey(rawKey); 
                         if (key.endsWith('_kisa') || key === normalizeKey('Sistem URL') || key === normalizeKey('Seri No') || key === normalizeKey('Seri Numarasi') || key === normalizeKey('Sertifika No')) continue; 
-                        if (!fields[key]) fields[key] = { type: ElementType.TEXT, label: key, displayLabel: rawKey.trim() };
+                        if (!fields[key]) fields[key] = { type: ElementType.TEXT, label: key, displayLabel: rawKey.trim(), dateKind: el.dateKind };
                     }
                 }
             });
@@ -1123,9 +1764,9 @@ const App = () => {
     const newHistory = [...chatHistory, { id: Date.now().toString(), sender: 'user' as const, text: userText }];
 
     if (!isSkip) {
-      setFillValues(prev => ({ ...prev, [currentField.label]: actualValue }));
+      handleFillFieldChange(currentField.label, actualValue, currentField.type as ElementType);
     } else {
-      setFillValues(prev => ({ ...prev, [currentField.label]: '' }));
+      handleFillFieldChange(currentField.label, '', currentField.type as ElementType);
     }
 
     const nextStep = currentChatStep + 1;
@@ -1181,6 +1822,19 @@ const App = () => {
     setChatInputValue('');
     setChatOptionSearch('');
   };
+
+  if (!isAuthenticated) {
+    return (
+      <LoginView 
+        onLoginSuccess={(user) => {
+          setSessionUser(user);
+          setCurrentView(user.role === 'admin' ? 'dashboard' : 'fill');
+          fetchCertificatesAndStats();
+        }}
+        getApiUrl={getApiUrl}
+      />
+    );
+  }
 
   if (!isDataLoaded) {
       return (
@@ -1246,18 +1900,33 @@ const App = () => {
       updateElement(elementId, { options: newOptions });
   };
 
-  const addCompany = (input: string) => {
+  const addCompany = (input: string, defaultDanger: DangerClass = selectedDangerClassInput) => {
       if (!input.trim()) return;
       const lines = input.split('\n').map(n => n.trim()).filter(n => n.length > 0);
       const newCompanies: Company[] = [];
       lines.forEach(line => {
-          let name = line; let short = line;
+          let name = line; 
+          let short = line;
+          let danger: DangerClass = defaultDanger;
           if (line.includes('|')) {
               const parts = line.split('|');
               name = parts[0].trim();
-              short = parts[1].trim() || name;
+              short = parts[1]?.trim() || name;
+              if (parts[2]) {
+                  const p2 = parts[2].trim().toLowerCase();
+                  if (p2.includes('cok') || p2.includes('çok')) danger = 'cok_tehlikeli';
+                  else if (p2.includes('az')) danger = 'az_tehlikeli';
+                  else if (p2.includes('tehlike')) danger = 'tehlikeli';
+              }
           }
-          newCompanies.push({ id: Date.now().toString() + Math.random(), name: name, shortName: short });
+          const years = getValidityYears(danger);
+          newCompanies.push({ 
+            id: Date.now().toString() + Math.random(), 
+            name: name, 
+            shortName: short,
+            dangerClass: danger,
+            validityYears: years
+          });
       });
       setCompanies(prev => {
           const existingNames = new Set(prev.map(p => p.name));
@@ -1265,6 +1934,50 @@ const App = () => {
           return [...prev, ...uniqueNew]; 
       });
       setTempCompanyInput('');
+  };
+
+  const handleAddSingleCompany = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!singleCompanyName.trim()) return;
+
+    const trimmedName = singleCompanyName.trim();
+    const shortName = singleCompanyShortName.trim() || 
+      trimmedName.split(' ').slice(0, 2).join('_').toUpperCase().replace(/[^a-zA-Z0-9_ğüşıöçĞÜŞİÖÇ]/g, '');
+
+    const years = getValidityYears(singleCompanyDangerClass);
+    const newCompany: Company = {
+      id: Date.now().toString() + '.' + Math.random().toString().slice(2, 6),
+      name: trimmedName,
+      shortName,
+      dangerClass: singleCompanyDangerClass,
+      validityYears: years,
+      createdAt: Date.now()
+    };
+
+    setCompanies(prev => [newCompany, ...prev.filter(c => c.name.toLowerCase() !== trimmedName.toLowerCase())]);
+    setSingleCompanyName('');
+    setSingleCompanyShortName('');
+  };
+
+  const handleStartEditCompany = (company: Company) => {
+    setEditingCompanyId(company.id);
+    setEditingCompanyName(company.name);
+    setEditingCompanyShortName(company.shortName || '');
+  };
+
+  const handleSaveEditCompany = (companyId: string) => {
+    if (!editingCompanyName.trim()) return;
+    setCompanies(prev => prev.map(c => {
+      if (c.id === companyId) {
+        return {
+          ...c,
+          name: editingCompanyName.trim(),
+          shortName: editingCompanyShortName.trim() || editingCompanyName.trim()
+        };
+      }
+      return c;
+    }));
+    setEditingCompanyId(null);
   };
 
   const removeCompany = (id: string) => {
@@ -1520,6 +2233,83 @@ const App = () => {
     reader.readAsText(file);
   };
 
+  // FULL SYSTEM ZIP ARCHIVE EXPORT
+  const handleExportFullZipBackup = async () => {
+    setIsExportingZip(true);
+    try {
+      const token = localStorage.getItem('vps_session_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(getApiUrl('/api/backup/full-zip'), { headers });
+      if (!res.ok) {
+        throw new Error(`Yedek arşivi alınamadı (HTTP ${res.status})`);
+      }
+
+      const blob = await res.blob();
+      const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
+      await downloadFile(blob, `ProCertify_TamSistemArsivi_${dateStr}.zip`, 'application/zip');
+    } catch (error: any) {
+      console.error("Full ZIP export error:", error);
+      alert("Tam sistem arşivi indirilirken bir hata oluştu: " + (error?.message || error));
+    } finally {
+      setIsExportingZip(false);
+    }
+  };
+
+  // FULL SYSTEM ZIP ARCHIVE RESTORE
+  const handleImportFullZipBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm("DİKKAT: Tam sistem ZIP arşivi geri yüklenecektir!\n\nBu işlem tüm projeleri, şablonları, çalışan evraklarını (PDF/resim), oluşturulan sertifikaları ve veritabanını arşivdeki verilerle güncelleyecektir.\n\nDevam etmek istediğinize emin misiniz?")) {
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    setIsRestoringZip(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const dataUrl = evt.target?.result as string;
+        const base64 = dataUrl.split(',')[1];
+        if (!base64) {
+          throw new Error("ZIP dosya içeriği okunamadı.");
+        }
+
+        const token = localStorage.getItem('vps_session_token');
+        const res = await fetch(getApiUrl('/api/backup/full-restore'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ zipBase64: base64 })
+        });
+
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json.error || 'Geri yükleme başarısız oldu.');
+        }
+
+        alert(`Tam Sistem Arşivi Başarıyla Geri Yüklendi!\n\n• Veritabanı ve ayarlar güncellendi\n• ${json.docCount || 0} adet çalışan evrak dosyası yüklendi\n• ${json.certFileCount || 0} adet sertifika PDF/görseli geri yüklendi\n\nUygulama yenileniyor...`);
+        window.location.reload();
+      } catch (err: any) {
+        console.error("Full zip restore error:", err);
+        alert("Tam sistem arşivi geri yüklenirken bir hata oluştu: " + (err?.message || err));
+      } finally {
+        setIsRestoringZip(false);
+        if (e.target) e.target.value = '';
+      }
+    };
+    reader.onerror = () => {
+      alert("ZIP dosyası okunamadı.");
+      setIsRestoringZip(false);
+      if (e.target) e.target.value = '';
+    };
+    reader.readAsDataURL(file);
+  };
+
   const formatContent = (pattern: string, values: Record<string, string>) => {
       if (!pattern) return '';
       return pattern.replace(/{([^{}]+)}/g, (match, rawLabel) => {
@@ -1528,24 +2318,25 @@ const App = () => {
 
          const isShortRequest = label.endsWith('_kisa');
          const cleanLabel = isShortRequest ? label.replace('_kisa', '') : label;
-         let val = values[cleanLabel];
+         let val = values ? values[cleanLabel] : undefined;
          
          // Preview handling for system-generated fields
          if (val === undefined && (cleanLabel === normalizeKey('Seri No') || cleanLabel === normalizeKey('Seri Numarasi') || cleanLabel === normalizeKey('Sertifika No'))) {
+             if (editingCertificate?.serialNo) return editingCertificate.serialNo;
              return 'PRC-XXXXXXXX';
          }
          
-         if (val === undefined) return match;
-         if (val.startsWith('data:')) {
+         if (val === undefined || val === null) return match;
+         if (typeof val === 'string' && val.startsWith('data:')) {
              const sig = signatures.find(s => s.url === val);
              return sig ? sig.name : 'Gorsel'; 
          }
          if (isShortRequest) {
-             const company = companies.find(c => turkishToLower(c.name) === turkishToLower(val));
+             const company = companies.find(c => c && c.name && turkishToLower(c.name) === turkishToLower(String(val || '')));
              if (company) return company.shortName;
              return val; 
          }
-         return val; 
+         return String(val); 
       });
   };
 
@@ -1614,6 +2405,9 @@ const App = () => {
 
                 if (el.type === ElementType.QRCODE || el.type === ElementType.TEXT) {
                    content = formatContent(el.content, activeValues);
+                } else if (el.type === ElementType.DATE) {
+                   const key = normalizeKey(el.label || el.id);
+                   content = activeValues[key] || formatContent(el.content, activeValues);
                 } else {
                    const key = normalizeKey(el.label || '');
                    content = activeValues[key] || el.content;
@@ -1638,7 +2432,7 @@ const App = () => {
                     continue; 
                 }
 
-                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN) {
+                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN || el.type === ElementType.DATE) {
                     ctx.font = `${el.fontStyle === 'italic' ? 'italic ' : ''}${el.fontWeight || 400} ${el.fontSize}px ${el.fontFamily?.split(',')[0]}`;
                     ctx.fillStyle = el.color || '#000';
                     const align = el.textAlign || 'center';
@@ -1743,9 +2537,146 @@ const App = () => {
     await new Promise(r => setTimeout(r, 50));
 
     try {
+        // 1. Generate ONE unified bundle serial number (shared across all certificates for this person)
+        // If editing, reuse existing serial number to update record in-place
+        const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
+        const bundleSerialNo = editingCertificate?.serialNo || `PRC-${baseSerial}`;
+        const activeValues = { 
+            ...fillValues, 
+            'seri no': bundleSerialNo, 
+            'seri numarasi': bundleSerialNo, 
+            'sertifika no': bundleSerialNo 
+        };
+
+        // 2. Resolve Company
+        let companyVal = '';
+        for (const [k, v] of Object.entries(activeValues)) {
+            if (v && typeof v === 'string') {
+                const lk = k.toLowerCase();
+                if (!companyVal && (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket') || lk.includes('company'))) {
+                    companyVal = v;
+                }
+            }
+        }
+
+        // 3. Resolve Training Date (Toplu sertifika üretiminde birden fazla tarih varsa EN ERKEN / İLK GÜN dikkate alınır)
+        const allDateCandidates: { key?: string; value: string }[] = [];
+
+        for (const proj of targetProjects) {
+            const bSide = getActiveSideData(proj, 'back');
+            for (const s of [proj.front, bSide]) {
+                if (!s) continue;
+                for (const el of s.elements) {
+                    if (el.type === ElementType.DATE && el.dateKind !== 'validity') {
+                        const k = normalizeKey(el.label || el.id);
+                        const val = activeValues[k] || el.content;
+                        if (val && typeof val === 'string' && val.trim()) {
+                            allDateCandidates.push({ key: k, value: val });
+                        }
+                    }
+                }
+            }
+        }
+
+        for (const [k, v] of Object.entries(activeValues)) {
+            const lk = k.toLowerCase();
+            if ((lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk) && typeof v === 'string' && v.trim()) {
+                allDateCandidates.push({ key: k, value: v });
+            }
+        }
+
+        const earliestTr = findEarliestTrainingDate(allDateCandidates);
+        const resolvedTrKey = selectedTrainingDateKey && activeValues[selectedTrainingDateKey]
+            ? selectedTrainingDateKey
+            : null;
+        const trDate = earliestTr 
+            ? earliestTr.formatted 
+            : (resolvedTrKey && typeof activeValues[resolvedTrKey] === 'string' ? activeValues[resolvedTrKey] : '');
+
+        // 3c. Ortak referans başlangıç tarihini en erken gün ile senkronize et
+        if (trDate) {
+            const syncKeys = [
+                'tarih', 'tarihi', 'eğitim tarihi', 'egitim tarihi', 'egitim_tarihi',
+                'başlangıç tarihi', 'baslangic tarihi', 'baslangic_tarihi',
+                'Tarih', 'Eğitim Tarihi', 'Başlangıç Tarihi'
+            ];
+            for (const sk of syncKeys) {
+                activeValues[sk] = trDate;
+            }
+        }
+
+        // 4. Match Company (Turkish-aware)
+        let matchedComp = companies.find(c => 
+            (companyVal && c.id === companyVal) ||
+            (companyVal && turkishToLower(c.name) === turkishToLower(companyVal)) || 
+            (c.shortName && companyVal && turkishToLower(c.shortName) === turkishToLower(companyVal))
+        );
+
+        const dangerClass = matchedComp?.dangerClass || 'cok_tehlikeli';
+        const years = matchedComp?.validityYears || getValidityYears(dangerClass);
+        const { expiryIso, expiryDisplay } = calculateExpiryDate(trDate, dangerClass, preferSingleDateExpiry);
+
+        // Update validity fields in activeValues before rendering PDFs
+        const expKeys = [
+            'gecerlilik tarihi', 'geçerlilik tarihi', 'gecerlilik_tarihi', 'geçerlilik_tarihi',
+            'bitiş tarihi', 'bitis tarihi', 'bitiş_tarihi', 'bitis_tarihi',
+            'gecerlilik', 'geçerlilik', 'bitis', 'bitiş',
+            'Geçerlilik Tarihi', 'Bitiş Tarihi'
+        ];
+        for (const ek of expKeys) {
+            activeValues[ek] = expiryDisplay;
+        }
+
+        // Auto-register company if it doesn't exist yet so it appears in Firmalar
+        if (!matchedComp && companyVal.trim()) {
+            const newComp: Company = {
+                id: Date.now().toString() + '.' + Math.random().toString().slice(2, 8),
+                name: companyVal.trim(),
+                shortName: companyVal.trim().substring(0, 15).toUpperCase().replace(/\s+/g, '_'),
+                dangerClass,
+                validityYears: years,
+                createdAt: Date.now()
+            };
+            matchedComp = newComp;
+            setCompanies(prev => [newComp, ...prev]);
+            try {
+                const token = localStorage.getItem('vps_session_token');
+                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                fetch(getApiUrl('/api/save'), {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ companies: [newComp, ...companies] })
+                }).catch(() => {});
+            } catch (e) {}
+        }
+
+        // 5. Resolve Recipient Name & TC
+        let recipientName = activeValues['ad soyad'] || activeValues['Ad Soyad'] || activeValues['ad_soyad'] || '';
+        if (!recipientName) {
+            for (const [k, v] of Object.entries(activeValues)) {
+                const lk = k.toLowerCase();
+                if (lk.includes('ad') && (lk.includes('soyad') || lk.includes('isim')) && typeof v === 'string') {
+                    recipientName = v;
+                    break;
+                }
+            }
+        }
+
+        let recipientTc = '';
+        for (const [k, v] of Object.entries(activeValues)) {
+            const lk = k.toLowerCase();
+            if ((lk.includes('tc') || lk.includes('tckn') || lk.includes('kimlik')) && typeof v === 'string') {
+                recipientTc = v;
+                break;
+            }
+        }
+
+        const certImages: string[] = [];
+
         if (exportMode === 'single') {
             const firstProj = targetProjects[0];
-            const filename = generateFilename(firstProj.filenamePattern || 'Sertifikalar_Birlestirilmis', fillValues);
+            const filename = generateFilename(firstProj.filenamePattern || 'Sertifikalar_Birlestirilmis', activeValues);
 
             const pdf = new jsPDF({
                 orientation: firstProj.width > firstProj.height ? 'landscape' : 'portrait',
@@ -1755,44 +2686,9 @@ const App = () => {
 
             for (let i = 0; i < targetProjects.length; i++) {
                 const proj = targetProjects[i];
-                
-                const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
-                const serialNo = `PRC-${baseSerial}`;
-                const activeValues = { ...fillValues, 'seri no': serialNo, 'seri numarasi': serialNo, 'sertifika no': serialNo };
-
                 const certImage = await renderProjectToPDF(pdf, proj, i === 0, activeValues);
+                if (certImage) certImages.push(certImage);
 
-                let companyVal = '';
-                for (const [k, v] of Object.entries(activeValues)) {
-                    if (v && typeof v === 'string') {
-                        const lk = k.toLowerCase();
-                        if (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket') || lk.includes('company')) {
-                            companyVal = v;
-                            break;
-                        }
-                    }
-                }
-
-                try {
-                    const token = localStorage.getItem('vps_session_token');
-                    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                    if (token) headers['Authorization'] = `Bearer ${token}`;
-                    await fetch(getApiUrl('/api/issue'), {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({
-                            serialNo,
-                            company: companyVal,
-                            fields: getVerificationPayload(activeValues),
-                            projects: [proj.name],
-                            date: new Date().toISOString(),
-                            image: certImage
-                          })
-                    });
-                } catch (e) {
-                   console.error("Backend issue error", e);
-                }
-                
                 // Important yield for UI responsiveness
                 if (i % 2 === 0) {
                     setProgress(Math.round(((i + 1) / targetProjects.length) * 100));
@@ -1809,11 +2705,6 @@ const App = () => {
             const usedNames = new Set<string>();
 
             for (const proj of targetProjects) {
-                // Generate unique Serial Number for this certificate
-                const baseSerial = Math.floor(10000000 + Math.random() * 90000000).toString();
-                const serialNo = `PRC-${baseSerial}`;
-                const activeValues = { ...fillValues, 'seri no': serialNo, 'seri numarasi': serialNo, 'sertifika no': serialNo };
-
                 // Create a fresh instance for each file to keep memory low
                 const pdf = new jsPDF({
                     orientation: proj.width > proj.height ? 'landscape' : 'portrait',
@@ -1822,38 +2713,8 @@ const App = () => {
                 });
 
                 const certImage = await renderProjectToPDF(pdf, proj, true, activeValues);
+                if (certImage) certImages.push(certImage);
 
-                let companyVal = '';
-                for (const [k, v] of Object.entries(activeValues)) {
-                    if (v && typeof v === 'string') {
-                        const lk = k.toLowerCase();
-                        if (lk.includes('firma') || lk.includes('kurum') || lk.includes('şirket') || lk.includes('sirket') || lk.includes('company')) {
-                            companyVal = v;
-                            break;
-                        }
-                    }
-                }
-
-                // Save to verification system
-                try {
-                    const token = localStorage.getItem('vps_session_token');
-                    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                    if (token) headers['Authorization'] = `Bearer ${token}`;
-                    await fetch(getApiUrl('/api/issue'), {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({
-                            serialNo,
-                            company: companyVal,
-                            fields: getVerificationPayload(activeValues),
-                            projects: [proj.name],
-                            date: new Date().toISOString(),
-                            image: certImage
-                          })
-                    });
-                } catch (e) {
-                   console.error("Backend issue error", e);
-                }
                 // Generate base filename
                 let rawName = generateFilename(proj.filenamePattern || `Sertifika-${proj.name}`, activeValues);
                 let baseName = rawName.replace(/\.pdf$/i, '');
@@ -1870,8 +2731,6 @@ const App = () => {
                 usedNames.add(uniqueName);
 
                 const pdfData = pdf.output('arraybuffer');
-                
-                // Add to zip
                 zip.file(uniqueName, pdfData);
                 savedCount++;
                 
@@ -1883,8 +2742,39 @@ const App = () => {
             setProgress(99); // Generating zip
             const zipBlob = await zip.generateAsync({ type: 'blob' });
             await downloadFile(zipBlob, exportFilename, 'application/zip', fileHandle);
+        }
 
-            alert(`${savedCount} adet dosya başarıyla ZIP olarak indirildi!`);
+        // 6. Save ONE unified certificate record for this person (with all projects bundled together)
+        try {
+            const token = localStorage.getItem('vps_session_token');
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            await fetch(getApiUrl('/api/issue'), {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    serialNo: bundleSerialNo,
+                    company: companyVal,
+                    companyId: matchedComp?.id,
+                    dangerClass,
+                    validityYears: years,
+                    trainingDate: trDate,
+                    expiryDate: expiryIso,
+                    recipientName,
+                    recipientTc,
+                    fields: getVerificationPayload(activeValues),
+                    projects: targetProjects.map(p => p.name),
+                    date: new Date().toISOString(),
+                    image: certImages[0] || '',
+                    images: certImages
+                })
+            });
+            // Immediately reload fresh certificates into state so Firmalar & Dashboard reflect them!
+            await fetchCertificatesAndStats();
+            clearFillData();
+            alert(`Sertifika başarıyla oluşturuldu!\n\n${recipientName || 'Çalışan'} (TC: ${recipientTc || '-'}) kartına yeni sertifika olarak kaydedildi.`);
+        } catch (e) {
+            console.error("Backend issue error", e);
         }
     } catch (e: any) {
         console.error("Export failed", e);
@@ -1916,6 +2806,10 @@ const App = () => {
           if (val) return { ...el, content: maskTCKN(val) };
           return el;
       }
+      if (el.type === ElementType.DATE) {
+          if (val) return { ...el, content: val };
+          return { ...el, content: formatContent(el.content, fillValues) };
+      }
       if (val) return { ...el, content: val };
       return el; 
     });
@@ -1924,133 +2818,93 @@ const App = () => {
   return (
     <div className="flex flex-col md:flex-row h-[100dvh] bg-slate-900 text-slate-200 overflow-hidden font-sans selection:bg-amber-500/30 w-full relative">
       
-      {/* SERVER SAVE MODAL */}
-      
-
-      {/* MOBILE HEADER */}
-      <div className="md:hidden flex items-center justify-between p-4 bg-slate-950 border-b border-slate-800 shrink-0 z-40 w-full">
-         <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-700 rounded-lg flex items-center justify-center shadow-lg">
-               <FileText className="text-white" size={16} />
-            </div>
-            <span className="font-bold text-white text-lg tracking-tight">ProCertify</span>
-         </div>
-         <button onClick={() => setIsMobileNavOpen(true)} className="p-2 text-slate-400 hover:text-white transition bg-slate-900 rounded-lg border border-slate-700">
-           <Menu size={20} />
-         </button>
-      </div>
-
-      {/* MOBILE DRAWER OVERLAY */}
-      {isMobileNavOpen && (
-          <div 
-            className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] animate-in fade-in transition-all" 
-            onClick={() => setIsMobileNavOpen(false)}
-          />
-      )}
-
       {/* SIDEBAR NAVIGATION */}
-      <div className={`fixed inset-y-0 left-0 z-[100] transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 w-[240px] md:w-20 bg-slate-950 md:border-r border-slate-800 flex flex-col items-center py-6 px-4 md:px-0 gap-6 md:gap-8 shrink-0 select-none shadow-2xl md:shadow-none ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        
-        {/* Mobile Sidebar Header */}
-        <div className="flex md:hidden items-center justify-between w-full pb-4 border-b border-slate-800">
-           <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-700 rounded-lg flex items-center justify-center shadow-lg">
-                 <FileText className="text-white" size={16} />
-              </div>
-              <span className="font-bold text-white text-lg tracking-tight">Menü</span>
-           </div>
-           <button onClick={() => setIsMobileNavOpen(false)} className="p-1.5 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition border border-slate-700">
-             <X size={20} />
-           </button>
-        </div>
-
-        <div className="hidden md:flex w-10 h-10 bg-gradient-to-br from-amber-500 to-amber-700 rounded-xl items-center justify-center shadow-lg shadow-amber-900/40">
-           <FileText className="text-white" size={24} />
-        </div>
-        
-        <div className="flex flex-col w-full gap-2 flex-1 justify-start">
-           {/* Doldur Tab - Always available */}
-           <button 
-             onClick={() => { setCurrentView('fill'); setIsMobileNavOpen(false); }} 
-             className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'fill' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 md:hover:bg-transparent'}`}
-             title="Sertifika Doldurma Modu"
-           >
-             <PenTool size={20} className="md:w-6 md:h-6 shrink-0" />
-             <span className="text-sm md:text-[10px] font-medium block">Doldur</span>
-             {currentView === 'fill' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}
-           </button>
-
-           {/* Separate Entrance for Other Sections (Projeler, Şablon, Ayarlar) */}
-           {!isAdminAuthenticated ? (
-             <div className="pt-3 border-t border-slate-800/80 w-full mt-2">
-               <button 
-                 onClick={() => handleRequestAdminView('projects')} 
-                 className="p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 transition-all rounded-lg md:rounded-none group"
-                 title="Yönetim & Tasarım Paneli (Şifre Korumalı)"
-               >
-                 <div className="relative">
-                   <Lock size={18} className="md:w-5 md:h-5 shrink-0 text-amber-500 group-hover:scale-110 transition-transform" />
-                 </div>
-                 <span className="text-sm md:text-[9px] font-medium block text-center leading-tight">Yönetici Paneli</span>
-               </button>
-             </div>
-           ) : (
-             <div className="pt-3 border-t border-slate-800/80 w-full mt-2 flex flex-col gap-1.5">
-               <div className="hidden md:flex px-1 py-0.5 justify-center">
-                 <span className="text-[8px] uppercase tracking-wider text-amber-400 font-bold bg-amber-500/10 px-1 rounded border border-amber-500/20">Yönetim</span>
-               </div>
-               <div className="md:hidden px-3 py-1 flex items-center justify-between">
-                 <span className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">Yönetim Paneli</span>
-                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
-               </div>
-
-               <button 
-                 onClick={() => { setCurrentView('projects'); setIsMobileNavOpen(false); }} 
-                 className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'projects' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 md:hover:bg-transparent'}`}
-                 title="Projelerim"
-               >
-                 <FolderOpen size={20} className="md:w-6 md:h-6 shrink-0" />
-                 <span className="text-sm md:text-[10px] font-medium block">Projeler</span>
-                 {currentView === 'projects' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}
-               </button>
-
-               <button 
-                 onClick={() => { setCurrentView('template'); setIsMobileNavOpen(false); }} 
-                 className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'template' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 md:hover:bg-transparent'}`}
-                 title="Şablon Tasarımı"
-               >
-                 <LayoutTemplate size={20} className="md:w-6 md:h-6 shrink-0" />
-                 <span className="text-sm md:text-[10px] font-medium block">Şablon</span>
-                 {currentView === 'template' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}
-               </button>
-
-               <button 
-                 onClick={() => { setCurrentView('settings'); setIsMobileNavOpen(false); }} 
-                 className={`p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 transition-all relative rounded-lg md:rounded-none ${currentView === 'settings' ? 'text-amber-500 bg-slate-800/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 md:hover:bg-transparent'}`}
-                 title="Ayarlar & Varlıklar"
-               >
-                 <Settings size={20} className="md:w-6 md:h-6 shrink-0" />
-                 <span className="text-sm md:text-[10px] font-medium block">Ayarlar</span>
-                 {currentView === 'settings' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-r hidden md:block"></div>}
-               </button>
-
-               <button 
-                 onClick={handleAdminLogout} 
-                 className="p-3 md:p-2 w-full flex justify-start md:justify-center md:flex-col items-center gap-3 md:gap-1 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-all rounded-lg md:rounded-none mt-2" 
-                 title="Yönetici Oturumunu Kilitle"
-               >
-                 <Lock size={16} className="md:w-5 md:h-5 shrink-0" />
-                 <span className="text-sm md:text-[9px] font-medium block">Kilitle</span>
-               </button>
-             </div>
-           )}
-        </div>
-        <div className="flex flex-col items-center gap-2 pb-2 mt-auto"><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:text-white transition flex items-center md:block gap-2"><Github size={20} className="md:hidden"/><span className="md:hidden text-xs">GitHub'da Görüntüle</span></a><span className="text-[9px] text-slate-600 font-mono">{APP_VERSION}</span></div>
-      </div>
+      <Sidebar 
+        currentTab={currentView}
+        onTabChange={(tab) => {
+          setCurrentView(tab);
+          if (tab !== 'company-detail') {
+            setSelectedCompanyForDetail(null);
+          }
+          if (tab === 'companies' || tab === 'company-detail' || tab === 'dashboard') {
+            fetchCertificatesAndStats();
+          }
+        }}
+        userRole={sessionUser?.role || 'user'}
+        userName={sessionUser?.name || 'Kullanıcı'}
+        onLogout={handleLogout}
+        stats={dashboardStats}
+      />
 
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         
+        {/* VIEW: DASHBOARD */}
+        {currentView === 'dashboard' && (
+          <DashboardView 
+            onNavigateToFill={() => setCurrentView('fill')}
+            onNavigateToCompany={(companyName) => {
+              const comp = companies.find(c => 
+                c.id === companyName ||
+                turkishToLower(c.name) === turkishToLower(companyName) || 
+                (c.shortName && turkishToLower(c.shortName) === turkishToLower(companyName))
+              );
+              if (comp) {
+                setSelectedCompanyForDetail(comp);
+                setCurrentView('company-detail');
+                fetchCertificatesAndStats();
+              } else {
+                setCurrentView('companies');
+                fetchCertificatesAndStats();
+              }
+            }}
+            onEditCertificate={handleEditCertificate}
+            onOpenEmployee={(tcOrName) => {
+              setActiveEmployeeIdOrTc(tcOrName);
+              setShowEmployeeModal(true);
+            }}
+            getApiUrl={getApiUrl}
+          />
+        )}
+
+        {/* VIEW: COMPANIES */}
+        {currentView === 'companies' && (
+          <CompaniesView 
+            companies={companies}
+            certificates={allCertificates}
+            onSelectCompany={(company) => {
+              setSelectedCompanyForDetail(company);
+              setCurrentView('company-detail');
+              fetchCertificatesAndStats();
+            }}
+            isAdmin={isAdmin}
+            onOpenSettings={() => setCurrentView('settings')}
+          />
+        )}
+
+        {/* VIEW: COMPANY DETAIL */}
+        {currentView === 'company-detail' && selectedCompanyForDetail && (
+          <CompanyDetailView 
+            company={selectedCompanyForDetail}
+            certificates={allCertificates}
+            onBack={() => {
+              setSelectedCompanyForDetail(null);
+              setCurrentView('companies');
+            }}
+            onNavigateToFillWithCompany={(companyName) => {
+              handleFillFieldChange('Firma', companyName, ElementType.COMPANY);
+              handleFillFieldChange('firma', companyName, ElementType.COMPANY);
+              setCurrentView('fill');
+            }}
+            onEditCertificate={handleEditCertificate}
+            onOpenEmployee={(tcOrName) => {
+              setActiveEmployeeIdOrTc(tcOrName);
+              setShowEmployeeModal(true);
+            }}
+            getApiUrl={getApiUrl}
+          />
+        )}
+
         {/* VIEW: PROJECTS LIST */}
         {currentView === 'projects' && (
              <div className="flex-1 bg-slate-900 p-4 md:p-10 overflow-y-auto">
@@ -2211,27 +3065,34 @@ const App = () => {
 
         {/* VIEW: TEMPLATE EDITOR */}
         {currentView === 'template' && (
-          <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-            <div className="w-full md:w-72 h-[40vh] md:h-auto bg-slate-800 border-b md:border-b-0 md:border-r border-slate-700 flex flex-col z-20 shadow-xl flex-shrink-0 select-none">
-               <div className="p-5 border-b border-slate-700 bg-slate-800 group relative">
+          <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-w-0">
+            {/* Left Sidebar */}
+            <div className="w-full md:w-80 h-[40vh] md:h-auto bg-slate-850 border-b md:border-b-0 md:border-r border-slate-700/80 flex flex-col z-20 shadow-2xl flex-shrink-0 select-none">
+               {/* Project Header */}
+               <div className="p-4 border-b border-slate-700/80 bg-slate-900/80 backdrop-blur">
                  {isEditingName ? (
-                     <input ref={projectNameInputRef} type="text" value={activeProject.name} onChange={(e) => updateProjectMeta({ name: e.target.value })} onBlur={() => setIsEditingName(false)} onKeyDown={(e) => e.key === 'Enter' && setIsEditingName(false)} className="w-full bg-slate-900 border border-amber-500 rounded px-2 py-1 text-sm text-white outline-none font-bold" />
+                     <input ref={projectNameInputRef} type="text" value={activeProject.name} onChange={(e) => updateProjectMeta({ name: e.target.value })} onBlur={() => setIsEditingName(false)} onKeyDown={(e) => e.key === 'Enter' && setIsEditingName(false)} className="w-full bg-slate-950 border border-amber-500 rounded-lg px-2.5 py-1.5 text-sm text-white outline-none font-bold" />
                  ) : (
-                     <div className="flex items-center justify-between group-hover:bg-slate-700/50 p-1 rounded -ml-1 cursor-pointer" onClick={() => setIsEditingName(true)}>
-                         <div className="overflow-hidden"><h2 className="text-lg font-bold text-white truncate" title={activeProject.name}>{activeProject.name}</h2><p className="text-xs text-slate-400">Şablon Düzenleyici</p></div>
-                         <Edit2 size={14} className="text-slate-500 opacity-0 group-hover:opacity-100 transition" />
+                     <div className="flex items-center justify-between group hover:bg-slate-800/60 p-1.5 rounded-lg -ml-1 cursor-pointer transition" onClick={() => setIsEditingName(true)}>
+                         <div className="overflow-hidden">
+                           <h2 className="text-base font-bold text-white truncate flex items-center gap-1.5" title={activeProject.name}>
+                             <span>{activeProject.name}</span>
+                             <Edit2 size={12} className="text-slate-500 opacity-60 group-hover:opacity-100 transition" />
+                           </h2>
+                           <p className="text-[11px] text-slate-400">Şablon Tasarım Stüdyosu</p>
+                         </div>
                      </div>
                  )}
-                 {/* Status Indicator */}
-                 <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-slate-700/60 text-xs">
-                    <span className="text-[11px] text-slate-400">Sertifika Listesi:</span>
+                 {/* Status & Orientation */}
+                 <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-slate-800 text-xs">
+                    <span className="text-[11px] text-slate-400">Sertifika Durumu:</span>
                     <button
                        type="button"
                        onClick={(e) => handleToggleProjectActive(activeProject.id, e)}
-                       className={`px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 transition border ${
+                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 transition border ${
                          activeProject.isActive !== false
                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                           : 'bg-slate-700 text-slate-300 border-slate-600 hover:bg-slate-600'
+                           : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750'
                        }`}
                        title={activeProject.isActive !== false ? "Pasife alarak sertifika listesinde gizleyin" : "Aktif ederek sertifika listesinde gösterin"}
                     >
@@ -2242,22 +3103,116 @@ const App = () => {
                        )}
                     </button>
                  </div>
+                 {/* Orientation Switcher */}
+                 <div className="mt-2.5 flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                     <button onClick={() => handleOrientationChange('landscape')} className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition ${activeProject.width > activeProject.height ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}><RectangleHorizontal size={14} /> Yatay Belge</button>
+                     <button onClick={() => handleOrientationChange('portrait')} className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition ${activeProject.height > activeProject.width ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}><RectangleVertical size={14} /> Dikey Belge</button>
+                 </div>
                </div>
                
-               <div className="p-4 space-y-6 overflow-y-auto custom-scrollbar">
-                 {/* ... Layout, Background, Components ... */}
-                 <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Sayfa Düzeni</h3>
-                    <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-700">
-                        <button onClick={() => handleOrientationChange('landscape')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-xs font-medium transition ${activeProject.width > activeProject.height ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}><RectangleHorizontal size={16} /> Yatay</button>
-                        <button onClick={() => handleOrientationChange('portrait')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-xs font-medium transition ${activeProject.height > activeProject.width ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}><RectangleVertical size={16} /> Dikey</button>
+               <div className="p-3.5 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+                 {/* Bileşen Ekle (2-Column Grid) */}
+                 <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold uppercase text-slate-400 tracking-wider">
+                      <span>Bileşenler</span>
+                      <span className="text-[10px] text-slate-500 font-normal">Tıkla & Ekle</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button onClick={() => addElement(ElementType.TEXT)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-blue-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 group-hover:bg-blue-500/20 shrink-0">
+                          <Type size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">Metin</div>
+                          <div className="text-[10px] text-slate-500">Alan ekle</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.DATE)} className="p-2.5 bg-amber-500/10 hover:bg-amber-500/20 hover:border-amber-500/60 border border-amber-500/30 rounded-xl flex items-center gap-2 transition text-xs text-amber-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
+                          <Calendar size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-amber-300">Tarih</div>
+                          <div className="text-[10px] text-amber-400/70">Başlangıç</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.COMPANY)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-emerald-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:bg-emerald-500/20 shrink-0">
+                          <Building size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">Firma</div>
+                          <div className="text-[10px] text-slate-500">Kurum adı</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.TCKN)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-purple-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:bg-purple-500/20 shrink-0">
+                          <ShieldCheck size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">TC No</div>
+                          <div className="text-[10px] text-slate-500">11 Hane</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.DROPDOWN)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-sky-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:bg-sky-500/20 shrink-0">
+                          <List size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">Seçenek</div>
+                          <div className="text-[10px] text-slate-500">Açılır liste</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.CHOICE_BOX)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-teal-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 group-hover:bg-teal-500/20 shrink-0">
+                          <CheckCircle2 size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">Seçim</div>
+                          <div className="text-[10px] text-slate-500">Evet/Hayır</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.QRCODE)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-rose-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 group-hover:bg-rose-500/20 shrink-0">
+                          <QrCode size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">QR Kod</div>
+                          <div className="text-[10px] text-slate-500">Doğrulama</div>
+                        </div>
+                      </button>
+
+                      <button onClick={() => addElement(ElementType.SIGNATURE)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-violet-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
+                        <div className="w-7 h-7 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 group-hover:bg-violet-500/20 shrink-0">
+                          <PenTool size={15} />
+                        </div>
+                        <div className="truncate">
+                          <div className="font-semibold text-slate-200 group-hover:text-white">İmza</div>
+                          <div className="text-[10px] text-slate-500">Yetkili imza</div>
+                        </div>
+                      </button>
+
+                      <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
+                      <button onClick={() => addElement(ElementType.IMAGE)} className="col-span-2 p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-amber-500/50 border border-slate-750 rounded-xl flex items-center justify-center gap-2 transition text-xs text-slate-200 group shadow-sm">
+                        <div className="w-6 h-6 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:bg-amber-500/20 shrink-0">
+                          <ImageIcon size={14} />
+                        </div>
+                        <span className="font-semibold text-slate-200 group-hover:text-white">Logo / Resim Ekle</span>
+                      </button>
                     </div>
                  </div>
-                 <div className="h-[1px] bg-slate-700"></div>
-                 <div className="space-y-3">
+
+                 {/* Arkaplan Yönetimi */}
+                 <div className="space-y-2 pt-2 border-t border-slate-800">
                     <div className="flex justify-between items-center">
-                        <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Arkaplan ({activeSide === 'front' ? 'Ön' : 'Arka'})</h3>
-                        <button onClick={() => variantFileInputRef.current?.click()} className="flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-500 px-2 py-1 rounded hover:bg-amber-500/20 transition">
+                        <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider">Arkaplan ({activeSide === 'front' ? 'Ön Yüz' : 'Arka Yüz'})</h3>
+                        <button onClick={() => variantFileInputRef.current?.click()} className="flex items-center gap-1 text-[11px] bg-amber-500/15 border border-amber-500/30 text-amber-400 px-2.5 py-1 rounded-lg hover:bg-amber-500/25 transition font-semibold">
                             <Plus size={12} /> Yeni Seçenek
                         </button>
                     </div>
@@ -2265,26 +3220,26 @@ const App = () => {
                     <input type="file" ref={variantFileInputRef} onChange={handleVariantUpload} accept="image/*" multiple className="hidden" />
                     
                     {activeProject && (
-                        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto custom-scrollbar pr-1 -mx-1 px-1">
+                        <div className="flex flex-col gap-1.5 max-h-44 overflow-y-auto custom-scrollbar pr-0.5">
                             <div 
                                 onClick={() => handleSelectVariant(activeSide, '')} 
-                                className={`group flex items-center justify-between p-2 rounded text-[11px] cursor-pointer transition border ${!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? 'bg-amber-500/10 border-amber-500/40 text-amber-200' : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'}`}
+                                className={`group flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer transition border ${!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? 'bg-amber-500/15 border-amber-500/50 text-amber-200 shadow-sm' : 'bg-slate-900/90 border-slate-750 text-slate-300 hover:bg-slate-800'}`}
                             >
                                 <div className="flex items-center gap-2 truncate flex-1 font-medium">
-                                    {!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? <Check size={12} className="text-amber-500" /> : <div className="w-3 h-3" />}
+                                    {!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? <Check size={13} className="text-amber-400 font-bold" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-700" />}
                                     <span>Varsayılan Arkaplan</span>
                                 </div>
-                                <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-all">
-                                    <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="p-1 text-slate-400 hover:text-amber-500 transition-all" title="Arkaplanı Değiştir">
-                                        <Upload size={12} />
+                                <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100 transition-all">
+                                    <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="p-1 text-slate-400 hover:text-amber-400 transition-all" title="Arkaplanı Değiştir">
+                                        <Upload size={13} />
                                     </button>
                                     <button onClick={(e) => { 
                                         e.stopPropagation(); 
                                         if(confirm('Arkaplanı temizlemek istediğinize emin misiniz?')) {
                                             updateProjectSide(activeSide, { bgUrl: '' });
                                         }
-                                    }} className="p-1 text-slate-400 hover:text-red-500 transition-all" title="Arkaplanı Temizle">
-                                        <Trash2 size={12} />
+                                    }} className="p-1 text-slate-400 hover:text-rose-400 transition-all" title="Arkaplanı Temizle">
+                                        <Trash2 size={13} />
                                     </button>
                                 </div>
                             </div>
@@ -2301,10 +3256,10 @@ const App = () => {
                                         <div 
                                             key={v.id} 
                                             onClick={() => handleSelectVariant(side, v.id)} 
-                                            className={`group flex items-center justify-between p-2 rounded text-[11px] cursor-pointer transition border ${isSelected ? 'bg-amber-500/10 border-amber-500/40 text-amber-200' : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'}`}
+                                            className={`group flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer transition border ${isSelected ? 'bg-amber-500/15 border-amber-500/50 text-amber-200 shadow-sm' : 'bg-slate-900/90 border-slate-750 text-slate-300 hover:bg-slate-800'}`}
                                         >
                                             <div className="flex items-center gap-2 truncate flex-1">
-                                                {isSelected ? <Check size={12} className="text-amber-500" /> : <div className="w-3 h-3" />}
+                                                {isSelected ? <Check size={13} className="text-amber-400 font-bold" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-700" />}
                                                 <input 
                                                     type="text" 
                                                     value={v.name || ''} 
@@ -2313,12 +3268,12 @@ const App = () => {
                                                         handleRenameVariant(side, v.id, e.target.value);
                                                     }}
                                                     onClick={(e) => e.stopPropagation()}
-                                                    className="bg-transparent border-none text-[11px] focus:outline-none w-full text-inherit font-medium underline decoration-transparent focus:decoration-amber-500/30"
+                                                    className="bg-transparent border-none text-xs focus:outline-none w-full text-inherit font-medium underline decoration-transparent focus:decoration-amber-500/40"
                                                     placeholder="Varyant İsmi"
                                                 />
                                             </div>
-                                            <button onClick={(e) => handleDeleteVariant(side, v.id, e)} className="p-1 text-slate-400 hover:text-red-500 opacity-60 group-hover:opacity-100 transition-all" title="Varyantı Sil">
-                                                <Trash2 size={12} />
+                                            <button onClick={(e) => handleDeleteVariant(side, v.id, e)} className="p-1 text-slate-400 hover:text-rose-400 opacity-70 group-hover:opacity-100 transition-all" title="Varyantı Sil">
+                                                <Trash2 size={13} />
                                             </button>
                                         </div>
                                     );
@@ -2327,98 +3282,207 @@ const App = () => {
                         </div>
                     )}
                  </div>
-                 <div className="h-[1px] bg-slate-700"></div>
-                 <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Bileşen Ekle</h3>
-                    <button onClick={() => addElement(ElementType.TEXT)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><Type size={18} /> Metin Alanı</button>
-                    <button onClick={() => addElement(ElementType.DROPDOWN)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><List size={18} /> Seçenekli Alan</button>
-                    <button onClick={() => addElement(ElementType.COMPANY)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><Building size={18} /> Firma Ekle</button>
-                    <button onClick={() => addElement(ElementType.TCKN)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><ShieldCheck size={18} /> TC Kimlik No</button>
-                    <button onClick={() => addElement(ElementType.CHOICE_BOX)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><CheckCircle2 size={18} /> Seçim Kutusu</button>
-                    <button onClick={() => addElement(ElementType.QRCODE)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><QrCode size={18} /> QR Kod</button>
-                    <button onClick={() => addElement(ElementType.SIGNATURE)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><PenTool size={18} /> İmza Alanı</button>
-                    <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
-                    <button onClick={() => addElement(ElementType.IMAGE)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-lg flex items-center justify-center gap-2 transition text-sm text-slate-200"><ImageIcon size={18} /> Logo / Resim</button>
-                 </div>
-                 {/* QR & Filename Settings */}
+
+                 {/* QR İçerik Ayarı (Sadece QR seçiliyken) */}
                  {selectedElement && selectedElement.type === ElementType.QRCODE && (
-                   <div className="space-y-3 mt-4 pt-4 border-t border-slate-700 animate-in fade-in slide-in-from-left-4">
-                       <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2"><QrCode size={14} className="text-amber-500"/> QR İçerik Ayarları</h3>
-                       <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 space-y-2">
-                           <p className="text-[10px] text-slate-400">QR Koda eklenecek verileri seçin:</p>
-                           <textarea rows={3} value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white focus:border-amber-500 outline-none resize-none" placeholder="Örn: {Ad Soyad} - {Tarih}" />
+                   <div className="space-y-2 pt-2 border-t border-slate-800 animate-in fade-in duration-150">
+                       <h3 className="text-xs font-bold uppercase text-amber-400 tracking-wider flex items-center gap-1.5"><QrCode size={13} /> QR İçerik Formatı</h3>
+                       <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-750 space-y-2">
+                           <p className="text-[10px] text-slate-400">QR Koda eklenecek metin veya etiketler:</p>
+                           <textarea rows={3} value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-amber-500 outline-none resize-none font-mono" placeholder="Örn: {Ad Soyad} - {Tarih}" />
                        </div>
                    </div>
                  )}
-                 <div className="h-[1px] bg-slate-700 mt-4"></div>
-                 <div className="space-y-3 mt-4">
-                      <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2"><FileBadge size={14} /> Proje Ayarları & Çıktı</h3>
-                      <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 block">PDF Dosya Adı Formatı</label>
-                          <input type="text" value={activeProject.filenamePattern || 'Sertifika-{Ad Soyad}'} onChange={(e) => updateProjectMeta({ filenamePattern: e.target.value })} className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white focus:border-amber-500 outline-none" placeholder="Örn: {Ad Soyad}-{Tarih}" />
+
+                 {/* Proje Ayarları & Çıktı */}
+                 <div className="space-y-2 pt-2 border-t border-slate-800">
+                      <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider flex items-center gap-1.5"><FileBadge size={13} /> PDF Dosya Adı & Şablon</h3>
+                      <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-750 space-y-2">
+                          <label className="text-[10px] font-bold text-slate-400 block">PDF İndirme Dosya Adı:</label>
+                          <input type="text" value={activeProject.filenamePattern || 'Sertifika-{Ad Soyad}'} onChange={(e) => updateProjectMeta({ filenamePattern: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-amber-500 outline-none font-mono" placeholder="Örn: {Ad Soyad}-{Tarih}" />
                           <div className="text-[9px] text-slate-500 mb-1">Mevcut etiketleri ekle:</div>
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto custom-scrollbar">
                               {getProjectLabels().map(label => (
-                                  <button key={label} onClick={() => { const current = activeProject.filenamePattern || ''; updateProjectMeta({ filenamePattern: current + `{${label}}` }); }} className={`text-[10px] px-2 py-0.5 rounded transition border border-slate-600 hover:border-slate-500 ${label.endsWith('_Kisa') ? 'bg-slate-800 text-amber-500 border-amber-500/30' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`} title={label.endsWith('_Kisa') ? "Firma kısaltmasını ekle" : "Değeri ekle"}>+ {label}</button>
+                                  <button key={label} onClick={() => { const current = activeProject.filenamePattern || ''; updateProjectMeta({ filenamePattern: current + `{${label}}` }); }} className={`text-[10px] px-2 py-0.5 rounded-md transition border border-slate-700 hover:border-slate-600 ${label.endsWith('_Kisa') ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`} title={label.endsWith('_Kisa') ? "Firma kısaltmasını ekle" : "Değeri ekle"}>+ {label}</button>
                               ))}
                           </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-2 pt-1">
                         <input type="file" ref={htmlTemplateInputRef} onChange={handleImportHTMLTemplate} accept=".json" className="hidden" />
-                        <button onClick={() => htmlTemplateInputRef.current?.click()} className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-bold shadow-sm border border-slate-600 flex items-center justify-center gap-1 transition"><Import size={12} /> ŞABLON YÜKLE</button>
-                        <button onClick={handleSaveTemplateAsHTML} className="w-full py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-[10px] font-bold shadow-sm border border-purple-600 flex items-center justify-center gap-1 transition"><FileCode size={12} /> ŞABLON KAYDET</button>
+                        <button onClick={() => htmlTemplateInputRef.current?.click()} className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-[11px] font-bold shadow-sm border border-slate-700 flex items-center justify-center gap-1.5 transition"><Import size={13} /> Şablon Yükle</button>
+                        <button onClick={handleSaveTemplateAsHTML} className="w-full py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-xl text-[11px] font-bold shadow-sm border border-purple-500/30 flex items-center justify-center gap-1.5 transition"><FileCode size={13} /> Şablon Kaydet</button>
                       </div>
                  </div>
                </div>
             </div>
 
-            {/* Canvas Area with Top Properties Bar */}
-            <div className="flex-1 flex flex-col relative bg-[#0b0f19]">
-              <div className="h-16 bg-slate-800 border-b border-slate-700 flex items-center px-6 gap-4 justify-between relative select-none">
-                 <div className="flex items-center gap-3 overflow-x-auto flex-1 no-scrollbar pr-4">
-                     {selectedElement ? (
-                    <>
-                        {/* ... Properties Inputs (Font, Color, Align etc) ... */}
-                        <span className="text-xs font-bold text-amber-500 uppercase whitespace-nowrap">{selectedElement.type === ElementType.COMPANY ? 'FİRMA' : (selectedElement.type === ElementType.CHOICE_BOX ? 'SEÇİM' : selectedElement.type)}</span>
-                        <input value={selectedElement.label || ''} onChange={(e) => updateElement(selectedElement.id, { label: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-32 focus:border-amber-500 outline-none shrink-0" placeholder="Etiket / Soru" />
-                        {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DROPDOWN || selectedElement.type === ElementType.QRCODE || selectedElement.type === ElementType.COMPANY || selectedElement.type === ElementType.TCKN || selectedElement.type === ElementType.CHOICE_BOX) && (
-                        <>
-                            <div className="w-[1px] h-6 bg-slate-600 mx-2 shrink-0"></div>
-                            {selectedElement.type !== ElementType.QRCODE && (
-                            <>
-                                <select value={selectedElement.fontFamily} onChange={(e) => updateElement(selectedElement.id, { fontFamily: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-36 shrink-0">{FONTS.map(group => (<optgroup key={group.group} label={group.group}>{group.options.map(f => (<option key={f.value} value={f.value}>{f.name}</option>))}</optgroup>))}</select>
-                                <select value={selectedElement.fontWeight || 400} onChange={(e) => updateElement(selectedElement.id, { fontWeight: Number(e.target.value) })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-24 shrink-0">{FONT_WEIGHTS.map(w => (<option key={w.value} value={w.value}>{w.name}</option>))}</select>
-                                {selectedElement.type !== ElementType.CHOICE_BOX && (<div className="flex items-center bg-slate-900 rounded border border-slate-600 shrink-0"><button onClick={() => updateElement(selectedElement.id, { textAlign: 'left' })} className={`p-1.5 hover:bg-slate-700 ${selectedElement.textAlign === 'left' ? 'bg-slate-700 text-amber-500' : 'text-slate-400'}`}><AlignLeft size={16} /></button><div className="w-[1px] h-4 bg-slate-700"></div><button onClick={() => updateElement(selectedElement.id, { textAlign: 'center' })} className={`p-1.5 hover:bg-slate-700 ${(!selectedElement.textAlign || selectedElement.textAlign === 'center') ? 'bg-slate-700 text-amber-500' : 'text-slate-400'}`}><AlignCenter size={16} /></button><div className="w-[1px] h-4 bg-slate-700"></div><button onClick={() => updateElement(selectedElement.id, { textAlign: 'right' })} className={`p-1.5 hover:bg-slate-700 ${selectedElement.textAlign === 'right' ? 'bg-slate-700 text-amber-500' : 'text-slate-400'}`}><AlignRight size={16} /></button></div>)}
-                                <button onClick={() => updateElement(selectedElement.id, { fontStyle: selectedElement.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`w-8 h-8 rounded flex items-center justify-center shrink-0 border ${selectedElement.fontStyle === 'italic' ? 'bg-slate-700 border-amber-500 text-amber-500' : 'bg-transparent border-transparent hover:bg-slate-800'}`}><Italic size={16} /></button>
-                                <input type="number" value={Math.round(selectedElement.fontSize || 0)} onChange={(e) => updateElement(selectedElement.id, { fontSize: Number(e.target.value) })} className="w-16 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm text-center shrink-0" title="Font Boyutu" />
-                            </>
-                            )}
-                            <input type="color" value={selectedElement.color} onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })} className="w-8 h-8 rounded bg-transparent border-none cursor-pointer shrink-0" title="Renk" />
-                            {selectedElement.type === ElementType.DROPDOWN && (<button onClick={() => setShowOptionManager(true)} className="flex items-center gap-1 bg-blue-700 hover:bg-blue-600 px-3 py-1 rounded text-xs text-white border border-blue-600 ml-2 whitespace-nowrap transition"><List size={12} /> Seçenekleri Düzenle ({selectedElement.options?.length || 0})</button>)}
-                            {selectedElement.type === ElementType.CHOICE_BOX && selectedElement.options && (<div className="flex items-center gap-2 ml-2 bg-slate-900 p-1 rounded border border-slate-600"><span className="text-[10px] text-slate-400">Varsayılan:</span><select value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-xs text-white outline-none">{selectedElement.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>)}
-                            {selectedElement.type === ElementType.TEXT && (<input value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm w-32 shrink-0" placeholder="Örn metin" />)}
-                        </>
-                        )}
-                        {selectedElement.type === ElementType.SIGNATURE && (<button onClick={() => setShowSigPermissions(true)} className="flex items-center gap-1 bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-xs text-white border border-slate-600 ml-2 whitespace-nowrap transition"><Filter size={12} /> İmza İzinleri ({selectedElement.allowedSignatureIds?.length || 'Tümü'})</button>)}
-                    </>
-                    ) : <span className="text-sm text-slate-500">Özellikler için bileşen seçin</span>}
-                 </div>
-                 <div className="flex items-center gap-2">
+            {/* Canvas Area with Locked-Height Top Properties Bar (Zero Layout Shift) */}
+            <div className="flex-1 flex flex-col relative bg-[#0b0f19] min-w-0 overflow-hidden">
+              <div className="h-14 min-h-[3.5rem] max-h-[3.5rem] bg-slate-850/95 backdrop-blur border-b border-slate-750 flex items-center px-4 gap-3 justify-between relative select-none shrink-0 z-30 min-w-0">
+                 {/* Left: Navigation & Side Switcher */}
+                 <div className="flex items-center gap-2 shrink-0">
                     <button 
                       onClick={() => setCurrentView('fill')} 
-                      className="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition shrink-0"
+                      className="bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
                       title="Sertifika Doldurma Ekranına Dön"
                     >
-                      <PenTool size={13} /> Doldur'a Dön
+                      <ArrowLeft size={14} /> Doldur'a Dön
                     </button>
-                    <div className="flex bg-slate-900 p-1 rounded-lg shrink-0">
-                        <button onClick={() => { setActiveSide('front'); setSelectedId(null); }} className={`flex-1 px-4 py-1.5 text-xs rounded-md transition font-medium ${activeSide === 'front' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Ön Yüz</button>
-                        <button onClick={() => { setActiveSide('back'); setSelectedId(null); }} className={`flex-1 px-4 py-1.5 text-xs rounded-md transition font-medium ${activeSide === 'back' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>Arka Yüz</button>
+                    <div className="w-[1px] h-5 bg-slate-700 mx-1 hidden sm:block"></div>
+                    <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-700 shrink-0">
+                        <button onClick={() => { setActiveSide('front'); setSelectedId(null); }} className={`px-3 py-1 text-xs rounded-md transition font-semibold ${activeSide === 'front' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Ön Yüz</button>
+                        <button onClick={() => { setActiveSide('back'); setSelectedId(null); }} className={`px-3 py-1 text-xs rounded-md transition font-semibold ${activeSide === 'back' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Arka Yüz</button>
                     </div>
-                  </div>
+
+                    <div className="w-[1px] h-5 bg-slate-700 mx-1 hidden sm:block"></div>
+                    {/* Undo / Redo controls */}
+                    <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-700 shrink-0">
+                        <button 
+                          onClick={handleUndo} 
+                          disabled={undoStack.length === 0} 
+                          className={`p-1.5 rounded-md transition ${undoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-slate-800' : 'text-slate-600 cursor-not-allowed'}`}
+                          title={`Geri Al (Ctrl+Z)${undoStack.length > 0 ? ` (${undoStack.length})` : ''}`}
+                        >
+                          <Undo2 size={14} />
+                        </button>
+                        <button 
+                          onClick={handleRedo} 
+                          disabled={redoStack.length === 0} 
+                          className={`p-1.5 rounded-md transition ${redoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-slate-800' : 'text-slate-600 cursor-not-allowed'}`}
+                          title={`İleri Al (Ctrl+Y / Ctrl+Shift+Z)${redoStack.length > 0 ? ` (${redoStack.length})` : ''}`}
+                        >
+                          <Redo2 size={14} />
+                        </button>
+                    </div>
+                 </div>
+
+                 {/* Center: Properties Toolbar or Document Info (min-w-0 + no-scrollbar ensures NO width blowouts) */}
+                 <div className="flex-1 flex items-center gap-2 overflow-x-auto no-scrollbar min-w-0 px-2">
+                     {selectedElement ? (
+                    <>
+                        {/* Type Badge */}
+                        <span className="text-[11px] font-bold px-2 py-1 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase whitespace-nowrap shrink-0">
+                          {selectedElement.type === ElementType.COMPANY ? '🏢 FİRMA' : (selectedElement.type === ElementType.CHOICE_BOX ? '☑️ SEÇİM' : (selectedElement.type === ElementType.DATE ? '📅 TARİH' : (selectedElement.type === ElementType.TCKN ? '🛡️ TC NO' : (selectedElement.type === ElementType.SIGNATURE ? '✍️ İMZA' : (selectedElement.type === ElementType.QRCODE ? '📱 QR' : selectedElement.type)))))}
+                        </span>
+
+                        {/* Label Input */}
+                        <input value={selectedElement.label || ''} onChange={(e) => updateElement(selectedElement.id, { label: e.target.value })} className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white w-32 focus:border-amber-500 outline-none shrink-0" placeholder="Etiket / İsim" title="Bileşen Etiketi" />
+                        
+                        {/* Date Role Dropdown */}
+                        {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DATE) && (
+                          <select 
+                            value={selectedElement.dateKind || (selectedElement.type === ElementType.DATE ? 'training' : 'auto')} 
+                            onChange={(e) => updateElement(selectedElement.id, { dateKind: e.target.value === 'auto' ? undefined : (e.target.value as any) })}
+                            className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-amber-400 outline-none hover:border-amber-500 transition shrink-0 cursor-pointer"
+                            title="İSG Geçerlilik Tarih Rolü"
+                          >
+                            <option value="auto">Tarih Rolü: Otomatik</option>
+                            <option value="training">📅 Başlangıç Tarihi (Referans)</option>
+                            <option value="validity">⌛ Geçerlilik Tarihi (Hesaplanan)</option>
+                          </select>
+                        )}
+
+                        {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DROPDOWN || selectedElement.type === ElementType.QRCODE || selectedElement.type === ElementType.COMPANY || selectedElement.type === ElementType.TCKN || selectedElement.type === ElementType.CHOICE_BOX || selectedElement.type === ElementType.DATE) && (
+                        <>
+                            <div className="w-[1px] h-5 bg-slate-700 shrink-0"></div>
+                            {selectedElement.type !== ElementType.QRCODE && (
+                            <>
+                                <select value={selectedElement.fontFamily} onChange={(e) => updateElement(selectedElement.id, { fontFamily: e.target.value })} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white w-32 shrink-0 outline-none focus:border-amber-500">{FONTS.map(group => (<optgroup key={group.group} label={group.group}>{group.options.map(f => (<option key={f.value} value={f.value}>{f.name}</option>))}</optgroup>))}</select>
+                                <select value={selectedElement.fontWeight || 400} onChange={(e) => updateElement(selectedElement.id, { fontWeight: Number(e.target.value) })} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white w-24 shrink-0 outline-none focus:border-amber-500">{FONT_WEIGHTS.map(w => (<option key={w.value} value={w.value}>{w.name}</option>))}</select>
+                                {selectedElement.type !== ElementType.CHOICE_BOX && (
+                                  <div className="flex items-center bg-slate-900 rounded-lg border border-slate-700 p-0.5 shrink-0">
+                                    <button onClick={() => updateElement(selectedElement.id, { textAlign: 'left' })} className={`p-1 rounded ${selectedElement.textAlign === 'left' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`} title="Sola Hizala"><AlignLeft size={14} /></button>
+                                    <button onClick={() => updateElement(selectedElement.id, { textAlign: 'center' })} className={`p-1 rounded ${(!selectedElement.textAlign || selectedElement.textAlign === 'center') ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`} title="Ortala"><AlignCenter size={14} /></button>
+                                    <button onClick={() => updateElement(selectedElement.id, { textAlign: 'right' })} className={`p-1 rounded ${selectedElement.textAlign === 'right' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`} title="Sağa Hizala"><AlignRight size={14} /></button>
+                                  </div>
+                                )}
+                                <button onClick={() => updateElement(selectedElement.id, { fontStyle: selectedElement.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`p-1.5 rounded-lg border text-xs flex items-center justify-center shrink-0 ${selectedElement.fontStyle === 'italic' ? 'bg-amber-500 text-slate-950 border-amber-500' : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'}`} title="İtalik"><Italic size={14} /></button>
+                                <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-0.5 shrink-0" title="Font Boyutu (px)">
+                                  <span className="text-[10px] text-slate-500 font-mono mr-1">px</span>
+                                  <input type="number" value={Math.round(selectedElement.fontSize || 0)} onChange={(e) => updateElement(selectedElement.id, { fontSize: Number(e.target.value) })} className="w-12 bg-transparent text-xs text-white text-center outline-none" />
+                                </div>
+                            </>
+                            )}
+                            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 shrink-0" title="Yazı Rengi">
+                              <input type="color" value={selectedElement.color || '#000000'} onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })} className="w-5 h-5 rounded cursor-pointer border-none bg-transparent" />
+                              <span className="text-[10px] font-mono text-slate-400 uppercase">{selectedElement.color || '#000000'}</span>
+                            </div>
+                            {selectedElement.type === ElementType.DROPDOWN && (<button onClick={() => setShowOptionManager(true)} className="flex items-center gap-1.5 bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border border-sky-500/30 px-2.5 py-1 rounded-lg text-xs font-medium shrink-0 transition"><List size={13} /> Seçenekler ({selectedElement.options?.length || 0})</button>)}
+                            {selectedElement.type === ElementType.CHOICE_BOX && selectedElement.options && (<div className="flex items-center gap-1.5 bg-slate-900 px-2 py-1 rounded-lg border border-slate-700 shrink-0"><span className="text-[10px] text-slate-400">Varsayılan:</span><select value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-xs text-white outline-none">{selectedElement.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>)}
+                            {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DATE) && (<input value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white w-36 shrink-0 font-mono outline-none focus:border-amber-500" placeholder={selectedElement.type === ElementType.DATE ? "{Eğitim Tarihi}" : "Örn metin"} title="Varsayılan Değer / Yer Tutucu" />)}
+                        </>
+                        )}
+                        {selectedElement.type === ElementType.SIGNATURE && (<button onClick={() => setShowSigPermissions(true)} className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded-lg text-xs text-white border border-slate-600 shrink-0 transition"><Filter size={13} /> İmza İzinleri ({selectedElement.allowedSignatureIds?.length || 'Tümü'})</button>)}
+
+                        {/* Duplicate Button */}
+                        <button 
+                          onClick={() => handleDuplicateElement(selectedElement.id)}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 shrink-0 transition ml-1"
+                          title="Bileşeni Çoğalt (Ctrl+D)"
+                        >
+                          <Copy size={14} />
+                        </button>
+
+                        {/* Top bar delete shortcut */}
+                        <button 
+                          onClick={() => { deleteElement(selectedElement.id); setSelectedId(null); }}
+                          className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 shrink-0 transition"
+                          title="Seçili Bileşeni Sil (Delete)"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                    </>
+                    ) : (
+                      <div className="flex items-center gap-3 text-xs text-slate-400 select-none">
+                        <span className="font-mono bg-slate-900 border border-slate-700 px-2.5 py-0.5 rounded-lg text-[11px] text-slate-300">
+                          📐 {activeProject.width} × {activeProject.height} px
+                        </span>
+                        <span className="bg-slate-900/60 border border-slate-700/60 px-2.5 py-0.5 rounded-lg text-[11px] text-slate-300">
+                          {activeProject.width > activeProject.height ? 'Yatay Belge' : 'Dikey Belge'}
+                        </span>
+                        <span className="text-slate-500 hidden sm:inline">
+                          • {currentSideElements.length} bileşen mevcut
+                        </span>
+                        <span className="text-amber-500/70 text-[11px] hidden lg:inline">
+                          (Düzenlemek ve taşımak için bir bileşene tıklayın)
+                        </span>
+                      </div>
+                    )}
+                 </div>
+
+                 {/* Right: Zoom Controls */}
+                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-700 shrink-0">
+                    <button 
+                      onClick={handleZoomOut} 
+                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" 
+                      title="Uzaklaştır (%5)"
+                    >
+                      <ZoomOut size={14} />
+                    </button>
+                    <span className="text-[11px] font-mono font-bold text-amber-400 px-1 min-w-[38px] text-center">
+                      %{Math.round(scale * 100)}
+                    </span>
+                    <button 
+                      onClick={handleZoomIn} 
+                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" 
+                      title="Yakınlaştır (%5)"
+                    >
+                      <ZoomIn size={14} />
+                    </button>
+                    <div className="w-[1px] h-4 bg-slate-700 mx-0.5"></div>
+                    <button 
+                      onClick={handleZoomFit} 
+                      className="px-2 py-0.5 text-[10px] font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition" 
+                      title="Ekrana Sığdır"
+                    >
+                      Sığdır
+                    </button>
+                 </div>
               </div>
-              <div ref={editorContainerRef} className="flex-1 overflow-hidden relative flex items-center justify-center p-4 md:p-10 bg-dots-pattern" style={{ backgroundImage: 'radial-gradient(#1e293b 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
-                <CanvasEditor elements={currentSideElements} width={activeProject.width} height={activeProject.height} bgUrl={currentSideBg} selectedId={selectedId} onSelect={setSelectedId} onUpdateElement={updateElement} onDeleteElement={deleteElement} scale={scale} />
+
+              {/* Canvas Container with Smooth Scroll and Absolute Zero Jitter */}
+              <div ref={editorContainerRef} className="flex-1 overflow-auto relative flex items-center justify-center p-4 md:p-8 bg-dots-pattern min-w-0 custom-scrollbar" style={{ backgroundImage: 'radial-gradient(#1e293b 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' }}>
+                <CanvasEditor elements={currentSideElements} width={activeProject.width} height={activeProject.height} bgUrl={currentSideBg} selectedId={selectedId} onSelect={setSelectedId} onUpdateElement={updateElement} onDeleteElement={deleteElement} onActionStart={pushUndoSnapshot} scale={scale} />
               </div>
               {showSigPermissions && selectedElement && selectedElement.type === ElementType.SIGNATURE && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -2457,331 +3521,922 @@ const App = () => {
 
         {/* VIEW: SETTINGS */}
         {currentView === 'settings' && (
-          <div className="flex-1 bg-slate-900 p-4 md:p-10 overflow-y-auto custom-scrollbar">
-             <div className="max-w-4xl mx-auto space-y-8">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex-1 bg-slate-900 p-4 md:p-8 overflow-y-auto custom-scrollbar">
+             <div className="max-w-6xl mx-auto space-y-6">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
                   <div>
-                    <h1 className="text-3xl font-bold mb-2 text-white">Ayarlar & Varlıklar</h1>
-                    <p className="text-slate-400">Uygulama genel ayarları ve varlık yönetimi.</p>
+                    <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-2">
+                      <Settings className="text-amber-500" size={28} /> Ayarlar & Sistem Yönetimi
+                    </h1>
+                    <p className="text-xs md:text-sm text-slate-400 mt-1">
+                      Firma kayıtları, İSG tehlike sınıfları, kullanıcı yetkileri, imzalar ve sistem parametreleri.
+                    </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <button 
                       onClick={() => setCurrentView('fill')} 
-                      className="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 hover:border-amber-500/50 px-4 py-2 rounded-lg flex items-center gap-2 font-medium text-sm transition"
+                      className="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 hover:border-amber-500/50 px-3.5 py-2 rounded-xl flex items-center gap-2 font-medium text-xs md:text-sm transition shadow-sm"
                       title="Sertifika Doldurma Ekranına Dön"
                     >
-                      <PenTool size={16} /> Doldur Moduna Dön
+                      <PenTool size={15} /> Doldur Modu
                     </button>
                     <button 
                       onClick={handleAdminLogout} 
-                      className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3.5 py-2 rounded-lg flex items-center gap-2 font-medium text-sm transition"
+                      className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3 py-2 rounded-xl flex items-center gap-2 font-medium text-xs md:text-sm transition"
                       title="Yönetici Oturumunu Kilitle"
                     >
-                      <Lock size={16} /> Oturumu Kilitle
+                      <Lock size={15} /> Kilitle
                     </button>
                   </div>
                 </div>
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                  <h2 className="text-xl font-semibold flex items-center gap-2 text-white mb-6">
-                    <FileText className="text-blue-500" /> Aktif Proje Yönetimi
-                  </h2>
-                  <div className="w-full">
-                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Proje İsmi</label>
-                    <input 
-                      type="text" 
-                      value={activeProject.name} 
-                      onChange={(e) => updateProjectMeta({ name: e.target.value })} 
-                      className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-amber-500 outline-none" 
-                    />
-                    <p className="text-[10px] text-slate-500 mt-2">
-                      Projeyi silmek için <button onClick={() => setCurrentView('projects')} className="text-amber-500 hover:underline">Projeler</button> sayfasına gidiniz.
-                    </p>
-                  </div>
+
+                {/* Sub-Tabs Nav */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-800/80 custom-scrollbar">
+                  {[
+                    { id: 'companies', label: 'Firmalar & Tehlike Sınıfı', icon: Building2, count: companies.length },
+                    { id: 'users', label: 'Kullanıcı & Roller', icon: ShieldCheck },
+                    { id: 'signatures', label: 'Kayıtlı İmzalar', icon: PenTool, count: signatures.length },
+                    { id: 'security', label: 'Sistem & Güvenlik', icon: Lock },
+                    { id: 'backup', label: 'Yedekleme & Güncelleme', icon: Database },
+                  ].map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = settingsSubTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setSettingsSubTab(tab.id as any)}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs md:text-sm font-semibold transition shrink-0 ${
+                          isActive
+                            ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                            : 'bg-slate-800/70 text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent hover:border-slate-700'
+                        }`}
+                      >
+                        <Icon size={16} />
+                        <span>{tab.label}</span>
+                        {tab.count !== undefined && (
+                          <span
+                            className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              isActive ? 'bg-slate-950 text-amber-400' : 'bg-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {tab.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
 
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-semibold flex items-center gap-2 text-white">
-                      <Building className="text-green-500" /> Firma Listesi Yönetimi
-                    </h2>
-                    <span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">Toplam: {companies.length}</span>
-                  </div>
-                  <p className="text-sm text-slate-400 mb-4">Sertifikalarda kullanılacak firma/kurum isimlerini buraya ekleyin. Kısaltma belirlemek için "|" karakterini kullanın (Örn: "Acme Şirketi | Acme").</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Toplu Ekleme</label>
-                      <textarea 
-                        rows={6} 
-                        value={tempCompanyInput} 
-                        onChange={(e) => setTempCompanyInput(e.target.value)} 
-                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-sm text-white focus:border-green-500 outline-none resize-none font-mono" 
-                        placeholder={"Firma Adı | Kısaltma\nÖrnek A.Ş. | Örnek\nSadece İsim"} 
-                      />
-                      <button 
-                        onClick={() => addCompany(tempCompanyInput)} 
-                        className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition shadow-lg shadow-green-900/20 active:scale-95"
-                      >
-                        Listeye Ekle
-                      </button>
-                    </div>
-                    <div className="space-y-2 flex flex-col h-full">
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="text-xs font-bold text-slate-500 uppercase">Mevcut Liste</label>
-                        {companies.length > 0 && (
-                          <input 
-                            type="text"
-                            value={companySearchQuery}
-                            onChange={(e) => setCompanySearchQuery(e.target.value)}
-                            placeholder="Firma ara..."
-                            className="bg-slate-900 border border-slate-700 rounded px-3 py-1 text-xs text-white placeholder-slate-500 focus:border-green-500 outline-none w-40 md:w-52 transition"
-                          />
-                        )}
+                {/* TAB 1: COMPANIES */}
+                {settingsSubTab === 'companies' && (
+                  <div className="space-y-6">
+                    {/* New Company Addition Form Card */}
+                    <div className="bg-slate-800/90 rounded-2xl p-5 md:p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                            <Plus size={18} />
+                          </div>
+                          <div>
+                            <h2 className="text-base md:text-lg font-bold text-white">Yeni Firma Ekle</h2>
+                            <p className="text-xs text-slate-400">Firma unvanını, kısa kodunu ve İSG tehlike sınıfını tanımlayın.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowBatchCompanyInput(!showBatchCompanyInput)}
+                          className="text-xs text-slate-400 hover:text-amber-400 flex items-center gap-1.5 transition underline-offset-4 hover:underline"
+                        >
+                          <FileText size={14} />
+                          {showBatchCompanyInput ? 'Tekli Forma Dön' : 'Toplu Metin ile Ekle'}
+                        </button>
                       </div>
-                      <div className="bg-slate-900/50 rounded-lg border border-slate-700 p-2 flex-1 max-h-[200px] overflow-y-auto custom-scrollbar space-y-1">
+
+                      {!showBatchCompanyInput ? (
+                        <form onSubmit={handleAddSingleCompany} className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                                Firma Tam Unvanı <span className="text-rose-400">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={singleCompanyName}
+                                onChange={(e) => setSingleCompanyName(e.target.value)}
+                                placeholder="Örn: ABC İnşaat Sanayi ve Ticaret A.Ş."
+                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-amber-500 outline-none transition"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                                Firma Kısa Kodu / Kısaltması <span className="text-slate-500 font-normal">(Opsiyonel)</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={singleCompanyShortName}
+                                onChange={(e) => setSingleCompanyShortName(e.target.value)}
+                                placeholder="Örn: ABC_INSAAT veya ABC"
+                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-amber-500 outline-none transition font-mono"
+                              />
+                              <p className="text-[10px] text-slate-500 mt-1">
+                                Boş bırakılırsa firma isminden otomatik üretilir. Sertifikada yer dar ise kullanılır.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Danger Class Selector Cards */}
+                          <div>
+                            <label className="text-xs font-semibold text-slate-300 block mb-2">
+                              İSG Tehlike Sınıfı ve Sertifika Geçerlilik Süresi <span className="text-rose-400">*</span>
+                            </label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              {/* Cok Tehlikeli */}
+                              <div
+                                onClick={() => setSingleCompanyDangerClass('cok_tehlikeli')}
+                                className={`cursor-pointer rounded-xl p-3.5 border transition relative flex items-start gap-3 ${
+                                  singleCompanyDangerClass === 'cok_tehlikeli'
+                                    ? 'bg-rose-500/10 border-rose-500 ring-1 ring-rose-500/50'
+                                    : 'bg-slate-900/60 border-slate-700/80 hover:border-slate-600'
+                                }`}
+                              >
+                                <div className="p-2 rounded-lg bg-rose-500/20 text-rose-400 shrink-0">
+                                  <Flame size={18} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-rose-300">Çok Tehlikeli</span>
+                                    <span className="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded font-bold">1 Yıl</span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                                    İnşaat, madencilik, ağır sanayi, tersaneler
+                                  </p>
+                                </div>
+                                {singleCompanyDangerClass === 'cok_tehlikeli' && (
+                                  <Check className="text-rose-400 shrink-0" size={16} />
+                                )}
+                              </div>
+
+                              {/* Tehlikeli */}
+                              <div
+                                onClick={() => setSingleCompanyDangerClass('tehlikeli')}
+                                className={`cursor-pointer rounded-xl p-3.5 border transition relative flex items-start gap-3 ${
+                                  singleCompanyDangerClass === 'tehlikeli'
+                                    ? 'bg-amber-500/10 border-amber-500 ring-1 ring-amber-500/50'
+                                    : 'bg-slate-900/60 border-slate-700/80 hover:border-slate-600'
+                                }`}
+                              >
+                                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 shrink-0">
+                                  <AlertTriangle size={18} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-amber-300">Tehlikeli</span>
+                                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">2 Yıl</span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                                    İmalat sanayi, gıda üretimi, tekstil, lojistik
+                                  </p>
+                                </div>
+                                {singleCompanyDangerClass === 'tehlikeli' && (
+                                  <Check className="text-amber-400 shrink-0" size={16} />
+                                )}
+                              </div>
+
+                              {/* Az Tehlikeli */}
+                              <div
+                                onClick={() => setSingleCompanyDangerClass('az_tehlikeli')}
+                                className={`cursor-pointer rounded-xl p-3.5 border transition relative flex items-start gap-3 ${
+                                  singleCompanyDangerClass === 'az_tehlikeli'
+                                    ? 'bg-emerald-500/10 border-emerald-500 ring-1 ring-emerald-500/50'
+                                    : 'bg-slate-900/60 border-slate-700/80 hover:border-slate-600'
+                                }`}
+                              >
+                                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 shrink-0">
+                                  <ShieldCheck size={18} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-emerald-300">Az Tehlikeli</span>
+                                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">3 Yıl</span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                                    Ofis, perakende, bilişim, eğitim, bürolar
+                                  </p>
+                                </div>
+                                {singleCompanyDangerClass === 'az_tehlikeli' && (
+                                  <Check className="text-emerald-400 shrink-0" size={16} />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end pt-2">
+                            <button
+                              type="submit"
+                              disabled={!singleCompanyName.trim()}
+                              className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold px-6 py-2.5 rounded-xl flex items-center gap-2 text-xs md:text-sm transition shadow-lg shadow-amber-500/20 active:scale-95"
+                            >
+                              <Plus size={16} /> Yeni Firmayı Kaydet
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        /* Batch Add Mode */
+                        <div className="space-y-3 pt-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs text-slate-300 font-semibold">
+                              Toplu Metin Girişi (Satır Satır):
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-slate-400">Varsayılan Tehlike Sınıfı:</span>
+                              <select
+                                value={selectedDangerClassInput}
+                                onChange={(e) => setSelectedDangerClassInput(e.target.value as DangerClass)}
+                                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:border-amber-500 outline-none"
+                              >
+                                <option value="cok_tehlikeli">Çok Tehlikeli (1 Yıl)</option>
+                                <option value="tehlikeli">Tehlikeli (2 Yıl)</option>
+                                <option value="az_tehlikeli">Az Tehlikeli (3 Yıl)</option>
+                              </select>
+                            </div>
+                          </div>
+                          <textarea
+                            rows={5}
+                            value={tempCompanyInput}
+                            onChange={(e) => setTempCompanyInput(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs font-mono text-white placeholder-slate-500 focus:border-amber-500 outline-none resize-none"
+                            placeholder={"Örnek Formatlar:\nFirma Tam Adı | Kısa Kod | az_tehlikeli\nArçelik A.Ş. | ARCELIK | tehlikeli\nKolin İnşaat | KOLIN\nSadece Firma Adı"}
+                          />
+                          <div className="flex justify-between items-center">
+                            <p className="text-[11px] text-slate-500">
+                              Her satıra bir firma gelecek şekilde yapıştırın. '|' ile kısaltma ve tehlike sınıfı belirtebilirsiniz.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                addCompany(tempCompanyInput);
+                                setShowBatchCompanyInput(false);
+                              }}
+                              disabled={!tempCompanyInput.trim()}
+                              className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl text-xs flex items-center gap-2 transition shadow-lg shadow-emerald-900/20 active:scale-95"
+                            >
+                              <Plus size={15} /> Toplu Listeyi Ekle
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Companies List Table Card */}
+                    <div className="bg-slate-800/90 rounded-2xl border border-slate-700 shadow-xl overflow-hidden backdrop-blur-sm">
+                      {/* Filter & Search Header */}
+                      <div className="p-4 md:p-5 border-b border-slate-700/80 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-800/50">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="text-amber-500" size={20} />
+                          <h3 className="font-bold text-white text-base">
+                            Kayıtlı Firmalar
+                          </h3>
+                          <span className="bg-slate-700 text-slate-300 text-xs px-2.5 py-0.5 rounded-full font-bold ml-1">
+                            {companies.length}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Danger Class Filter Tabs */}
+                          <div className="flex items-center bg-slate-900 p-0.5 rounded-xl border border-slate-700 text-xs">
+                            <button
+                              onClick={() => setCompanyDangerFilter('all')}
+                              className={`px-2.5 py-1 rounded-lg font-medium transition ${
+                                companyDangerFilter === 'all'
+                                  ? 'bg-amber-500 text-slate-950 font-bold'
+                                  : 'text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              Tümü
+                            </button>
+                            <button
+                              onClick={() => setCompanyDangerFilter('cok_tehlikeli')}
+                              className={`px-2 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
+                                companyDangerFilter === 'cok_tehlikeli'
+                                  ? 'bg-rose-500 text-white font-bold'
+                                  : 'text-rose-400 hover:text-rose-300'
+                              }`}
+                            >
+                              <Flame size={12} /> Çok Tehlikeli
+                            </button>
+                            <button
+                              onClick={() => setCompanyDangerFilter('tehlikeli')}
+                              className={`px-2 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
+                                companyDangerFilter === 'tehlikeli'
+                                  ? 'bg-amber-500 text-slate-950 font-bold'
+                                  : 'text-amber-400 hover:text-amber-300'
+                              }`}
+                            >
+                              <AlertTriangle size={12} /> Tehlikeli
+                            </button>
+                            <button
+                              onClick={() => setCompanyDangerFilter('az_tehlikeli')}
+                              className={`px-2 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
+                                companyDangerFilter === 'az_tehlikeli'
+                                  ? 'bg-emerald-500 text-white font-bold'
+                                  : 'text-emerald-400 hover:text-emerald-300'
+                              }`}
+                            >
+                              <ShieldCheck size={12} /> Az Tehlikeli
+                            </button>
+                          </div>
+
+                          {/* Search Input */}
+                          <div className="relative">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                            <input
+                              type="text"
+                              value={companySearchQuery}
+                              onChange={(e) => setCompanySearchQuery(e.target.value)}
+                              placeholder="Firma veya kod ara..."
+                              className="bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-500 outline-none w-48 md:w-56 transition"
+                            />
+                            {companySearchQuery && (
+                              <button
+                                onClick={() => setCompanySearchQuery('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Companies Table */}
+                      <div className="overflow-x-auto">
                         {(() => {
-                          const searched = companies.filter(c => 
-                            turkishToLower(c.name).includes(turkishToLower(companySearchQuery)) || 
-                            (c.shortName && turkishToLower(c.shortName).includes(turkishToLower(companySearchQuery)))
-                          );
-                          if (searched.length === 0) {
+                          const filtered = companies.filter(c => {
+                            const matchesSearch = !companySearchQuery.trim() || 
+                              turkishToLower(c.name).includes(turkishToLower(companySearchQuery)) || 
+                              (c.shortName && turkishToLower(c.shortName).includes(turkishToLower(companySearchQuery)));
+                            const matchesDanger = companyDangerFilter === 'all' || (c.dangerClass || 'cok_tehlikeli') === companyDangerFilter;
+                            return matchesSearch && matchesDanger;
+                          });
+
+                          if (filtered.length === 0) {
                             return (
-                              <div className="text-center py-8 text-slate-500 text-sm italic">
-                                {companies.length === 0 ? "Liste boş." : "Aramayla eşleşen firma bulunamadı."}
+                              <div className="py-12 text-center text-slate-500 space-y-2">
+                                <Building2 size={36} className="mx-auto text-slate-600 opacity-60" />
+                                <p className="text-sm">
+                                  {companies.length === 0 ? "Henüz kayıtlı firma bulunmuyor." : "Arama kriterlerine uygun firma bulunamadı."}
+                                </p>
                               </div>
                             );
                           }
-                          return searched.map((company, idx) => (
-                            <div key={idx} className="flex justify-between items-center p-2 bg-slate-800 rounded group hover:bg-slate-700 transition">
-                              <div className="flex flex-col truncate pr-2">
-                                <span className="text-sm text-slate-200">{company.name}</span>
-                                {company.shortName !== company.name && (
-                                  <span className="text-[10px] text-slate-500 font-mono">Kısaltma: {company.shortName}</span>
-                                )}
-                              </div>
-                              <button 
-                                onClick={() => removeCompany(company.id)} 
-                                className="text-slate-500 hover:text-red-500 p-1 opacity-60 group-hover:opacity-100 transition"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          ));
+
+                          return (
+                            <table className="w-full text-left border-collapse text-xs">
+                              <thead>
+                                <tr className="border-b border-slate-700/60 bg-slate-900/60 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+                                  <th className="py-3 px-4 w-12 text-center">#</th>
+                                  <th className="py-3 px-4">Firma Adı & Kısaltma</th>
+                                  <th className="py-3 px-4 w-52">Tehlike Sınıfı</th>
+                                  <th className="py-3 px-4 w-28 text-center">Geçerlilik</th>
+                                  <th className="py-3 px-4 w-24 text-right">İşlemler</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/80">
+                                {filtered.map((company, idx) => {
+                                  const isEditing = editingCompanyId === company.id;
+                                  const danger = company.dangerClass || 'cok_tehlikeli';
+                                  const years = company.validityYears || getValidityYears(danger);
+
+                                  return (
+                                    <tr key={company.id} className="hover:bg-slate-800/50 transition">
+                                      <td className="py-3 px-4 text-center text-slate-500 font-mono">
+                                        {idx + 1}
+                                      </td>
+                                      <td className="py-3 px-4">
+                                        {isEditing ? (
+                                          <div className="space-y-2 max-w-md">
+                                            <input
+                                              type="text"
+                                              value={editingCompanyName}
+                                              onChange={(e) => setEditingCompanyName(e.target.value)}
+                                              className="w-full bg-slate-900 border border-amber-500/50 rounded-lg px-2.5 py-1 text-xs text-white outline-none"
+                                              placeholder="Firma Adı"
+                                              autoFocus
+                                            />
+                                            <input
+                                              type="text"
+                                              value={editingCompanyShortName}
+                                              onChange={(e) => setEditingCompanyShortName(e.target.value)}
+                                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white outline-none font-mono"
+                                              placeholder="Kısa Kod (opsiyonel)"
+                                            />
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center font-bold text-amber-400 shrink-0 text-xs">
+                                              {company.name.slice(0, 2).toUpperCase()}
+                                            </div>
+                                            <div className="min-w-0">
+                                              <div className="font-semibold text-white truncate max-w-md">
+                                                {company.name}
+                                              </div>
+                                              {company.shortName && (
+                                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                                  Kod: <span className="text-amber-400/90">{company.shortName}</span>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="py-3 px-4">
+                                        <select
+                                          value={danger}
+                                          onChange={(e) => updateCompanyDangerClass(company.id, e.target.value as DangerClass)}
+                                          className={`border rounded-lg px-2.5 py-1 text-xs font-semibold outline-none transition cursor-pointer ${
+                                            danger === 'cok_tehlikeli'
+                                              ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                                              : danger === 'tehlikeli'
+                                              ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                              : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                          }`}
+                                        >
+                                          <option value="cok_tehlikeli" className="bg-slate-900 text-rose-400">🔥 Çok Tehlikeli (1 Yıl)</option>
+                                          <option value="tehlikeli" className="bg-slate-900 text-amber-400">⚠️ Tehlikeli (2 Yıl)</option>
+                                          <option value="az_tehlikeli" className="bg-slate-900 text-emerald-400">🛡️ Az Tehlikeli (3 Yıl)</option>
+                                        </select>
+                                      </td>
+                                      <td className="py-3 px-4 text-center">
+                                        <span className={`inline-block px-2 py-0.5 rounded-full font-bold text-[11px] ${
+                                          danger === 'cok_tehlikeli'
+                                            ? 'bg-rose-500/20 text-rose-400'
+                                            : danger === 'tehlikeli'
+                                            ? 'bg-amber-500/20 text-amber-400'
+                                            : 'bg-emerald-500/20 text-emerald-400'
+                                        }`}>
+                                          {years} Yıl
+                                        </span>
+                                      </td>
+                                      <td className="py-3 px-4 text-right">
+                                        {isEditing ? (
+                                          <div className="flex items-center justify-end gap-1.5">
+                                            <button
+                                              onClick={() => handleSaveEditCompany(company.id)}
+                                              className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition"
+                                              title="Kaydet"
+                                            >
+                                              <Check size={14} />
+                                            </button>
+                                            <button
+                                              onClick={() => setEditingCompanyId(null)}
+                                              className="p-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition"
+                                              title="İptal"
+                                            >
+                                              <X size={14} />
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center justify-end gap-1">
+                                            <button
+                                              onClick={() => handleStartEditCompany(company)}
+                                              className="p-1.5 hover:bg-slate-700 text-slate-400 hover:text-amber-400 rounded-lg transition"
+                                              title="Düzenle"
+                                            >
+                                              <Pencil size={14} />
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                if (confirm(`"${company.name}" firmasını silmek istediğinize emin misiniz?`)) {
+                                                  removeCompany(company.id);
+                                                }
+                                              }}
+                                              className="p-1.5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 rounded-lg transition"
+                                              title="Sil"
+                                            >
+                                              <Trash2 size={14} />
+                                            </button>
+                                          </div>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          );
                         })()}
                       </div>
                     </div>
                   </div>
-                </div>
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><PenTool className="text-amber-500" /> Kayıtlı İmzalar</h2>
-                        <div className="flex gap-2">
-                            <button onClick={() => setShowSignaturePad(true)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition shadow-sm border border-slate-600"><PenLine size={18} /> İmza Çiz</button>
-                            <label className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium transition shadow-lg shadow-amber-900/20 active:scale-95 transform">
-                                <Plus size={18} /> İmza Yükle
-                                <input type="file" accept="image/*" multiple className="hidden" onChange={handleSignatureUpload} />
-                            </label>
-                        </div>
-                    </div>
-                    {signatures.length === 0 ? (
-                        <div className="text-center py-10 border-2 border-dashed border-slate-700 rounded-xl bg-slate-800/50">
-                            <Upload className="mx-auto text-slate-600 mb-4" size={40} />
-                            <p className="text-slate-500 text-sm">Henüz hiç imza yüklenmemiş.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {signatures.map(sig => (
-                                <div key={sig.id} className="group relative bg-white rounded-xl p-4 flex flex-col items-center justify-between min-h-[160px] shadow-sm border border-slate-600 transition hover:border-amber-500/50 overflow-hidden">
-                                    <div className="h-16 w-full flex items-center justify-center mb-2 z-10 relative">
-                                        <img src={sig.url} alt={sig.name} className="max-h-full max-w-full object-contain" />
-                                    </div>
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm z-20">
-                                        <button onClick={() => deleteSignature(sig.id)} className="bg-red-500 p-2 rounded-full text-white hover:bg-red-600 shadow-lg transform active:scale-95 transition">
-                                            <Trash2 size={20} />
-                                        </button>
-                                    </div>
-                                    <div className="w-full bg-slate-900 rounded-lg p-2 border border-slate-700 z-10 relative">
-                                        <span className="text-[10px] text-white truncate block text-center mb-1">{sig.name}</span>
-                                        
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><QrCode className="text-teal-500" /> Doğrulama ve QR Ayarları</h2>
-                    </div>
-                    <p className="text-sm text-slate-400 mb-4">Sertifikalar oluşturulurken QR kodlara eklenecek temel web sitesi adresini buradan düzeltebilirsiniz. Sertifika üzerindeki QR kod, bu adres ve sertifika seri numarası ile oluşturulacaktır.</p>
-                    <div className="flex flex-col md:flex-row gap-4 items-start md:items-end">
-                        <div className="w-full md:flex-1 space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase">Sistem Doğrulama URL'si</label>
-                            <input 
-                                type="text"
-                                value={qrBaseUrl}
-                                onChange={(e) => {
-                                    setQrBaseUrl(e.target.value);
-                                    localStorage.setItem('vps_qr_base_url', e.target.value);
-                                }}
-                                className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-teal-500 outline-none font-mono text-sm"
-                                placeholder="http://194.146.36.153:5555/dogrula.html"
-                            />
-                        </div>
-                    </div>
-                </div>
+                )}
 
-
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><ShieldCheck className="text-red-500" /> Güvenlik Ayarları</h2>
-                    </div>
-                    <p className="text-sm text-slate-400 mb-4">Uygulamanıza erişim sağlayan yönetici şifrenizi buradan değiştirebilirsiniz. Değiştirdiğiniz şifre tarayıcınızda veya sistemde yerel olarak saklanacaktır.</p>
-                    <div className="flex flex-col md:flex-row gap-4 items-start md:items-end">
-                        <div className="w-full md:flex-1 space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase">Yeni Şifre</label>
-                            <input 
-                                type="password" 
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-red-500 outline-none"
-                                placeholder="Yeni Şifre Girin"
-                            />
+                {/* TAB 2: USERS */}
+                {settingsSubTab === 'users' && (
+                  <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-700">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                          <ShieldCheck size={24} />
                         </div>
+                        <div>
+                          <h2 className="text-lg font-bold text-white">Kullanıcı & Rol Yönetimi</h2>
+                          <p className="text-xs text-slate-400">
+                            Sistemde sertifika düzenleyecek İSG uzmanlarını ve yöneticileri ekleyin veya şifrelerini düzenleyin.
+                          </p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => setShowUserModal(true)} 
+                        className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs md:text-sm transition shadow-lg shadow-amber-500/20 active:scale-95 shrink-0"
+                      >
+                        <Plus size={16} /> Kullanıcıları Yönet & Ekle
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                      <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-700/80">
+                        <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">Yönetici (Admin) Rolü</h4>
+                        <p className="text-xs text-slate-400">
+                          Tüm şablonları düzenleyebilir, firma ve kullanıcı ekleyebilir/silebilir, sistem yedeklerini indirebilir ve güncellemeleri yönetebilir.
+                        </p>
+                      </div>
+                      <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-700/80">
+                        <h4 className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-1">İSG Uzmanı / Kullanıcı Rolü</h4>
+                        <p className="text-xs text-slate-400">
+                          Kendi hesabı ile sisteme girerek tanımlı firmalar için sertifika düzenleyebilir, PDF indirebilir ve çalışan evraklarını görüntüleyebilir.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: SIGNATURES */}
+                {settingsSubTab === 'signatures' && (
+                  <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-700">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                          <PenTool size={24} />
+                        </div>
+                        <div>
+                          <h2 className="text-lg font-bold text-white">Kayıtlı İmzalar</h2>
+                          <p className="text-xs text-slate-400">
+                            Sertifika şablonlarında İSG Uzmanı veya Eğitici imzası olarak kullanılacak imzaları yükleyin veya çizin.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
                         <button 
-                            onClick={handlePasswordChange}
-                            className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition shadow-lg shadow-red-900/20 active:scale-95 w-full md:w-auto shrink-0"
+                          onClick={() => setShowSignaturePad(true)} 
+                          className="bg-slate-700 hover:bg-slate-600 text-white px-3.5 py-2 rounded-xl flex items-center gap-2 font-medium text-xs transition border border-slate-600"
                         >
-                            Şifreyi Değiştir
+                          <PenLine size={16} /> İmza Çiz
                         </button>
+                        <label className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 font-bold text-xs transition shadow-lg shadow-amber-900/20 active:scale-95">
+                          <Plus size={16} /> İmza Yükle
+                          <input type="file" accept="image/*" multiple className="hidden" onChange={handleSignatureUpload} />
+                        </label>
+                      </div>
                     </div>
-                    <div className="mt-6 pt-4 border-t border-slate-700">
-                         <button 
-                            onClick={handleAdminLogout}
-                            className="text-sm text-amber-500 hover:text-amber-400 flex items-center gap-2 font-medium transition"
-                        >
-                            <Lock size={15} /> Yönetici Oturumunu Kapat ve Kilitle (Doldur Ekranına Dön)
-                        </button>
-                    </div>
-                    {passwordMessage && (
-                        <p className={`mt-3 text-sm ${passwordMessage.includes('başarıyla') ? 'text-green-500' : 'text-red-500'}`}>{passwordMessage}</p>
+
+                    {signatures.length === 0 ? (
+                      <div className="text-center py-12 border-2 border-dashed border-slate-700 rounded-xl bg-slate-900/40">
+                        <Upload className="mx-auto text-slate-600 mb-3" size={36} />
+                        <p className="text-slate-400 text-sm font-medium">Henüz kayıtlı imza bulunmuyor.</p>
+                        <p className="text-slate-500 text-xs mt-1">Yukarıdaki butonları kullanarak yeni imza yükleyebilir veya çizebilirsiniz.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                        {signatures.map(sig => (
+                          <div key={sig.id} className="group relative bg-white rounded-xl p-3 flex flex-col items-center justify-between min-h-[150px] shadow-sm border border-slate-600 transition hover:border-amber-500 overflow-hidden">
+                            <div className="h-20 w-full flex items-center justify-center mb-2 z-10 relative">
+                              <img src={sig.url} alt={sig.name} className="max-h-full max-w-full object-contain" />
+                            </div>
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm z-20">
+                              <button 
+                                onClick={() => deleteSignature(sig.id)} 
+                                className="bg-rose-500 p-2.5 rounded-full text-white hover:bg-rose-600 shadow-lg transform active:scale-95 transition"
+                                title="İmzayı Sil"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                            <div className="w-full bg-slate-900 rounded-lg p-1.5 border border-slate-700 z-10 relative">
+                              <span className="text-[11px] text-white font-medium truncate block text-center">{sig.name}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
-                </div>
+                  </div>
+                )}
 
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                    <h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white">
-                        <Database className="text-blue-500" /> Yedekleme ve Geri Yükleme
-                    </h2>
-                    <p className="text-sm text-slate-400 mb-6">
-                        Tüm projelerinizi, şablonlarınızı, ayarlarınızı ve yüklediğiniz görselleri (imzalar dahil) tek bir dosya olarak yedekleyin veya başka bir cihaza taşıyın.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition">
-                            <DownloadCloud size={40} className="text-green-500 mb-4" />
-                            <h3 className="font-bold text-white mb-2">Sistemi Yedekle</h3>
-                            <p className="text-xs text-slate-400 mb-4">Tüm verileri (projeler, görseller, ayarlar) içeren tek bir .json dosyası indirir.</p>
-                            <button onClick={handleExportBackup} className="mt-auto bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition w-full shadow-lg shadow-green-900/20 active:scale-95">Yedek Dosyasını İndir</button>
-                        </div>
-                        <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex flex-col items-center text-center hover:border-slate-600 transition">
-                            <UploadCloud size={40} className="text-blue-500 mb-4" />
-                            <h3 className="font-bold text-white mb-2">Yedeği Geri Yükle</h3>
-                            <p className="text-xs text-slate-400 mb-4">Daha önce aldığınız yedek dosyasını seçerek tüm verilerinizi geri yükleyin.</p>
-                            <div className="mt-auto w-full relative">
-                                <input ref={backupInputRef} type="file" accept=".json" onChange={handleImportBackup} className="hidden" id="backup-upload" />
-                                <label htmlFor="backup-upload" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition w-full flex items-center justify-center cursor-pointer shadow-lg shadow-blue-900/20 active:scale-95">Dosya Seç ve Yükle</label>
-                            </div>
-                            <div className="flex items-center gap-2 mt-3 text-[10px] text-amber-500">
-                                <AlertTriangle size={12} /><span>Dikkat: Mevcut verilerin üzerine yazılacaktır.</span>
-                            </div>
-                        </div>
+                {/* TAB 4: SECURITY & SYSTEM */}
+                {settingsSubTab === 'security' && (
+                  <div className="space-y-6">
+                    {/* Active Project Management */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <h2 className="text-lg font-bold flex items-center gap-2 text-white mb-4">
+                        <FileText className="text-blue-500" size={20} /> Aktif Proje Yönetimi
+                      </h2>
+                      <div className="max-w-xl space-y-2">
+                        <label className="text-xs text-slate-300 font-semibold block">Proje Adı</label>
+                        <input 
+                          type="text" 
+                          value={activeProject.name} 
+                          onChange={(e) => updateProjectMeta({ name: e.target.value })} 
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-white focus:border-amber-500 outline-none transition" 
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          Proje şablonlarını ve detaylarını yönetmek için sol menüdeki <button onClick={() => setCurrentView('projects')} className="text-amber-400 hover:underline">Projeler</button> sayfasını kullanabilirsiniz.
+                        </p>
+                      </div>
                     </div>
-                </div>
 
-                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                     <h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white">
-                         <Github className="text-white" /> Sunucu / GitHub Otomatik Güncelleme
-                     </h2>
-                     <p className="text-sm text-slate-400 mb-6">
-                         Uygulamanın en son sürümünü GitHub deposundan (<span className="font-mono text-slate-300">szgnemin1/ProCertify</span>) çeker, arka planda otomatik olarak yeniden derler ve sunucu sürecini PM2 ile yeniden başlatır. Mevcut verileriniz (projeler, şablonlar, imzalar vb.) bu işlemden **etkilenmez**.
-                     </p>
-                     
-                     <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 space-y-4">
-                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                             <div>
-                                 <h3 className="font-bold text-white mb-1">Tek Tıkla Otomatik Güncelleme</h3>
-                                 <p className="text-xs text-slate-400">
-                                     Mevcut Çalışan Sürüm: <span className="bg-slate-800 text-amber-500 px-2 py-0.5 rounded font-mono font-bold ml-1">{APP_VERSION}</span>
-                                 </p>
-                             </div>
-                             <button 
-                                 onClick={handleUpdateApp}
-                                 disabled={isUpdating}
-                                 className={`px-6 py-3 rounded-lg font-bold transition flex items-center justify-center gap-2 select-none shadow-lg active:scale-95 ${
-                                     isUpdating 
-                                         ? 'bg-slate-700 text-slate-400 cursor-not-allowed animate-pulse' 
-                                         : 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-900/20'
-                                 }`}
-                             >
-                                 {isUpdating ? 'Güncelleniyor...' : 'Sürümü Otomatik Güncelle'}
-                             </button>
-                         </div>
-                         
-                         {updateMessage && (
-                             <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex items-start gap-2">
-                                 <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
-                                 <span className="text-sm text-slate-300 font-medium">{updateMessage}</span>
-                             </div>
-                         )}
-                         
-                         {updateLogs && (
-                             <div className="space-y-2 mt-4">
-                                 <div className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
-                                     <span>GÜNCELLEME LOGLARI</span>
-                                     <span className={`text-[10px] px-2 py-0.5 rounded ${
-                                         updateLogs.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                                     }`}>
-                                         {updateLogs.success ? 'KABUL EDİLDİ / BAŞARILI' : 'BAĞLANTI VEYA DERLEME HATASI'}
-                                     </span>
-                                 </div>
-                                 <div className="bg-black/80 font-mono text-xs text-slate-300 p-4 rounded-lg border border-slate-800 overflow-x-auto max-h-60 custom-scrollbar space-y-1">
-                                     {updateLogs.stdout && (
-                                         <div>
-                                             <span className="text-green-500 font-bold">[Komut Çıktısı]:</span>
-                                             <pre className="whitespace-pre-wrap mt-1 opacity-70">{updateLogs.stdout}</pre>
-                                         </div>
-                                     )}
-                                     {updateLogs.stderr && (
-                                         <div className="mt-2 pt-2 border-t border-slate-900">
-                                             <span className="text-cyan-500 font-bold">[Bildirimler / Günlükler]:</span>
-                                             <pre className="whitespace-pre-wrap mt-1 text-red-400 opacity-90">{updateLogs.stderr}</pre>
-                                         </div>
-                                     )}
-                                 </div>
-                             </div>
-                         )}
-                     </div>
-                 </div>
+                    {/* QR Code Base URL */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <h2 className="text-lg font-bold flex items-center gap-2 text-white mb-2">
+                        <QrCode className="text-teal-400" size={20} /> Doğrulama ve QR Kod Ayarları
+                      </h2>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Sertifikalar oluşturulurken QR kodlara gömülecek temel web doğrulama adresini buradan düzenleyebilirsiniz.
+                      </p>
+                      <div className="max-w-xl space-y-2">
+                        <label className="text-xs font-semibold text-slate-300 block">Sistem Doğrulama URL'si</label>
+                        <input 
+                          type="text"
+                          value={qrBaseUrl}
+                          onChange={(e) => {
+                            setQrBaseUrl(e.target.value);
+                            localStorage.setItem('vps_qr_base_url', e.target.value);
+                          }}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:border-teal-500 outline-none font-mono text-xs"
+                          placeholder="http://194.146.36.153:5555/dogrula.html"
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          Örnek QR içeriği: <span className="font-mono text-slate-400">{qrBaseUrl || 'http://.../dogrula.html'}?s=ISG-2026-0001</span>
+                        </p>
+                      </div>
+                    </div>
 
-                 <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                     <h2 className="text-xl font-semibold flex items-center gap-2 mb-4 text-white">
-                         <Github className="text-white" /> Hakkında & GitHub
-                     </h2>
-                     <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700 flex items-start gap-4">
-                         <div className="p-3 bg-slate-800 rounded-full">
-                             <Monitor size={24} className="text-slate-400" />
-                         </div>
-                         <div className="flex-1">
-                             <h3 className="font-bold text-white text-lg">
-                                 ProCertify Studio <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full ml-2">{APP_VERSION}</span>
-                             </h3>
-                             <p className="text-sm text-slate-400 mt-1 mb-4">
-                                 Açık kaynak kodlu, profesyonel sertifika tasarım ve yönetim aracı. Projeyi GitHub üzerinde destekleyebilir hoặc katkıda bulunabilirsiniz.
-                             </p>
-                             <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-white bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg transition border border-slate-600">
-                                 <Github size={16} /> GitHub Deposuna Git
-                             </a>
-                         </div>
-                     </div>
-                   </div>
+                    {/* Password Management */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <h2 className="text-lg font-bold flex items-center gap-2 text-white mb-2">
+                        <Lock className="text-rose-400" size={20} /> Yönetici Şifresi Değiştir
+                      </h2>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Uygulama ayarlarına ve tasarımlara erişim sağlayan yönetici şifresini buradan güncelleyebilirsiniz.
+                      </p>
+                      <div className="max-w-xl flex flex-col sm:flex-row gap-3">
+                        <input 
+                          type="password" 
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-white focus:border-rose-500 outline-none transition"
+                          placeholder="Yeni Yönetici Şifresi"
+                        />
+                        <button 
+                          onClick={handlePasswordChange}
+                          disabled={!newPassword.trim()}
+                          className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold px-5 py-3 rounded-xl text-xs transition shadow-lg shadow-rose-900/20 active:scale-95 shrink-0"
+                        >
+                          Şifreyi Değiştir
+                        </button>
+                      </div>
+                      {passwordMessage && (
+                        <p className={`mt-3 text-xs font-semibold ${passwordMessage.includes('başarıyla') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {passwordMessage}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 5: BACKUP & UPDATE */}
+                {settingsSubTab === 'backup' && (
+                  <div className="space-y-6">
+                    {/* FULL SYSTEM ARCHIVE BACKUP (.ZIP) - PRIMARY */}
+                    <div className="bg-gradient-to-br from-amber-500/10 via-slate-800/90 to-slate-800/90 rounded-2xl p-6 border-2 border-amber-500/30 shadow-2xl backdrop-blur-sm relative overflow-hidden">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300">
+                            <Archive size={22} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h2 className="text-lg font-bold text-white">Tam Sistem Arşiv Yedeği (.ZIP)</h2>
+                              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                Önerilen
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-300 mt-0.5">
+                              Tüm veritabanı, çalışan kartları, yüklenen tüm evraklar (PDF/Görsel) ve sertifikalar dahil
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-400 mb-6 leading-relaxed">
+                        Sisteminizi başka bir sunucuya taşımak veya eksiksiz bir felaket kurtarma yedeği almak için bu seçeneği kullanın. 
+                        Bu işlem; sistemdeki tüm projeleri, şablonları, şirketleri, imzaları, çalışan kayıtlarını, çalışanlara yüklenen tüm dosya ve evrakları (PDF, JPG, PNG) ve oluşturulan sertifikaları tek bir sıkıştırılmış <span className="font-mono text-amber-300 font-semibold">.zip</span> arşivi olarak paketler.
+                      </p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* ZIP DOWNLOAD */}
+                        <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-700/80 flex flex-col items-center text-center hover:border-amber-500/40 transition">
+                          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-3">
+                            <DownloadCloud size={28} />
+                          </div>
+                          <h3 className="font-bold text-white text-sm mb-1">Tam Arşivi İndir (.ZIP)</h3>
+                          <p className="text-xs text-slate-400 mb-4">
+                            Veritabanı + Çalışan Evrakları + Sertifikalar tek bir ZIP dosyası olarak paketlenir.
+                          </p>
+                          <button 
+                            onClick={handleExportFullZipBackup} 
+                            disabled={isExportingZip}
+                            className="mt-auto bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full shadow-lg shadow-emerald-900/20 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {isExportingZip ? (
+                              <>
+                                <Loader2 size={16} className="animate-spin" /> Arşiv Paketleniyor...
+                              </>
+                            ) : (
+                              <>
+                                <Archive size={16} /> Tam Sistem ZIP Yedeği İndir
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* ZIP RESTORE */}
+                        <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-700/80 flex flex-col items-center text-center hover:border-blue-500/40 transition">
+                          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-3">
+                            <UploadCloud size={28} />
+                          </div>
+                          <h3 className="font-bold text-white text-sm mb-1">Tam Arşivi Geri Yükle (.ZIP)</h3>
+                          <p className="text-xs text-slate-400 mb-4">
+                            Daha önce indirdiğiniz .zip tam arşiv dosyasını seçerek tüm sistemi geri yükleyin.
+                          </p>
+                          <div className="mt-auto w-full relative">
+                            <input 
+                              ref={fullZipInputRef} 
+                              type="file" 
+                              accept=".zip" 
+                              onChange={handleImportFullZipBackup} 
+                              className="hidden" 
+                              id="full-zip-upload" 
+                              disabled={isRestoringZip}
+                            />
+                            <label 
+                              htmlFor="full-zip-upload" 
+                              className={`bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-blue-900/20 active:scale-95 ${isRestoringZip ? 'opacity-50 pointer-events-none' : ''}`}
+                            >
+                              {isRestoringZip ? (
+                                <>
+                                  <Loader2 size={16} className="animate-spin" /> Arşiv Açılıyor & Geri Yükleniyor...
+                                </>
+                              ) : (
+                                <>
+                                  <UploadCloud size={16} /> ZIP Arşivi Seç ve Yükle
+                                </>
+                              )}
+                            </label>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-3 text-[10px] text-amber-400">
+                            <AlertTriangle size={12} className="shrink-0" />
+                            <span>Mevcut kayıtlar ve dosyalar arşiv içeriğiyle güncellenir.</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* LIGHTWEIGHT CONFIG BACKUP (.JSON) */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Database className="text-slate-400" size={20} />
+                        <h2 className="text-base font-bold text-white">Hafif Şablon & Ayarlar Yedeği (.JSON)</h2>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-700 text-slate-300">
+                          Sadece Şablonlar & Ayarlar
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mb-6">
+                        Evraklar ve sertifika çıktıları hariç; yalnızca şablon tasarımlarınızı, firma listesini ve kayıtlı imzaları içeren hafif bir <span className="font-mono text-slate-300 font-semibold">.json</span> yedeğidir.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700/80 flex flex-col items-center text-center hover:border-slate-600 transition">
+                          <DownloadCloud size={32} className="text-emerald-400 mb-3" />
+                          <h3 className="font-bold text-white text-sm mb-1">Şablon ve Ayarları İndir</h3>
+                          <p className="text-xs text-slate-400 mb-4">Projeler, imzalar ve firma ayarlarını içeren hafif .json dosyası.</p>
+                          <button onClick={handleExportBackup} className="mt-auto bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full shadow-md active:scale-95">
+                            JSON Yedeğini İndir
+                          </button>
+                        </div>
+                        <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700/80 flex flex-col items-center text-center hover:border-slate-600 transition">
+                          <UploadCloud size={32} className="text-blue-400 mb-3" />
+                          <h3 className="font-bold text-white text-sm mb-1">JSON Yedeğini Geri Yükle</h3>
+                          <p className="text-xs text-slate-400 mb-4">Daha önce aldığınız .json yedek dosyasını geri yükleyin.</p>
+                          <div className="mt-auto w-full relative">
+                            <input ref={backupInputRef} type="file" accept=".json" onChange={handleImportBackup} className="hidden" id="backup-upload" />
+                            <label htmlFor="backup-upload" className="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition w-full flex items-center justify-center cursor-pointer shadow-md active:scale-95">
+                              JSON Dosyası Seç ve Yükle
+                            </label>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-3 text-[10px] text-slate-400">
+                            <AlertTriangle size={12} className="shrink-0" />
+                            <span>Mevcut şablonların üzerine yazılır.</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* GitHub PM2 Auto Update */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <h2 className="text-lg font-bold flex items-center gap-2 mb-2 text-white">
+                        <Github className="text-white" size={20} /> Sunucu / GitHub Otomatik Güncelleme
+                      </h2>
+                      <p className="text-xs text-slate-400 mb-6">
+                        Uygulamanın en son sürümünü GitHub deposundan (<span className="font-mono text-slate-300">szgnemin1/ProCertify</span>) çeker, arka planda derler ve sunucu sürecini PM2 ile yeniden başlatır. Mevcut verileriniz bu işlemden etkilenmez.
+                      </p>
+                      
+                      <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700 space-y-4">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <h3 className="font-bold text-white text-sm mb-1">Tek Tıkla Otomatik Güncelleme</h3>
+                            <p className="text-xs text-slate-400">
+                              Mevcut Çalışan Sürüm: <span className="bg-slate-800 text-amber-400 px-2 py-0.5 rounded font-mono font-bold ml-1">{APP_VERSION}</span>
+                            </p>
+                          </div>
+                          <button 
+                            onClick={handleUpdateApp}
+                            disabled={isUpdating}
+                            className={`px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm transition flex items-center justify-center gap-2 select-none shadow-lg active:scale-95 ${
+                              isUpdating 
+                                ? 'bg-slate-700 text-slate-400 cursor-not-allowed animate-pulse' 
+                                : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/20'
+                            }`}
+                          >
+                            {isUpdating ? 'Güncelleniyor...' : 'Sürümü Otomatik Güncelle'}
+                          </button>
+                        </div>
+                        
+                        {updateMessage && (
+                          <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg flex items-start gap-2">
+                            <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
+                            <span className="text-xs text-slate-300 font-medium">{updateMessage}</span>
+                          </div>
+                        )}
+                        
+                        {updateLogs && (
+                          <div className="space-y-2 mt-4">
+                            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                              <span>GÜNCELLEME LOGLARI</span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded ${
+                                updateLogs.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                              }`}>
+                                {updateLogs.success ? 'KABUL EDİLDİ / BAŞARILI' : 'BAĞLANTI VEYA DERLEME HATASI'}
+                              </span>
+                            </div>
+                            <div className="bg-black/80 font-mono text-xs text-slate-300 p-4 rounded-xl border border-slate-800 overflow-x-auto max-h-60 custom-scrollbar space-y-1">
+                              {updateLogs.stdout && (
+                                <div>
+                                  <span className="text-emerald-400 font-bold">[Komut Çıktısı]:</span>
+                                  <pre className="whitespace-pre-wrap mt-1 opacity-70">{updateLogs.stdout}</pre>
+                                </div>
+                              )}
+                              {updateLogs.stderr && (
+                                <div className="mt-2 pt-2 border-t border-slate-900">
+                                  <span className="text-cyan-400 font-bold">[Bildirimler / Günlükler]:</span>
+                                  <pre className="whitespace-pre-wrap mt-1 text-rose-400 opacity-90">{updateLogs.stderr}</pre>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* About Card */}
+                    <div className="bg-slate-800/90 rounded-2xl p-6 border border-slate-700 shadow-xl backdrop-blur-sm">
+                      <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700 flex items-start gap-4">
+                        <div className="p-3 bg-slate-800 rounded-xl text-slate-400">
+                          <Monitor size={24} />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-white text-base">
+                            ProCertify Studio <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full ml-2">{APP_VERSION}</span>
+                          </h3>
+                          <p className="text-xs text-slate-400 mt-1 mb-4">
+                            Açık kaynak kodlu, profesyonel sertifika tasarım ve yönetim aracı. Projeyi GitHub üzerinde destekleyebilir veya katkıda bulunabilirsiniz.
+                          </p>
+                          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-xl transition border border-slate-700">
+                            <Github size={14} /> GitHub Deposuna Git
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
              </div>
           </div>
         )}
@@ -2789,6 +4444,38 @@ const App = () => {
         {/* VIEW: FILL & EXPORT */}
         {currentView === 'fill' && (
            <div className="flex-1 flex flex-col overflow-hidden relative">
+              {/* Düzenleme Modu Bilgilendirme Çubuğu */}
+              {editingCertificate && (
+                <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0 z-30">
+                  <div className="flex items-center gap-2 text-amber-300">
+                    <Pencil size={14} className="text-amber-400 shrink-0" />
+                    <span>
+                      <strong>Sertifika Düzenleme Modu:</strong>{' '}
+                      <span className="text-white font-bold">{editingCertificate.recipientName || 'İsimsiz'}</span>{' '}
+                      (Seri No: <code className="bg-amber-500/20 px-1.5 py-0.5 rounded font-mono font-bold text-amber-200">{editingCertificate.serialNo}</code>)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingCertificate(null)}
+                      className="text-[11px] font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-lg transition"
+                      title="Mevcut seri numarasını güncellemek yerine yeni bir kayıt üret"
+                    >
+                      Yeni Kayıt Olarak Üret
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelEdit}
+                      className="text-[11px] font-semibold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 px-2.5 py-1 rounded-lg transition"
+                    >
+                      Düzenlemeyi İptal Et
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Mobile Steps Navigator */}
               <div className="md:hidden flex bg-slate-950 border-b border-slate-800 shrink-0 select-none z-30">
                   <button onClick={() => setMobileFillStep(0)} className={`flex-1 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition ${mobileFillStep === 0 ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>1. Sertifikalar</button>
@@ -2846,15 +4533,87 @@ const App = () => {
               
               {/* Pillar 2: Data Entry */}
               <div className={`${mobileFillStep === 1 ? 'flex flex-1 w-full md:flex-none' : 'hidden md:flex'} md:w-[360px] bg-slate-800 border-r border-slate-700 flex-col z-20 overflow-hidden shadow-2xl shrink-0`}>
-                 <div className="p-5 border-b border-slate-700 bg-slate-900 shrink-0 flex justify-between items-center">
+                 <div className="p-4 border-b border-slate-700 bg-slate-900 shrink-0 flex justify-between items-center">
                    <div>
-                     <h2 className="text-lg font-bold text-white leading-tight">Veri Girişi</h2>
+                     <h2 className="text-base font-bold text-white leading-tight">Veri Girişi</h2>
                      <p className="text-[10px] text-slate-400 mt-0.5">Seçili {selectedFillProjectIds.length} sertifikayı doldurun.</p>
                    </div>
-                   <button onClick={() => setIsChatMode(!isChatMode)} className="text-[10px] text-amber-500 hover:text-amber-400 flex items-center gap-1.5 transition bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 font-bold uppercase tracking-tight">
-                     {isChatMode ? <><List size={12}/> Form</> : <><MessageSquare size={12}/> Sohbet</>}
-                   </button>
+                   <div className="flex items-center gap-1.5">
+                     {Object.keys(fillValues).length > 0 && (
+                       <button 
+                         type="button"
+                         onClick={clearFillData} 
+                         className="text-[10px] text-slate-400 hover:text-rose-400 flex items-center gap-1 transition bg-slate-800 hover:bg-rose-500/10 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-rose-500/30 font-semibold"
+                         title="Formdaki tüm verileri temizle"
+                       >
+                         <RotateCcw size={11} /> Temizle
+                       </button>
+                     )}
+                     <button onClick={() => setIsChatMode(!isChatMode)} className="text-[10px] text-amber-500 hover:text-amber-400 flex items-center gap-1.5 transition bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 font-bold uppercase tracking-tight">
+                       {isChatMode ? <><List size={12}/> Form</> : <><MessageSquare size={12}/> Sohbet</>}
+                     </button>
+                   </div>
                  </div>
+
+                 {/* TC MATCHED EMPLOYEE BANNER */}
+                 {matchedEmployee && (
+                   <div className="bg-slate-950/95 border-b border-amber-500/30 p-3 text-xs space-y-1.5 shrink-0 animate-in fade-in">
+                     <div className="flex items-center justify-between gap-2">
+                       <div className="flex items-center gap-2 truncate">
+                         <span className="w-5 h-5 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold shrink-0">
+                           <UserCheck size={12} />
+                         </span>
+                         <div className="truncate">
+                           <span className="font-bold text-white text-xs">{matchedEmployee.name || 'Kayıtlı Çalışan'}</span>
+                           {matchedEmployee.company && <span className="text-slate-400 text-[10px] ml-1.5">({matchedEmployee.company})</span>}
+                         </div>
+                       </div>
+                       {(!fillValues['Ad Soyad'] && !fillValues['ad soyad']) && (
+                         <button
+                           type="button"
+                           onClick={() => {
+                             handleFillFieldChange('Ad Soyad', matchedEmployee.name, ElementType.TEXT);
+                             if (matchedEmployee.company) {
+                               handleFillFieldChange('Firma', matchedEmployee.company, ElementType.COMPANY);
+                             }
+                           }}
+                           className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-2 py-0.5 rounded text-[10px] transition shrink-0 shadow-sm"
+                         >
+                           Doldur
+                         </button>
+                       )}
+                     </div>
+
+                     {alreadyHasSelectedProject ? (
+                       <div className="flex items-start gap-1.5 text-[11px] text-amber-300 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20">
+                         <AlertCircle size={13} className="shrink-0 mt-0.5 text-amber-400" />
+                         <div className="leading-tight">
+                           <span>Bu çalışan için daha önce <strong>"{alreadyHasSelectedProject.projects?.join(', ')}"</strong> sertifikası düzenlenmiş.</span>
+                           <div className="text-emerald-400 font-semibold mt-0.5">
+                             ✓ Yapılan işlem YENİ SERTİFİKA olarak çalışanın kartına eklenecektir.
+                           </div>
+                         </div>
+                       </div>
+                     ) : (
+                       <div className="text-[10px] text-slate-400">
+                         Bu çalışanın sistemde toplam <strong>{matchedEmployee.existingCerts.length}</strong> adet sertifikası bulunuyor.
+                       </div>
+                     )}
+                   </div>
+                 )}
+
+                 {/* MULTIPLE DATES EARLIEST DAY BANNER */}
+                 {multipleDistinctDates && groupEarliestDate && (
+                   <div className="bg-amber-500/10 border-b border-amber-500/30 p-3 text-xs space-y-1 shrink-0 animate-in fade-in">
+                     <div className="flex items-center gap-2 text-amber-300 font-bold">
+                       <Calendar size={13} className="text-amber-400 shrink-0" />
+                       <span>Farklı Eğitim Tarihleri Tespit Edildi</span>
+                     </div>
+                     <p className="text-[11px] text-slate-300 leading-snug">
+                       Toplu sertifikalarda girilen tarihler arasından ilk gün olan <strong className="text-amber-300 bg-amber-500/20 px-1 py-0.5 rounded font-mono">{groupEarliestDate.formatted}</strong> başlangıç ve geçerlilik referansı olarak kabul edildi.
+                     </p>
+                   </div>
+                 )}
 
                  {isChatMode ? (
                    <div className="flex-1 flex flex-col overflow-hidden p-4">
@@ -3117,14 +4876,135 @@ const App = () => {
                               </div>
                             ) : (
                               <>
-                            <label className="text-sm font-medium text-amber-500 flex justify-between select-none">
-                              <span className="truncate pr-2">{field.displayLabel}</span>
-                              <span className="text-slate-500 text-[10px] bg-slate-900 px-2 rounded uppercase shrink-0">{field.type === ElementType.DROPDOWN ? 'SEÇENEK' : (field.type === ElementType.COMPANY ? 'FİRMA' : (field.type === ElementType.TCKN ? 'TC NO' : (field.type === ElementType.QRCODE ? 'QR VERİSİ' : field.type)))}</span>
+                            <label className="text-sm font-medium text-amber-500 flex justify-between select-none items-center">
+                              <span className="truncate pr-2 flex items-center gap-2">
+                                <span>{field.displayLabel}</span>
+                                {(field.label === selectedTrainingDateKey || (field.type === ElementType.DATE && field.dateKind !== 'validity') || field.label.toLowerCase().includes('başlangıç') || field.label.toLowerCase().includes('baslangic')) && (
+                                  <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                    ⭐ Başlangıç Tarihi (Grup Referansı)
+                                  </span>
+                                )}
+                                {isValidityDateField(field.label) && (
+                                  <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded-full font-bold">
+                                    ⌛ Otomatik Geçerlilik
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-slate-500 text-[10px] bg-slate-900 px-2 rounded uppercase shrink-0 font-bold">{field.type === ElementType.DROPDOWN ? 'SEÇENEK' : (field.type === ElementType.COMPANY ? 'FİRMA' : (field.type === ElementType.TCKN ? 'TC NO' : (field.type === ElementType.DATE ? 'TARİH BİLEŞENİ' : (field.type === ElementType.QRCODE ? 'QR VERİSİ' : field.type))))}</span>
                             </label>
                             {(field.type === ElementType.TEXT || field.type === ElementType.QRCODE || field.type === ElementType.TCKN) && (
-                              <textarea rows={field.label.toLowerCase().includes('adres') ? 3 : 1} value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-600 transition resize-y min-h-[46px]" placeholder={field.type === ElementType.QRCODE ? "https://site.com" : (field.type === ElementType.TCKN ? "TC Kimlik No Girin (11 Hane)" : "Metin değeri girin")} style={{ overflow: 'hidden' }} maxLength={field.type === ElementType.TCKN ? 11 : undefined} onInput={(e) => { const target = e.target as HTMLTextAreaElement; target.style.height = 'auto'; target.style.height = target.scrollHeight + 'px'; }} />
+                              <div>
+                                <textarea rows={field.label.toLowerCase().includes('adres') ? 3 : 1} value={fillValues[field.label] || ''} onChange={(e) => handleFillFieldChange(field.label, e.target.value, field.type as ElementType)} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white placeholder-slate-600 transition resize-y min-h-[46px]" placeholder={field.type === ElementType.QRCODE ? "https://site.com" : (field.type === ElementType.TCKN ? "TC Kimlik No Girin (11 Hane)" : "Metin değeri girin")} style={{ overflow: 'hidden' }} maxLength={field.type === ElementType.TCKN ? 11 : undefined} onInput={(e) => { const target = e.target as HTMLTextAreaElement; target.style.height = 'auto'; target.style.height = target.scrollHeight + 'px'; }} />
+                                {(() => {
+                                  const isDateText = (field.label.toLowerCase().includes('tarih') || field.label.toLowerCase().includes('date')) && !isValidityDateField(field.label);
+                                  if (!isDateText) return null;
+                                  const val = fillValues[field.label];
+                                  if (!val) return null;
+                                  const parsed = parseDateDetailed(val);
+                                  if (parsed) {
+                                    return (
+                                      <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 pl-1 mt-1">
+                                        <Check size={12} />
+                                        <span>
+                                          {parsed.isMultiDay 
+                                            ? `Çok Günlü Eğitim: Bitiş ${String(parsed.endDay).padStart(2,'0')}.${String(parsed.month+1).padStart(2,'0')}.${parsed.year}` 
+                                            : `Algılanan Tarih: ${String(parsed.endDay).padStart(2,'0')}.${String(parsed.month+1).padStart(2,'0')}.${parsed.year}`}
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </div>
                             )}
-                            {field.type === ElementType.DROPDOWN && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => setFillValues(prev => ({ ...prev, [field.label]: e.target.value }))} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">Bir seçenek belirleyin...</option>{field.options && field.options.map((opt, i) => (<option key={i} value={opt}>{opt}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div></div>)}
+                            {field.type === ElementType.DATE && (
+                              <div className="space-y-1.5">
+                                <div className="relative flex items-center">
+                                  <input 
+                                    type="text"
+                                    value={fillValues[field.label] || ''} 
+                                    onChange={(e) => handleFillFieldChange(field.label, e.target.value, ElementType.DATE)}
+                                    placeholder="Örn: 22.25/10/2026 veya 25.10.2026"
+                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-4 pr-10 py-3 focus:border-amber-500 outline-none text-white transition placeholder-slate-600 font-mono text-sm"
+                                  />
+                                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
+                                    <input 
+                                      type="date" 
+                                      id={`native-date-picker-${idx}`}
+                                      className="sr-only"
+                                      onChange={(e) => {
+                                        if (e.target.value) {
+                                          const [y, m, d] = e.target.value.split('-');
+                                          handleFillFieldChange(field.label, `${d}.${m}.${y}`, ElementType.DATE);
+                                        }
+                                      }}
+                                    />
+                                    <label 
+                                      htmlFor={`native-date-picker-${idx}`} 
+                                      className="p-1.5 hover:bg-slate-800 rounded-md text-slate-400 hover:text-amber-400 cursor-pointer transition"
+                                      title="Takvimden Tek Gün Seç"
+                                    >
+                                      <Calendar size={16} />
+                                    </label>
+                                  </div>
+                                </div>
+                                {(() => {
+                                  const val = fillValues[field.label];
+                                  if (!val) return null;
+                                  const parsed = parseDateDetailed(val);
+                                  if (parsed) {
+                                    return (
+                                      <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 pl-1">
+                                        <Check size={12} />
+                                        <span>
+                                          {parsed.isMultiDay 
+                                            ? `Çok Günlü Eğitim: Bitiş ${String(parsed.endDay).padStart(2,'0')}.${String(parsed.month+1).padStart(2,'0')}.${parsed.year}` 
+                                            : `Algılanan Tarih: ${String(parsed.endDay).padStart(2,'0')}.${String(parsed.month+1).padStart(2,'0')}.${parsed.year}`}
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                                  <div className="flex items-center gap-1.5 text-[10px]">
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        const now = new Date();
+                                        const d = String(now.getDate()).padStart(2, '0');
+                                        const m = String(now.getMonth() + 1).padStart(2, '0');
+                                        const y = now.getFullYear();
+                                        handleFillFieldChange(field.label, `${d}.${m}.${y}`, ElementType.DATE);
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 transition"
+                                      title="Bugünün tarihini gir"
+                                    >
+                                      Bugün ({formatDateTR(new Date())})
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        const yesterday = new Date();
+                                        yesterday.setDate(yesterday.getDate() - 1);
+                                        const d = String(yesterday.getDate()).padStart(2, '0');
+                                        const m = String(yesterday.getMonth() + 1).padStart(2, '0');
+                                        const y = yesterday.getFullYear();
+                                        handleFillFieldChange(field.label, `${d}.${m}.${y}`, ElementType.DATE);
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 transition"
+                                      title="Dünün tarihini gir"
+                                    >
+                                      Dün
+                                    </button>
+                                  </div>
+                                  <span className="text-[10px] text-amber-400/90 italic">
+                                    ✦ Gruptaki tüm sertifikaların başlangıç tarihi kabul edilir
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {field.type === ElementType.DROPDOWN && (<div className="relative"><select value={fillValues[field.label] || ''} onChange={(e) => handleFillFieldChange(field.label, e.target.value, ElementType.DROPDOWN)} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 focus:border-amber-500 outline-none text-white appearance-none cursor-pointer hover:bg-slate-800 transition"><option value="">Bir seçenek belirleyin...</option>{field.options && field.options.map((opt, i) => (<option key={i} value={opt}>{opt}</option>))}</select><div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div></div>)}
                             {field.type === ElementType.COMPANY && (() => {
                                const currentVal = fillValues[field.label] || '';
                                const filtered = currentVal ? companies.filter(c => turkishToLower(c.name).includes(turkishToLower(currentVal)) || (c.shortName && turkishToLower(c.shortName).includes(turkishToLower(currentVal)))) : companies;
@@ -3254,78 +5134,28 @@ const App = () => {
         )}
       </div>
       {showSignaturePad && (<SignaturePad onSave={handleSignatureDrawSave} onClose={() => setShowSignaturePad(false)} />)}
+      {/* USER MANAGEMENT MODAL */}
+      <UserManagementModal 
+        isOpen={showUserModal} 
+        onClose={() => setShowUserModal(false)} 
+        getApiUrl={getApiUrl} 
+      />
 
-      {/* ADMIN PASSWORD MODAL */}
-      {showAdminLoginModal && (
-        <div className="fixed inset-0 z-[200] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-6 sm:p-8 w-full max-w-sm shadow-2xl relative select-none">
-            <button 
-              onClick={() => setShowAdminLoginModal(false)}
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
-              title="Kapat"
-            >
-              <X size={18} />
-            </button>
-
-            <div className="flex flex-col items-center text-center mb-6">
-              <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-900/40 mb-3">
-                <Lock className="text-white" size={26} />
-              </div>
-              <h3 className="text-xl font-bold text-white">Yönetici Girişi</h3>
-              <p className="text-xs text-slate-400 mt-1 max-w-[260px]">
-                Projeler, Şablon Tasarımı ve Ayarlar için şifrenizi girin.
-              </p>
-            </div>
-
-            <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">Şifre</label>
-                <div className="relative">
-                  <input 
-                    type={showAdminPassword ? "text" : "password"} 
-                    value={adminPasswordInput}
-                    onChange={(e) => setAdminPasswordInput(e.target.value)}
-                    placeholder="Şifrenizi girin..."
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-4 pr-11 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-sm shadow-inner"
-                    autoFocus
-                  />
-                  <button 
-                    type="button" 
-                    onClick={() => setShowAdminPassword(!showAdminPassword)} 
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1 transition"
-                  >
-                    {showAdminPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-
-              {adminLoginError && (
-                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs flex items-center gap-2">
-                  <AlertCircle size={15} className="shrink-0" />
-                  <span>{adminLoginError}</span>
-                </div>
-              )}
-
-              <div className="flex gap-2.5 pt-1">
-                <button 
-                  type="button" 
-                  onClick={() => setShowAdminLoginModal(false)}
-                  className="flex-1 py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-sm transition"
-                >
-                  İptal
-                </button>
-                <button 
-                  type="submit" 
-                  disabled={isAdminLoggingIn}
-                  className="flex-1 py-3 px-4 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm shadow-lg shadow-amber-900/20 transition active:scale-95 flex items-center justify-center gap-2"
-                >
-                  {isAdminLoggingIn ? 'Kontrol...' : 'Giriş Yap'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* EMPLOYEE MODAL (ÇALIŞAN KARTI & EVRAKLAR) */}
+      <EmployeeModal
+        isOpen={showEmployeeModal}
+        employeeIdOrTc={activeEmployeeIdOrTc || ''}
+        onClose={() => {
+          setShowEmployeeModal(false);
+          setActiveEmployeeIdOrTc(null);
+        }}
+        onEditCertificate={handleEditCertificate}
+        onRenewCertificate={handleRenewCertificate}
+        onStatusChanged={() => {
+          fetchCertificatesAndStats();
+        }}
+        getApiUrl={getApiUrl}
+      />
     </div>
   );
 };

@@ -23,6 +23,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/genai": "^2.30.0",
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
     "express": "^4.19.2",
