@@ -73,13 +73,15 @@ export const AdminEk2TemplateEditor: React.FC = () => {
     if (!config) return;
     try {
       setSaving(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('vps_session_token') || localStorage.getItem('token') || '';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('/api/health/ek2-mapping', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers,
         body: JSON.stringify(config)
       });
 
@@ -87,7 +89,8 @@ export const AdminEk2TemplateEditor: React.FC = () => {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
       } else {
-        alert("Eşleme kaydedilemedi.");
+        const errData = await res.json().catch(() => null);
+        alert(`Eşleme kaydedilemedi: ${errData?.error || res.statusText || 'Yetki veya sunucu hatası'}`);
       }
     } catch (e) {
       console.error(e);

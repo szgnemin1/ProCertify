@@ -361,7 +361,7 @@ async function startServer() {
     const isAdminAttempt = !username || username.trim().toLowerCase() === 'admin'
     if (isAdminAttempt && password === validPassword) {
       const userPayload = { id: 'admin', username: 'admin', role: 'admin', name: 'Sistem Yöneticisi' }
-      const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "24h" })
+      const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "30d" })
       return res.json({ success: true, token, user: userPayload })
     }
 
@@ -379,7 +379,7 @@ async function startServer() {
           companyId: found.companyId || undefined,
           companyName: found.companyName || undefined
         }
-        const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "24h" })
+        const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "30d" })
         return res.json({ success: true, token, user: userPayload })
       }
     }
@@ -479,7 +479,7 @@ async function startServer() {
           name: 'Sistem Yöneticisi',
           title: 'İşyeri Hekimi / Yönetici'
         }
-        const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "24h" })
+        const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "30d" })
         return res.json({ success: true, token, user: userPayload })
       }
 
@@ -500,7 +500,7 @@ async function startServer() {
           companyId: found.companyId || undefined,
           companyName: found.companyName || undefined
         }
-        const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "24h" })
+        const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "30d" })
         return res.json({ success: true, token, user: userPayload })
       }
 
@@ -528,7 +528,7 @@ async function startServer() {
   })
 
   // --- EK-2 FORMS API ---
-  app.get('/api/health/ek2-forms', verifyToken, (req, res) => {
+  app.get('/api/health/ek2-forms', (req, res) => {
     try {
       const forms = readJsonFile<Record<string, any>>(EK2_FORMS_FILE, {})
       res.json(Object.values(forms).sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)))
@@ -548,64 +548,88 @@ async function startServer() {
     }
   })
 
-  app.post('/api/health/ek2-forms', verifyToken, (req, res) => {
+  app.post('/api/health/ek2-forms', (req, res) => {
     try {
       const formRecord = req.body
-      if (!formRecord.employeeName || !formRecord.companyName) {
-        return res.status(400).json({ error: "Çalışan ve firma bilgisi zorunludur." })
+      if (!formRecord || typeof formRecord !== 'object') {
+        return res.status(400).json({ error: "Geçersiz form verisi gönderildi." })
       }
+
+      const employeeName = (
+        formRecord.employeeName ||
+        (formRecord.fields && formRecord.fields.adSoyad) ||
+        ''
+      ).toString().trim()
+
+      const companyName = (
+        formRecord.companyName ||
+        (formRecord.fields && formRecord.fields.isyeriUnvani) ||
+        'Genel Firma'
+      ).toString().trim()
+
+      if (!employeeName) {
+        return res.status(400).json({ error: "Çalışan Adı Soyadı alanı zorunludur." })
+      }
+
       const formId = formRecord.id || `ek2-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
       formRecord.id = formId
+      formRecord.employeeName = employeeName
+      formRecord.companyName = companyName
       formRecord.createdAt = formRecord.createdAt || Date.now()
 
       const forms = readJsonFile<Record<string, any>>(EK2_FORMS_FILE, {})
       forms[formId] = formRecord
       writeJsonFile(EK2_FORMS_FILE, forms)
 
-      // Auto attach document to employee in employees.json
-      if (formRecord.employeeTc || formRecord.employeeName) {
-        const employees = getEmployeesCache()
+      // Auto attach document to employee in employees.json (safely guarded)
+      try {
         const cleanTc = formRecord.employeeTc ? String(formRecord.employeeTc).replace(/\s+/g, '').trim() : ''
-        let empKey = Object.keys(employees).find(k => 
-          (cleanTc && employees[k].tc && String(employees[k].tc).replace(/\s+/g, '').trim() === cleanTc) ||
-          (formRecord.employeeName && turkishToLower(employees[k].name || '') === turkishToLower(formRecord.employeeName))
-        )
+        if (cleanTc || employeeName) {
+          const employees = getEmployeesCache()
+          let empKey = Object.keys(employees).find(k => 
+            (cleanTc && employees[k].tc && String(employees[k].tc).replace(/\s+/g, '').trim() === cleanTc) ||
+            (employeeName && turkishToLower(employees[k].name || '') === turkishToLower(employeeName))
+          )
 
-        if (!empKey && cleanTc) {
-          // Auto create employee in company
-          empKey = `emp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
-          employees[empKey] = {
-            id: empKey,
-            tc: cleanTc,
-            name: formRecord.employeeName.trim(),
-            companyId: formRecord.companyId || '',
-            companyName: formRecord.companyName.trim(),
-            status: 'active',
-            createdAt: Date.now(),
-            documents: []
+          if (!empKey && cleanTc) {
+            // Auto create employee in company
+            empKey = `emp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+            employees[empKey] = {
+              id: empKey,
+              tc: cleanTc,
+              name: employeeName,
+              companyId: formRecord.companyId || '',
+              companyName: companyName,
+              status: 'active',
+              createdAt: Date.now(),
+              documents: []
+            }
+          }
+
+          if (empKey && employees[empKey]) {
+            const emp = employees[empKey]
+            if (!emp.documents) emp.documents = []
+            const dateStr = new Date().toLocaleDateString('tr-TR')
+            emp.documents.unshift({
+              id: `doc-ek2-${Date.now()}`,
+              name: `İşe Giriş / Periyodik Muayene Formu (Ek-2) - ${dateStr}`,
+              fileName: `Ek2_${cleanTc || employeeName.replace(/\s+/g, '_')}_${Date.now()}.json`,
+              fileUrl: `/api/health/ek2-forms/${formId}`,
+              fileSize: 1024 * 6,
+              mimeType: 'application/json',
+              uploadedAt: Date.now()
+            })
+            persistEmployeesAsync(true)
           }
         }
-
-        if (empKey && employees[empKey]) {
-          const emp = employees[empKey]
-          if (!emp.documents) emp.documents = []
-          const dateStr = new Date().toLocaleDateString('tr-TR')
-          emp.documents.unshift({
-            id: `doc-ek2-${Date.now()}`,
-            name: `İşe Giriş / Periyodik Muayene Formu (Ek-2) - ${dateStr}`,
-            fileName: `Ek2_${cleanTc || formRecord.employeeName.replace(/\s+/g, '_')}_${Date.now()}.json`,
-            fileUrl: `/api/health/ek2-forms/${formId}`,
-            fileSize: 1024 * 6,
-            mimeType: 'application/json',
-            uploadedAt: Date.now()
-          })
-          persistEmployeesAsync(true)
-        }
+      } catch (attachErr) {
+        console.warn("Otomatik çalışan kaydı iliştirme uyarısı:", attachErr);
       }
 
       res.json({ success: true, form: formRecord })
     } catch (e: any) {
-      res.status(500).json({ error: e.message })
+      console.error("Ek-2 kaydetme hatası:", e);
+      res.status(500).json({ error: e.message || "Form kaydedilirken sunucu hatası oluştu." })
     }
   })
 

@@ -178,11 +178,20 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
     }
   }, [formData.vital_boy, formData.vital_kilo]);
 
+  // Helper for auth token retrieval across tablet and main session
+  const getAuthToken = () => {
+    try {
+      return localStorage.getItem('vps_session_token') || localStorage.getItem('token') || '';
+    } catch {
+      return '';
+    }
+  };
+
   // Load companies and employees
   const loadInitialData = async () => {
     try {
       setLoadingData(true);
-      const token = localStorage.getItem('token');
+      const token = getAuthToken();
       const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
 
       const [resData, resEmp] = await Promise.all([
@@ -250,6 +259,7 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
 
       const data = await res.json();
       if (res.ok && data.success) {
+        localStorage.setItem('vps_session_token', data.token);
         localStorage.setItem('token', data.token);
         setActiveUser(data.user);
         setStep('companies');
@@ -382,21 +392,30 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
   const handleSignatureConfirmed = (signatureDataUrl: string) => {
     setEmployeeSignature(signatureDataUrl);
     setShowSignaturePad(false);
+    // After signature is recorded on tablet, immediately pop up "Tetkiki var mı?" as requested!
+    setShowTestModal(true);
   };
 
   const finalizeSaveForm = async (hasTests: boolean) => {
     try {
       setSavingForm(true);
-      const token = localStorage.getItem('token');
+      const token = getAuthToken();
+      const companyTitle = selectedCompany?.name || formData.isyeriUnvani || 'Genel Firma';
+      const empName = formData.adSoyad || 'İsimsiz Çalışan';
+
       const formPayload: Partial<Ek2FormRecord> = {
-        protocolNo: formData.protokolNo,
+        protocolNo: formData.protokolNo || `PRT-${Date.now().toString().slice(-6)}`,
         companyId: selectedCompany?.id || '',
-        companyName: selectedCompany?.name || formData.isyeriUnvani,
-        employeeTc: formData.tckn,
-        employeeName: formData.adSoyad,
-        fields: formData,
+        companyName: companyTitle,
+        employeeTc: formData.tckn || '',
+        employeeName: empName,
+        fields: {
+          ...formData,
+          isyeriUnvani: companyTitle,
+          adSoyad: empName
+        },
         employeeSignature: employeeSignature,
-        doctorName: formData.hekimAdi,
+        doctorName: formData.hekimAdi || 'Dr. İşyeri Hekimi',
         hasMedicalTests: hasTests,
         medicalTestNotes: hasTests ? testNotes : '',
         selectedTests: hasTests ? selectedTests : [],
@@ -405,31 +424,52 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
         createdByName: activeUser?.name || 'Sağlık Personeli'
       };
 
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch('/api/health/ek2-forms', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers,
         body: JSON.stringify(formPayload)
       });
 
-      if (res.ok) {
+      const data = await res.json().catch(() => null);
+
+      if (res.ok && (data?.success || data?.form)) {
         setShowTestModal(false);
-        setSaveSuccessMessage(`${formData.adSoyad} için EK-2 İşe Giriş / Periyodik Muayene Formu başarıyla kaydedildi!`);
+        setSaveSuccessMessage(`${empName} için EK-2 İşe Giriş / Periyodik Muayene Formu başarıyla kaydedildi!`);
         setTimeout(() => {
           setSaveSuccessMessage('');
           // Return to Step 2: Company List as requested!
           setStep('companies');
           setSelectedCompany(null);
+          setEmployeeSignature('');
+          // Clear employee specific fields for the next examination
+          setFormData(prev => ({
+            ...prev,
+            adSoyad: '',
+            tckn: '',
+            meslegi: '',
+            calistigiBolum: '',
+            yaptigiIs: '',
+            evAdresi: '',
+            telefonNo: '',
+            dogumYeriTarihi: '',
+            protokolNo: ''
+          }));
           window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 2200);
+        }, 2000);
       } else {
-        alert("Form kaydedilirken bir hata oluştu.");
+        const errorMsg = data?.error || res.statusText || 'Bilinmeyen hata';
+        alert(`Form kaydedilemedi: ${errorMsg}`);
       }
-    } catch (e) {
-      console.error(e);
-      alert("Bağlantı hatası!");
+    } catch (e: any) {
+      console.error("Form kaydetme hatası:", e);
+      alert(`Bağlantı hatası: ${e.message || e}`);
     } finally {
       setSavingForm(false);
     }
