@@ -1,0 +1,552 @@
+{
+  "version": 1,
+  "lastUpdated": 1793976075648,
+  "items": [
+    {
+      "id": "f_protokol",
+      "category": "personal",
+      "label": "Protokol No",
+      "fieldKey": "protokolNo",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - Başlık Sağ"
+    },
+    {
+      "id": "f_work_name",
+      "category": "personal",
+      "label": "İşyeri Ünvanı",
+      "fieldKey": "isyeriUnvani",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - İşyeri Ünvanı Alanı"
+    },
+    {
+      "id": "f_work_sgk",
+      "category": "personal",
+      "label": "SGK Sicil No",
+      "fieldKey": "sgkSicilNo",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - SGK Sicil No Alanı"
+    },
+    {
+      "id": "f_work_addr",
+      "category": "personal",
+      "label": "İşyeri Adresi",
+      "fieldKey": "isyeriAdresi",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - Adres Alanı"
+    },
+    {
+      "id": "f_work_contact",
+      "category": "personal",
+      "label": "Tel / Faks / E-Posta",
+      "fieldKey": "isyeriIletisim",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - İletişim Alanı"
+    },
+    {
+      "id": "f_emp_name",
+      "category": "personal",
+      "label": "Adı ve Soyadı",
+      "fieldKey": "adSoyad",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - Çalışanın Adı Soyadı"
+    },
+    {
+      "id": "f_emp_tc",
+      "category": "personal",
+      "label": "T.C. Kimlik No",
+      "fieldKey": "tckn",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - T.C. Kimlik No"
+    },
+    {
+      "id": "f_emp_addr",
+      "category": "personal",
+      "label": "Ev Adresi",
+      "fieldKey": "evAdresi",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - Ev Adresi"
+    },
+    {
+      "id": "f_emp_birth",
+      "category": "personal",
+      "label": "Doğum Yeri ve Tarihi",
+      "fieldKey": "dogumYeriTarihi",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - Doğum Yeri/Tarihi"
+    },
+    {
+      "id": "f_emp_marital",
+      "category": "personal",
+      "label": "Medeni Durumu",
+      "fieldKey": "medeniDurumu",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 1 - Medeni Durumu",
+      "options": [
+        "Evli",
+        "Bekar"
+      ]
+    },
+    {
+      "id": "f_emp_children",
+      "category": "personal",
+      "label": "Çocuk Sayısı",
+      "fieldKey": "cocukSayisi",
+      "type": "number",
+      "targetCellOrLocation": "Sayfa 1 - Çocuk Sayısı"
+    },
+    {
+      "id": "f_emp_phone",
+      "category": "personal",
+      "label": "Telefon No",
+      "fieldKey": "telefonNo",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - Telefon No"
+    },
+    {
+      "id": "f_emp_edu",
+      "category": "personal",
+      "label": "Eğitim Durumu",
+      "fieldKey": "egitimDurumu",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 1 - Eğitim Durumu",
+      "options": [
+        "İlkokul",
+        "Ortaokul",
+        "Lise",
+        "Ön Lisans",
+        "Lisans",
+        "Yüksek Lisans"
+      ]
+    },
+    {
+      "id": "f_emp_gender",
+      "category": "personal",
+      "label": "Cinsiyeti",
+      "fieldKey": "cinsiyet",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 1 - Cinsiyeti",
+      "options": [
+        "Erkek",
+        "Kadın"
+      ]
+    },
+    {
+      "id": "f_emp_job",
+      "category": "personal",
+      "label": "Mesleği",
+      "fieldKey": "meslegi",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - Mesleği"
+    },
+    {
+      "id": "f_emp_dept",
+      "category": "personal",
+      "label": "Çalıştığı Bölüm",
+      "fieldKey": "calistigiBolum",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - Çalıştığı Bölüm"
+    },
+    {
+      "id": "f_emp_task",
+      "category": "personal",
+      "label": "Yaptığı İş (Ayrıntılı)",
+      "fieldKey": "yaptigiIs",
+      "type": "textarea",
+      "targetCellOrLocation": "Sayfa 1 - Yaptığı İş Açıklaması"
+    },
+    {
+      "id": "f_past_jobs",
+      "category": "past_work",
+      "label": "Daha Önce Çalıştığı Yerler (3 Satır)",
+      "fieldKey": "gecmisIsler",
+      "type": "textarea",
+      "targetCellOrLocation": "Sayfa 1 - Geçmiş İş Deneyimleri Tablosu"
+    },
+    {
+      "id": "an_oksuruk",
+      "category": "anamnez_complaints",
+      "label": "Balgamlı öksürük",
+      "fieldKey": "an_balgamli_oksuruk",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sol)"
+    },
+    {
+      "id": "an_nefes",
+      "category": "anamnez_complaints",
+      "label": "Nefes darlığı",
+      "fieldKey": "an_nefes_darligi",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sol)"
+    },
+    {
+      "id": "an_gogus",
+      "category": "anamnez_complaints",
+      "label": "Göğüs ağrısı",
+      "fieldKey": "an_gogus_agrisi",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sol)"
+    },
+    {
+      "id": "an_carpinti",
+      "category": "anamnez_complaints",
+      "label": "Çarpıntı",
+      "fieldKey": "an_carpinti",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sol)"
+    },
+    {
+      "id": "an_sirt",
+      "category": "anamnez_complaints",
+      "label": "Sırt ağrısı",
+      "fieldKey": "an_sirt_agrisi",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sol)"
+    },
+    {
+      "id": "an_sindirim",
+      "category": "anamnez_complaints",
+      "label": "İshal veya kabızlık",
+      "fieldKey": "an_ishal_kabizlik",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sol)"
+    },
+    {
+      "id": "an_eklem",
+      "category": "anamnez_complaints",
+      "label": "Eklemlerde ağrı",
+      "fieldKey": "an_eklem_agrisi",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sol)"
+    },
+    {
+      "id": "an_diger_belirti",
+      "category": "anamnez_complaints",
+      "label": "Diğer belirtiniz",
+      "fieldKey": "an_diger_belirti",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sol Dip)"
+    },
+    {
+      "id": "an_kalp",
+      "category": "anamnez_diseases",
+      "label": "Kalp hastalığı",
+      "fieldKey": "an_kalp",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sağ)"
+    },
+    {
+      "id": "an_seker",
+      "category": "anamnez_diseases",
+      "label": "Şeker hastalığı",
+      "fieldKey": "an_seker",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sağ)"
+    },
+    {
+      "id": "an_bobrek",
+      "category": "anamnez_diseases",
+      "label": "Böbrek rahatsızlığı",
+      "fieldKey": "an_bobrek",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sağ)"
+    },
+    {
+      "id": "an_sarilik",
+      "category": "anamnez_diseases",
+      "label": "Sarılık",
+      "fieldKey": "an_sarilik",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sağ)"
+    },
+    {
+      "id": "an_ulser",
+      "category": "anamnez_diseases",
+      "label": "Mide veya 12 parmak ülseri",
+      "fieldKey": "an_ulser",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sağ)"
+    },
+    {
+      "id": "an_isitme",
+      "category": "anamnez_diseases",
+      "label": "İşitme kaybı",
+      "fieldKey": "an_isitme",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sağ)"
+    },
+    {
+      "id": "an_gorme",
+      "category": "anamnez_diseases",
+      "label": "Görme Bozukluğu",
+      "fieldKey": "an_gorme",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sağ)"
+    },
+    {
+      "id": "an_sinir",
+      "category": "anamnez_diseases",
+      "label": "Sinir sistemi Hastalığı",
+      "fieldKey": "an_sinir",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sağ)"
+    },
+    {
+      "id": "an_deri",
+      "category": "anamnez_diseases",
+      "label": "Deri hastalığı",
+      "fieldKey": "an_deri",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sağ)"
+    },
+    {
+      "id": "an_besin",
+      "category": "anamnez_diseases",
+      "label": "Besin zehirlenmesi",
+      "fieldKey": "an_besin",
+      "type": "yes_no_date",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sağ)"
+    },
+    {
+      "id": "an_diger_hastalik",
+      "category": "anamnez_diseases",
+      "label": "Diğer hastalık teşhisi",
+      "fieldKey": "an_diger_hastalik",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 1 - Tıbbi Anamnez Tablosu (Sağ Dip)"
+    },
+    {
+      "id": "an_hastane",
+      "category": "anamnez_questions",
+      "label": "3. Hastanede yattınız mı?",
+      "fieldKey": "an_hastane",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 1 - Madde 3",
+      "options": [
+        "Hayır",
+        "Evet"
+      ]
+    },
+    {
+      "id": "an_ameliyat",
+      "category": "anamnez_questions",
+      "label": "4. Ameliyat oldunuz mu?",
+      "fieldKey": "an_ameliyat",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 1 - Madde 4",
+      "options": [
+        "Hayır",
+        "Evet"
+      ]
+    },
+    {
+      "id": "an_kaza",
+      "category": "anamnez_questions",
+      "label": "5. İş kazası geçirdiniz mi?",
+      "fieldKey": "an_is_kazasi",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 1 - Madde 5",
+      "options": [
+        "Hayır",
+        "Evet"
+      ]
+    },
+    {
+      "id": "an_meslek_hast",
+      "category": "anamnez_questions",
+      "label": "6. Meslek hastalığı şüphesi ile tetkik?",
+      "fieldKey": "an_meslek_hastaligi",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 1 - Madde 6",
+      "options": [
+        "Hayır",
+        "Evet"
+      ]
+    },
+    {
+      "id": "an_maluliyet",
+      "category": "anamnez_questions",
+      "label": "7. Maluliyet aldınız mı?",
+      "fieldKey": "an_maluliyet",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 1 - Madde 7",
+      "options": [
+        "Hayır",
+        "Evet"
+      ]
+    },
+    {
+      "id": "an_tedavi",
+      "category": "anamnez_questions",
+      "label": "8. Şu anda tedavi görüyor musunuz?",
+      "fieldKey": "an_mevcut_tedavi",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 1 - Madde 8",
+      "options": [
+        "Hayır",
+        "Evet"
+      ]
+    },
+    {
+      "id": "an_sigara",
+      "category": "anamnez_questions",
+      "label": "9. Sigara içiyor musunuz?",
+      "fieldKey": "an_sigara",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 1 - Madde 9",
+      "options": [
+        "Hayır",
+        "Bırakmış",
+        "Evet"
+      ]
+    },
+    {
+      "id": "an_alkol",
+      "category": "anamnez_questions",
+      "label": "10. Alkol alıyor musunuz?",
+      "fieldKey": "an_alkol",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 1 - Madde 10",
+      "options": [
+        "Hayır",
+        "Bırakmış",
+        "Evet"
+      ]
+    },
+    {
+      "id": "oz_kan",
+      "category": "personal",
+      "label": "Kan Grubu",
+      "fieldKey": "kanGrubu",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 2 - Özgeçmiş Kan Grubu",
+      "options": [
+        "A Rh(+)",
+        "A Rh(-)",
+        "B Rh(+)",
+        "B Rh(-)",
+        "AB Rh(+)",
+        "AB Rh(-)",
+        "0 Rh(+)",
+        "0 Rh(-)"
+      ]
+    },
+    {
+      "id": "oz_kronik",
+      "category": "personal",
+      "label": "Konjenital / Kronik Hastalık",
+      "fieldKey": "kronikHastalik",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 2 - Kronik Hastalık"
+    },
+    {
+      "id": "oz_tetanoz",
+      "category": "personal",
+      "label": "Aşı - Tetanoz",
+      "fieldKey": "asiTetanoz",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 2 - Tetanoz Aşısı",
+      "options": [
+        "Var",
+        "Yok",
+        "Eksik"
+      ]
+    },
+    {
+      "id": "oz_hepatit",
+      "category": "personal",
+      "label": "Aşı - Hepatit",
+      "fieldKey": "asiHepatit",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 2 - Hepatit Aşısı",
+      "options": [
+        "Var",
+        "Yok",
+        "Bağışık"
+      ]
+    },
+    {
+      "id": "fm_ta",
+      "category": "physical_exam",
+      "label": "Tansiyon (TA mmHg)",
+      "fieldKey": "vital_ta",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 2 - Fizik Muayene TA"
+    },
+    {
+      "id": "fm_nb",
+      "category": "physical_exam",
+      "label": "Nabız (/dk)",
+      "fieldKey": "vital_nb",
+      "type": "number",
+      "targetCellOrLocation": "Sayfa 2 - Fizik Muayene Nb"
+    },
+    {
+      "id": "fm_boy",
+      "category": "physical_exam",
+      "label": "Boy (cm)",
+      "fieldKey": "vital_boy",
+      "type": "number",
+      "targetCellOrLocation": "Sayfa 2 - Boy Alanı"
+    },
+    {
+      "id": "fm_kilo",
+      "category": "physical_exam",
+      "label": "Kilo (kg)",
+      "fieldKey": "vital_kilo",
+      "type": "number",
+      "targetCellOrLocation": "Sayfa 2 - Kilo Alanı"
+    },
+    {
+      "id": "fm_vki",
+      "category": "physical_exam",
+      "label": "Vücut Kitle İndeksi (VKİ)",
+      "fieldKey": "vital_vki",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 2 - VKİ (Otomatik Hesaplanır)"
+    },
+    {
+      "id": "fm_sistemler",
+      "category": "physical_exam",
+      "label": "Fizik Muayene Sistem Bulguları",
+      "fieldKey": "fm_sistemler",
+      "type": "textarea",
+      "targetCellOrLocation": "Sayfa 2 - Tüm Fizik Muayene Maddeleri (a-ğ)"
+    },
+    {
+      "id": "lab_analizler",
+      "category": "lab_results",
+      "label": "Laboratuvar Bulguları",
+      "fieldKey": "lab_bulgulari",
+      "type": "textarea",
+      "targetCellOrLocation": "Sayfa 2 - Laboratuvar Bulguları (a-d)"
+    },
+    {
+      "id": "dec_elverisli",
+      "category": "decision",
+      "label": "İşinde çalışmaya elverişlilik",
+      "fieldKey": "dec_elverisli",
+      "type": "choice",
+      "targetCellOrLocation": "Sayfa 2 - Kanaat 1",
+      "options": [
+        "Bedenen ve ruhen çalışmaya elverişlidir",
+        "Çalışmaya elverişli değildir"
+      ]
+    },
+    {
+      "id": "dec_yuksekte",
+      "category": "decision",
+      "label": "Yüksekte / Gece / Vardiya",
+      "fieldKey": "dec_kosullar",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 2 - Kanaat 2"
+    },
+    {
+      "id": "dec_sart",
+      "category": "decision",
+      "label": "Şartıyla Çalışma",
+      "fieldKey": "dec_sart",
+      "type": "text",
+      "targetCellOrLocation": "Sayfa 2 - Kanaat 3"
+    }
+  ]
+}

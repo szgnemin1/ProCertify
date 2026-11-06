@@ -119,3 +119,9 @@ Thumbs.db
 # Electron Builder / Dist
 dist/
 release/
+
+# Temp and scratch
+scratch/
+*.bak
+*.bak_*
+*.tmp

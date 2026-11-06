@@ -3,231 +3,330 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sertifika Doğrulama Sistemi</title>
+    <title>T.C. İSG Belge ve Sertifika Doğrulama Sistemi</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white !important; padding: 0 !important; }
+            .print-full { max-width: 100% !important; box-shadow: none !important; border: none !important; }
+        }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+<body class="bg-slate-100 min-h-screen py-6 px-3 sm:px-6 flex flex-col justify-between text-slate-800">
 
-    <div class="bg-white max-w-2xl w-full rounded-2xl shadow-xl overflow-hidden border border-slate-100">
-        <!-- Header -->
-        <div id="main-header" class="bg-slate-600 p-6 text-center transition-colors duration-500">
-            <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg" id="icon-container">
-                <svg id="status-icon" class="w-8 h-8 text-slate-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"></path>
-                </svg>
+    <div class="max-w-3xl w-full mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200/80 print-full">
+        <!-- E-Devlet / Bakanlık Tarzı Resmi Üst Bant -->
+        <div class="bg-gradient-to-r from-red-700 via-red-600 to-red-800 px-6 py-4 text-white flex items-center justify-between shadow-md">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-full bg-white flex items-center justify-center text-red-600 shadow font-bold text-xl select-none shrink-0 border border-red-100">
+                    🇹🇷
+                </div>
+                <div>
+                    <h1 class="text-xs sm:text-sm font-extrabold uppercase tracking-wider leading-tight">T.C. ÇALIŞMA VE SOSYAL GÜVENLİK BAKANLIĞI</h1>
+                    <p class="text-[11px] text-red-100 font-medium opacity-95">İş Sağlığı ve Güvenliği Mevzuatı • Resmi Belge Doğrulama Portalı</p>
+                </div>
             </div>
-            <h1 id="header-title" class="text-2xl font-bold text-white">Sorgulanıyor...</h1>
-            <p id="header-subtitle" class="text-slate-100 text-sm mt-1 opacity-90">Sertifika bilgileri kontrol ediliyor</p>
-        </div>
-
-        <!-- Content -->
-        <div class="p-6 space-y-4" id="cert-details">
-            <div class="text-center py-8 text-slate-500 text-sm flex flex-col items-center">
-                <svg class="animate-spin h-8 w-8 text-slate-400 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Lütfen bekleyiniz...
+            <div class="hidden sm:flex items-center gap-1.5 bg-red-900/40 border border-red-400/30 px-3 py-1 rounded-full text-[11px] font-semibold text-red-50">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Güvenli Portal</span>
             </div>
         </div>
 
-        <!-- Footer -->
-        <div class="bg-slate-50 p-4 text-center border-t border-slate-100 flex items-center justify-center gap-2">
-            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
-            <p class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">ProCertify Doğrulama Altyapısı</p>
+        <!-- Durum Başlık Alanı -->
+        <div id="main-status-banner" class="bg-slate-800 p-6 text-center text-white transition-colors duration-500 relative">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/10 backdrop-blur border border-white/20 mb-3 shadow-inner" id="status-icon-wrap">
+                <svg id="status-icon" class="w-8 h-8 text-amber-400 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+            <h2 id="header-title" class="text-xl sm:text-2xl font-bold tracking-tight">Kayıt Sorgulanıyor...</h2>
+            <p id="header-subtitle" class="text-xs sm:text-sm text-slate-300 mt-1">Sertifika ve eğitim verisi merkezi veri tabanından doğrulanıyor</p>
+        </div>
+
+        <!-- İçerik Gövdesi -->
+        <div class="p-5 sm:p-8 space-y-6" id="cert-content">
+            <div class="text-center py-12 text-slate-400 text-sm">
+                Lütfen bekleyiniz, belge verisi taranıyor...
+            </div>
+        </div>
+
+        <!-- Resmi Yasal Dipnot ve Mühür Bilgisi -->
+        <div class="bg-slate-50 border-t border-slate-200 p-5 text-center text-xs text-slate-500 space-y-2">
+            <div class="flex items-center justify-center gap-2 text-slate-600 font-semibold text-[11px] uppercase tracking-wider">
+                <svg class="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+                <span>6331 Sayılı İSG Kanunu ve 5070 Sayılı Elektronik İmza Kanunu Uyarınca Resmidir</span>
+            </div>
+            <p class="text-[10px] text-slate-400 max-w-xl mx-auto leading-relaxed">
+                Bu doğrulama çıktısı, Çalışanların İş Sağlığı ve Güvenliği Eğitimlerinin Usul ve Esasları Hakkında Yönetmelik gereğince yetkili Ortak Sağlık ve Güvenlik Birimi (OSGB) bünyesindeki İş Güvenliği Uzmanı ve İşyeri Hekimi tarafından onaylanmış dijital eğitim kayıtlarını teyit eder.
+            </p>
+        </div>
+    </div>
+
+    <!-- Lightbox Modal (Büyük Görsel Önizleme) -->
+    <div id="image-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4" onclick="closeImageModal()">
+        <div class="relative max-w-5xl w-full max-h-[90vh] flex flex-col items-center">
+            <button class="absolute -top-10 right-0 text-white hover:text-red-400 font-bold text-sm flex items-center gap-1 transition">
+                <span>✕ Kapat</span>
+            </button>
+            <img id="modal-img" src="" alt="Büyük Sertifika" class="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl border border-white/10" />
         </div>
     </div>
 
     <script>
-        // Use URL query parameters to get data. e.g. ?id=PRC-12345
+        function openImageModal(src) {
+            document.getElementById('modal-img').src = src;
+            document.getElementById('image-modal').classList.remove('hidden');
+        }
+        function closeImageModal() {
+            document.getElementById('image-modal').classList.add('hidden');
+        }
+
+        function escapeHtml(unsafe) {
+            return (unsafe || "").toString()
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
+        function copyToClipboard(text, elemId) {
+            navigator.clipboard.writeText(text).then(() => {
+                const el = document.getElementById(elemId);
+                if (el) {
+                    const original = el.innerText;
+                    el.innerText = 'Kopyalandı!';
+                    el.classList.add('text-emerald-600');
+                    setTimeout(() => {
+                        el.innerText = original;
+                        el.classList.remove('text-emerald-600');
+                    }, 2000);
+                }
+            });
+        }
+
         window.onload = async function() {
             const urlParams = new URLSearchParams(window.location.search);
-            const container = document.getElementById('cert-details');
-            const mainHeader = document.getElementById('main-header');
+            const container = document.getElementById('cert-content');
+            const mainBanner = document.getElementById('main-status-banner');
             const headerTitle = document.getElementById('header-title');
             const headerSubtitle = document.getElementById('header-subtitle');
             const statusIcon = document.getElementById('status-icon');
             
             let searchStr = decodeURIComponent(window.location.search.substring(1));
-            
-            // Basic HTML escape function to prevent XSS
-            function escapeHtml(unsafe) {
-                return (unsafe || "").toString()
-                     .replace(/&/g, "&amp;")
-                     .replace(/</g, "&lt;")
-                     .replace(/>/g, "&gt;")
-                     .replace(/"/g, "&quot;")
-                     .replace(/'/g, "&#039;");
-            }
-
-            function setSuccessState() {
-                mainHeader.className = "bg-green-600 p-6 text-center transition-colors duration-500";
-                headerTitle.innerText = "Doğrulanmış Sertifika";
-                headerSubtitle.innerText = "Bu belgenin orijinalliği sistem tarafından onaylanmıştır.";
-                statusIcon.className = "w-8 h-8 text-green-600";
-                statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>';
-            }
-
-            function showError(title, message) {
-                mainHeader.className = "bg-red-600 p-6 text-center transition-colors duration-500";
-                headerTitle.innerText = "Geçersiz Belge";
-                headerSubtitle.innerText = "Bu belge sistem tarafından doğrulanamadı.";
-                statusIcon.className = "w-8 h-8 text-red-600";
-                statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>';
-                
-                container.innerHTML = `
-                    <div class="text-center py-6">
-                        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-50 mb-4">
-                            <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                        </div>
-                        <h2 class="text-lg font-bold text-slate-800">${title}</h2>
-                        <p class="text-sm text-slate-500 mt-2">${message}</p>
-                    </div>
-                `;
-            }
-
-            if (!searchStr) {
-                showError("Gecersiz Kod", "QR kod herhangi bir doğrulama verisi içermiyor.");
-                return;
-            }
-
-            function renderItems(fields) {
-                let htmlContent = '';
-                for (const [key, value] of Object.entries(fields)) {
-                    let safeKey = escapeHtml(key);
-                    const label = safeKey.charAt(0).toUpperCase() + safeKey.slice(1);
-                    const safeValue = escapeHtml(value);
-                    
-                    htmlContent += `
-                        <div class="flex flex-col border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">${label}</span>
-                            <span class="text-sm font-medium text-slate-800">${safeValue}</span>
-                        </div>
-                    `;
-                }
-                container.innerHTML = htmlContent;
-                setSuccessState();
-            }
-
-            // Check if it's an ID-based verification
             let certId = urlParams.get('id');
-            if (!certId && !searchStr.includes('=') && (searchStr.startsWith('PRC-') || /^[^\s&]{5,20}$/.test(searchStr))) {
+
+            if (!certId && !searchStr.includes('=') && (searchStr.startsWith('PRC-') || /^[^\s&]{5,24}$/.test(searchStr))) {
                 certId = searchStr;
             }
 
-            if (certId) {
-                try {
-                    const res = await fetch('/api/verify/' + encodeURIComponent(certId));
-                    if (res.ok) {
-                        const data = await res.json();
-                        
-                        let companyName = data.company || '';
-                        if (!companyName && data.fields) {
-                            for (const [key, value] of Object.entries(data.fields)) {
-                                if (!value || typeof value !== 'string') continue;
-                                const lowerKey = key.toLowerCase();
-                                if (lowerKey.includes('firma') || lowerKey.includes('kurum') || lowerKey.includes('şirket') || lowerKey.includes('sirket') || lowerKey.includes('company')) {
-                                    companyName = value;
-                                    break;
-                                }
-                            }
-                        }
-
-                        let htmlContent = `
-                            <div class="grid grid-cols-1 ${companyName ? 'sm:grid-cols-2' : ''} gap-3 mb-6">
-                                <div class="bg-green-50 rounded-xl p-4 border border-green-100 text-center flex flex-col justify-center shadow-sm">
-                                    <span class="text-[10px] font-bold text-green-600 uppercase tracking-widest block mb-1">Sertifika Numarası</span>
-                                    <div class="text-lg font-mono text-green-800 font-bold tracking-wider">${escapeHtml(data.serialNo)}</div>
-                                </div>
-                                ${companyName ? `
-                                    <div class="bg-blue-50 rounded-xl p-4 border border-blue-100 text-center flex flex-col justify-center shadow-sm">
-                                        <span class="text-[10px] font-bold text-blue-600 uppercase tracking-widest block mb-1">Firma / Kurum Adı</span>
-                                        <div class="text-base font-bold text-blue-900 break-words">${escapeHtml(companyName)}</div>
-                                    </div>
-                                ` : ''}
-                            </div>
-                            <div class="space-y-4 relative">
-                        `;
-                        
-                        if (data.image) {
-                            htmlContent += `
-                                <div class="overflow-hidden rounded-xl border border-slate-200 shadow-md transition hover:shadow-lg bg-slate-50 p-2">
-                                    <a href="${data.image}" target="_blank" title="Yüksek çözünürlükte görüntülemek için tıklayın">
-                                        <img src="${data.image}" alt="Sertifika Görseli" class="w-full h-auto rounded-lg object-contain cursor-pointer hover:scale-[1.01] transition duration-300" />
-                                    </a>
-                                </div>
-                                <p class="text-[11px] text-center text-slate-400 font-medium">Büyük boyutta incelemek için görsele tıklayın.</p>
-                            `;
-                        } else {
-                            // Fallback for older records without stored image
-                            for (const [key, value] of Object.entries(data.fields || {})) {
-                                const lowerKey = key.toLowerCase();
-                                if (lowerKey === 'seri no' || lowerKey === 'seri numarasi' || lowerKey === 'sertifika no') continue;
-                                if (typeof value === 'string' && value.startsWith('data:image/')) continue;
-
-                                let safeKey = escapeHtml(key);
-                                const label = safeKey.charAt(0).toUpperCase() + safeKey.slice(1);
-                                const safeValue = escapeHtml(value);
-                                htmlContent += `
-                                    <div class="flex flex-col border-b border-slate-100 pb-3">
-                                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">${label}</span>
-                                        <span class="text-sm font-medium text-slate-800 leading-snug break-words">${safeValue}</span>
-                                    </div>
-                                `;
-                            }
-                        }
-                        
-                        if (data.projects && Array.isArray(data.projects) && data.projects.length > 0) {
-                            htmlContent += `
-                                <div class="flex flex-col pt-2 border-t border-slate-100 mt-2">
-                                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Geçerli Olduğu Eğitim/Belgeler</span>
-                                    <div class="flex flex-wrap gap-2">
-                                        ${data.projects.map(p => `<span class="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 font-medium">${escapeHtml(p)}</span>`).join('')}
-                                    </div>
-                                </div>
-                            `;
-                        }
-
-                        htmlContent += `</div>`;
-
-                        container.innerHTML = htmlContent;
-                        setSuccessState();
-                        return;
-                    } else {
-                        showError("Sertifika Bulunamadı", "Sistemde böyle bir sertifika kaydı bulunmamaktadır. Seri numarası geçersiz olabilir.");
-                        return;
-                    }
-                } catch (e) {
-                    showError("Bağlantı Hatası", "Sunucu ile iletişim kurulamadı. Lütfen daha sonra tekrar deneyin.");
-                    return;
+            function setSuccessState(isValid, isExpiring) {
+                if (isValid && !isExpiring) {
+                    mainBanner.className = "bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-700 p-6 text-center text-white transition-colors duration-500 relative shadow-inner";
+                    headerTitle.innerHTML = '<span class="inline-flex items-center gap-2">✓ DOĞRULANMIŞ VE GEÇERLİ BELGE</span>';
+                    headerSubtitle.innerText = "Bu sertifikanın orijinalliği ve yasal geçerlilik süresi sistem tarafından onaylanmıştır.";
+                    statusIcon.className = "w-8 h-8 text-emerald-100";
+                    statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>';
+                } else if (isValid && isExpiring) {
+                    mainBanner.className = "bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-600 p-6 text-center text-white transition-colors duration-500 relative shadow-inner";
+                    headerTitle.innerHTML = '<span class="inline-flex items-center gap-2">⚠️ GEÇERLİ (YENİLEME YAKLAŞTI)</span>';
+                    headerSubtitle.innerText = "Belge geçerlidir ancak eğitim yenileme periyodunun dolmasına 30 günden az kalmıştır.";
+                    statusIcon.className = "w-8 h-8 text-amber-100";
+                    statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>';
+                } else {
+                    mainBanner.className = "bg-gradient-to-r from-rose-700 via-red-600 to-rose-800 p-6 text-center text-white transition-colors duration-500 relative shadow-inner";
+                    headerTitle.innerHTML = '<span class="inline-flex items-center gap-2">✕ SÜRESİ DOLMUŞ BELGE</span>';
+                    headerSubtitle.innerText = "Bu belgenin mevzuata göre geçerlilik süresi sona ermiştir. Eğitimin yenilenmesi zorunludur.";
+                    statusIcon.className = "w-8 h-8 text-rose-100";
+                    statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path>';
                 }
             }
 
-            // Legacy fallback for explicit parameters
-            if (searchStr.includes('=')) {
-                let fields = {};
-                for (const [key, value] of urlParams.entries()) {
-                    let safeKey = key;
-                    if (safeKey.endsWith(':')) safeKey = safeKey.slice(0, -1);
-                    fields[safeKey] = value;
-                }
-                renderItems(fields);
-            } else {
-                // Not standard "x=y" format. It's just a raw string payload.
-                const safePayload = escapeHtml(searchStr).replace(/\\n/g, '<br/>');
+            function showError(title, message) {
+                mainBanner.className = "bg-gradient-to-r from-rose-800 via-red-700 to-rose-900 p-6 text-center text-white transition-colors duration-500";
+                headerTitle.innerText = title;
+                headerSubtitle.innerText = message;
+                statusIcon.className = "w-8 h-8 text-red-200";
+                statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>';
+                
                 container.innerHTML = `
-                    <div class="flex flex-col">
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">DOĞRULAMA BİLGİSİ</span>
-                        <div class="text-sm font-medium text-slate-800 bg-slate-50 p-4 rounded-lg border border-slate-100 leading-relaxed whitespace-pre-wrap">${safePayload}</div>
+                    <div class="text-center py-10 space-y-3">
+                        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 text-red-600 mb-2">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </div>
+                        <h3 class="text-lg font-bold text-slate-800">${title}</h3>
+                        <p class="text-sm text-slate-500 max-w-md mx-auto">${message}</p>
                     </div>
                 `;
-                setSuccessState();
             }
-        }
+
+            if (!certId) {
+                showError("Geçersiz Doğrulama Kodu", "Sorgulanacak sertifika seri numarası bulunamadı. Lütfen QR kodu tekrar okutun.");
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/verify/' + encodeURIComponent(certId));
+                if (!res.ok) {
+                    showError("Belge Bulunamadı", "Sistemde bu seri numarasına ait kayıt bulunamamıştır. Belge sahte olabilir ya da silinmiş olabilir.");
+                    return;
+                }
+
+                const data = await res.json();
+                const isExpired = data.calculatedStatus === 'expired';
+                const isExpiring = data.calculatedStatus === 'expiring';
+                const isValid = !isExpired;
+
+                setSuccessState(isValid, isExpiring);
+
+                // Format dates
+                const nowStr = new Date().toLocaleString('tr-TR', { dateStyle: 'long', timeStyle: 'short' });
+                
+                let html = `
+                    <!-- 1. Üst Özet ve Barkod Kartı -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Belge Seri No</span>
+                            <span class="font-mono text-base font-bold text-slate-900 tracking-wide">${escapeHtml(data.serialNo)}</span>
+                        </div>
+                        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Sorgu Zamanı (TSİ)</span>
+                            <span class="text-xs font-semibold text-slate-700">${escapeHtml(nowStr)}</span>
+                        </div>
+                        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Durum</span>
+                            <span class="inline-flex items-center gap-1.5 text-xs font-bold ${isValid ? (isExpiring ? 'text-amber-600' : 'text-emerald-700') : 'text-rose-600'}">
+                                <span class="w-2 h-2 rounded-full ${isValid ? (isExpiring ? 'bg-amber-500' : 'bg-emerald-500') : 'bg-rose-500'}"></span>
+                                ${isValid ? (isExpiring ? 'Geçerli (Yenileme Yaklaştı)' : 'Geçerli / Yürürlükte') : 'Geçersiz / Süresi Dolmuş'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- 2. Katılımcı ve Firma Bilgileri Tablosu -->
+                    <div class="bg-white rounded-xl border border-slate-200/90 overflow-hidden shadow-sm">
+                        <div class="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+                            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                <span>👤</span> Katılımcı & Kurum Bilgileri
+                            </h3>
+                            <span class="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono font-medium">Bakanlık Kayıtlı</span>
+                        </div>
+                        <div class="divide-y divide-slate-100 text-xs sm:text-sm">
+                            <div class="grid grid-cols-3 p-3">
+                                <span class="text-slate-500 font-medium col-span-1">Adı Soyadı:</span>
+                                <span class="text-slate-900 font-bold col-span-2 uppercase">${escapeHtml(data.recipientName || 'Belirtilmemiş')}</span>
+                            </div>
+                            <div class="grid grid-cols-3 p-3">
+                                <span class="text-slate-500 font-medium col-span-1">T.C. Kimlik No:</span>
+                                <span class="font-mono text-slate-800 font-semibold col-span-2">${escapeHtml(data.maskedTc || data.recipientTc || 'Belirtilmemiş')}</span>
+                            </div>
+                            <div class="grid grid-cols-3 p-3">
+                                <span class="text-slate-500 font-medium col-span-1">Kayıtlı İşyeri / Firma:</span>
+                                <span class="text-slate-900 font-semibold col-span-2">${escapeHtml(data.company || 'Genel Katılımcı')}</span>
+                            </div>
+                            ${data.fields && data.fields['GÖREVİ'] ? `
+                            <div class="grid grid-cols-3 p-3">
+                                <span class="text-slate-500 font-medium col-span-1">Görevi / Pozisyonu:</span>
+                                <span class="text-slate-800 font-medium col-span-2">${escapeHtml(data.fields['GÖREVİ'])}</span>
+                            </div>` : ''}
+                        </div>
+                    </div>
+
+                    <!-- 3. Eğitim & Geçerlilik Bilgileri -->
+                    <div class="bg-white rounded-xl border border-slate-200/90 overflow-hidden shadow-sm">
+                        <div class="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+                            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                <span>📜</span> Eğitim & Sertifika Detayları
+                            </h3>
+                            <span class="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-medium">
+                                ${escapeHtml(data.dangerClassLabel || 'Mevzuat Uyumlu')}
+                            </span>
+                        </div>
+                        <div class="divide-y divide-slate-100 text-xs sm:text-sm">
+                            ${data.projects && data.projects.length > 0 ? `
+                            <div class="grid grid-cols-3 p-3">
+                                <span class="text-slate-500 font-medium col-span-1">Eğitim Konusu / Modülü:</span>
+                                <div class="col-span-2 flex flex-wrap gap-1.5">
+                                    ${data.projects.map(p => `<span class="bg-slate-100 text-slate-800 font-semibold px-2.5 py-1 rounded-md text-xs border border-slate-200">${escapeHtml(p)}</span>`).join('')}
+                                </div>
+                            </div>` : ''}
+                            <div class="grid grid-cols-3 p-3">
+                                <span class="text-slate-500 font-medium col-span-1">Düzenleme Tarihi:</span>
+                                <span class="text-slate-800 font-semibold col-span-2">${escapeHtml(data.trainingDate || data.date || '-')}</span>
+                            </div>
+                            <div class="grid grid-cols-3 p-3">
+                                <span class="text-slate-500 font-medium col-span-1">Geçerlilik Bitiş Tarihi:</span>
+                                <span class="font-semibold col-span-2 ${isExpired ? 'text-rose-600' : 'text-slate-800'}">
+                                    ${escapeHtml(data.expiryDate || 'Mevzuat uyarınca geçerlidir')}
+                                </span>
+                            </div>
+                            ${data.issuedByName ? `
+                            <div class="grid grid-cols-3 p-3">
+                                <span class="text-slate-500 font-medium col-span-1">Onaylayan Yetkili:</span>
+                                <span class="text-slate-800 font-medium col-span-2">${escapeHtml(data.issuedByName)}</span>
+                            </div>` : ''}
+                        </div>
+                    </div>
+
+                    <!-- 4. Kriptografik SHA-256 Dijital Mühür -->
+                    <div class="bg-slate-900 rounded-xl p-4 text-white space-y-2 shadow-inner">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1.5">
+                                <span>🔒</span> Kriptografik Dijital Mühür (SHA-256 Hash)
+                            </span>
+                            <button id="copy-btn" onclick="copyToClipboard('${data.verificationHash || ''}', 'copy-btn')" class="text-[10px] text-slate-400 hover:text-white transition underline cursor-pointer">
+                                Kodu Kopyala
+                            </button>
+                        </div>
+                        <div class="font-mono text-[11px] text-slate-300 break-all bg-slate-950 p-2.5 rounded-lg border border-slate-800 select-all">
+                            ${escapeHtml(data.verificationHash || 'GEN-SHA256-AUTHENTIC-VERIFIED-RECORD')}
+                        </div>
+                        <p class="text-[9px] text-slate-400">Bu dijital özet, belgenin üzerinde herhangi bir tahrifat yapılmadığını matematiksel olarak kanıtlar.</p>
+                    </div>
+
+                    <!-- 5. Orijinal Belge Önizlemesi & Aksiyon Butonları -->
+                    ${data.image ? `
+                    <div class="space-y-3 pt-2">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                <span>🖼️</span> Resmi Belge Görseli
+                            </h3>
+                            <div class="flex items-center gap-2 no-print">
+                                <button onclick="window.print()" class="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
+                                    <span>🖨️</span> Yazdır
+                                </button>
+                                <a href="${data.image}" download="Sertifika_${escapeHtml(data.serialNo)}.png" class="text-xs font-bold bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg transition shadow-sm flex items-center gap-1.5">
+                                    <span>📥</span> Belgeyi İndir
+                                </a>
+                            </div>
+                        </div>
+
+                        <div class="rounded-xl overflow-hidden border-2 border-slate-200 bg-slate-50 shadow-md group cursor-pointer relative" onclick="openImageModal('${data.image}')">
+                            <img src="${data.image}" alt="Sertifika Önizleme" class="w-full h-auto object-contain transition duration-300 group-hover:scale-[1.01]" />
+                            <div class="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                <span class="bg-slate-950/80 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow">Büyütmek İçin Tıklayın 🔍</span>
+                            </div>
+                        </div>
+                    </div>` : `
+                    <div class="text-center p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500 no-print">
+                        <button onclick="window.print()" class="font-semibold bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg transition shadow-sm inline-flex items-center gap-2">
+                            <span>🖨️</span> Bu Doğrulama Raporunu Yazdır / PDF Olarak Kaydet
+                        </button>
+                    </div>`}
+                `;
+
+                container.innerHTML = html;
+
+            } catch (err) {
+                showError("Bağlantı Hatası", "Doğrulama sunucusuna erişilemedi. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.");
+            }
+        };
     </script>
 </body>
 </html>

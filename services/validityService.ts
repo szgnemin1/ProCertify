@@ -51,117 +51,144 @@ const TR_MONTHS: Record<string, number> = {
   'ekim': 9, 'kasım': 10, 'kasim': 10, 'aralık': 11, 'aralik': 11
 };
 
+export const TR_MONTH_NAMES = [
+  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+  'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+];
+
 export interface ParsedDateInfo {
   raw: string;
   startDay: number;
   endDay: number;
+  allDays: number[];
   month: number; // 0-indexed (0=Ocak, 11=Aralık)
   year: number;
   isMultiDay: boolean;
   startDate: Date;     // Earliest / first day of training (ilk gün)
   effectiveDate: Date; // Last day of training (bitiş günü)
+  displaySummary: string; // e.g. "12 ve 13 Kasım 2026 (2 Günlük Eğitim)"
 }
 
 /**
  * Parses single or multi-day Turkish dates:
- * - 22.25/10/2026, 19.21.22/01/2026, 22.25.10.2026, 22-25/10/2026, 22,25/10/2026, 22/25/10/2026
+ * - (12.13/11/2026), 12.13/11/2026, 12.13.14/11/2026, 19.21.22/01/2026, 22.25.10.2026, 22-25/10/2026, 22,25/10/2026
+ * - 12 ve 13 Kasım 2026, 12, 13 Kasım 2026, 12-13 Kasım 2026
  * - 22.10.2026 - 25.10.2026
  * - 25.10.2026, 25/10/2026, 25-10-2026
  * - 2026-10-25
- * - 22 - 25 Ekim 2026, 25 Ekim 2026
  */
 export const parseDateDetailed = (dateStr?: string): ParsedDateInfo | null => {
   if (!dateStr || typeof dateStr !== 'string') return null;
   const raw = dateStr.trim();
   if (!raw) return null;
 
+  // Clean surrounding parentheses, brackets, braces, and quotes e.g. "(12.13/11/2026)" -> "12.13/11/2026"
+  const cleaned = raw.replace(/^[\(\[\{'"“]+/, '').replace(/[\)\]\}'"”]+$/, '').trim();
+  if (!cleaned) return null;
+
   let startDay: number | null = null;
   let endDay: number | null = null;
+  let allDays: number[] = [];
   let month: number | null = null;
   let year: number | null = null;
   let isMultiDay = false;
 
-  // 1. Multi-day Turkish format: 22.25/10/2026, 19.21.22/01/2026, 22-25/10/2026, 22,25/10/2026
-  const multiDayMatch = raw.match(/^((?:\d{1,2}[\.\-,\/])+)(\d{1,2})[\.\-\/](\d{4})$/);
+  // 1. Multi-day Turkish format: (12.13/11/2026), 12.13/11/2026, 12.13.14/11/2026, 12-13/11/2026, 12,13/11/2026, 12, 13/11/2026, 12.13.11.2026, 12-13.11.2026
+  const multiDayMatch = cleaned.match(/^((?:\d{1,2}[\.\-,\/]\s*)+)(\d{1,2})[\.\-\/](\d{2,4})$/);
   if (multiDayMatch) {
-    const dayTokens = multiDayMatch[1].split(/[\.\-,\/]/).filter(Boolean).map(n => parseInt(n, 10));
+    const dayTokens = multiDayMatch[1].split(/[\.\-,\/]/).map(s => s.trim()).filter(Boolean).map(n => parseInt(n, 10));
     if (dayTokens.length >= 2) {
-      startDay = Math.min(...dayTokens);
-      endDay = Math.max(...dayTokens);
+      allDays = Array.from(new Set(dayTokens)).sort((a, b) => a - b);
+      startDay = allDays[0];
+      endDay = allDays[allDays.length - 1];
       month = parseInt(multiDayMatch[2], 10) - 1;
-      year = parseInt(multiDayMatch[3], 10);
+      let yr = parseInt(multiDayMatch[3], 10);
+      if (yr < 100) yr += 2000;
+      year = yr;
       isMultiDay = true;
     }
   }
 
-  // 2. Range format: 22.10.2026 - 25.10.2026 or 22/10/2026 - 25/10/2026
+  // 2. Full range format: 12.11.2026 - 13.11.2026 or 12/11/2026 - 13/11/2026
   if (!year) {
-    const rangeMatch = raw.match(/^(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})\s*[-–—]\s*(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})$/);
+    const rangeMatch = cleaned.match(/^(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{2,4})\s*[-–—]\s*(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{2,4})$/);
     if (rangeMatch) {
       const d1 = parseInt(rangeMatch[1], 10);
       const d2 = parseInt(rangeMatch[4], 10);
       startDay = Math.min(d1, d2);
       endDay = Math.max(d1, d2);
+      allDays = [];
+      for (let d = startDay; d <= endDay; d++) allDays.push(d);
       month = parseInt(rangeMatch[5], 10) - 1;
-      year = parseInt(rangeMatch[6], 10);
+      let yr = parseInt(rangeMatch[6], 10);
+      if (yr < 100) yr += 2000;
+      year = yr;
       isMultiDay = true;
     }
   }
 
-  // 3. Standard single date: DD.MM.YYYY or DD/MM/YYYY
+  // 3. Multi-day or single with Turkish month name: "12 ve 13 Kasım 2026", "12, 13 Kasım 2026", "12, 13, 14 Kasım 2026", "12-13 Kasım 2026", "25 Kasım 2026"
   if (!year) {
-    const singleMatch = raw.match(/^(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})$/);
+    const textMultiMatch = cleaned.match(/^(?:((?:\d{1,2}(?:\s*[-–—,.]|\s+ve\s+|\s+ile\s+)\s*)+\d{1,2})|(\d{1,2}))\s+([a-zA-ZçğıöşüÇĞİÖŞÜ]+)\s+(\d{2,4})$/);
+    if (textMultiMatch) {
+      const daysStr = textMultiMatch[1] || textMultiMatch[2];
+      const parsedDays = daysStr.split(/[-–—,.]|\s+ve\s+|\s+ile\s+/).map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+      const mStr = textMultiMatch[3].toLocaleLowerCase('tr-TR');
+      if (TR_MONTHS[mStr] !== undefined && parsedDays.length > 0) {
+        allDays = Array.from(new Set(parsedDays)).sort((a, b) => a - b);
+        startDay = allDays[0];
+        endDay = allDays[allDays.length - 1];
+        month = TR_MONTHS[mStr];
+        let yr = parseInt(textMultiMatch[4], 10);
+        if (yr < 100) yr += 2000;
+        year = yr;
+        isMultiDay = allDays.length > 1;
+      }
+    }
+  }
+
+  // 4. Standard single date: DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY
+  if (!year) {
+    const singleMatch = cleaned.match(/^(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{2,4})$/);
     if (singleMatch) {
       endDay = parseInt(singleMatch[1], 10);
       startDay = endDay;
+      allDays = [endDay];
       month = parseInt(singleMatch[2], 10) - 1;
-      year = parseInt(singleMatch[3], 10);
+      let yr = parseInt(singleMatch[3], 10);
+      if (yr < 100) yr += 2000;
+      year = yr;
       isMultiDay = false;
     }
   }
 
-  // 4. ISO single date: YYYY-MM-DD
+  // 5. ISO single date: YYYY-MM-DD
   if (!year) {
-    const isoMatch = raw.match(/^(\d{4})[\.\/-](\d{1,2})[\.\/-](\d{1,2})/);
+    const isoMatch = cleaned.match(/^(\d{4})[\.\/-](\d{1,2})[\.\/-](\d{1,2})/);
     if (isoMatch) {
       year = parseInt(isoMatch[1], 10);
       month = parseInt(isoMatch[2], 10) - 1;
       endDay = parseInt(isoMatch[3], 10);
       startDay = endDay;
+      allDays = [endDay];
       isMultiDay = false;
-    }
-  }
-
-  // 5. Turkish month name format: "22 - 25 Ekim 2026" or "25 Ekim 2026"
-  if (!year) {
-    const textMatch = raw.match(/(?:(\d{1,2})\s*[-–—]\s*)?(\d{1,2})\s+([a-zA-ZçğıöşüÇĞİÖŞÜ]+)\s+(\d{4})/);
-    if (textMatch) {
-      const d1 = textMatch[1] ? parseInt(textMatch[1], 10) : parseInt(textMatch[2], 10);
-      const d2 = parseInt(textMatch[2], 10);
-      startDay = Math.min(d1, d2);
-      endDay = Math.max(d1, d2);
-      const mStr = textMatch[3].toLocaleLowerCase('tr-TR');
-      if (TR_MONTHS[mStr] !== undefined) {
-        month = TR_MONTHS[mStr];
-        year = parseInt(textMatch[4], 10);
-        isMultiDay = !!textMatch[1];
-      }
     }
   }
 
   // 6. Fallback year match: any 4-digit year 20xx
   if (!year) {
-    const yearMatch = raw.match(/\b(20\d{2})\b/);
+    const yearMatch = cleaned.match(/\b(20\d{2})\b/);
     if (yearMatch) {
       year = parseInt(yearMatch[1], 10);
-      const nums = raw.match(/\b(\d{1,2})\b/g);
+      const nums = cleaned.match(/\b(\d{1,2})\b/g);
       if (nums && nums.length >= 2) {
         const d1 = parseInt(nums[0], 10);
         const d2 = parseInt(nums[nums.length - 2], 10);
         startDay = Math.min(d1, d2);
         endDay = Math.max(d1, d2);
+        allDays = [startDay, endDay];
         month = 0;
-        isMultiDay = nums.length > 2;
+        isMultiDay = nums.length > 2 || startDay !== endDay;
       }
     }
   }
@@ -169,15 +196,20 @@ export const parseDateDetailed = (dateStr?: string): ParsedDateInfo | null => {
   if (!year || isNaN(year)) {
     const std = new Date(raw);
     if (!isNaN(std.getTime())) {
+      const d = std.getDate();
+      const m = std.getMonth();
+      const y = std.getFullYear();
       return {
         raw,
-        startDay: std.getDate(),
-        endDay: std.getDate(),
-        month: std.getMonth(),
-        year: std.getFullYear(),
+        startDay: d,
+        endDay: d,
+        allDays: [d],
+        month: m,
+        year: y,
         isMultiDay: false,
         startDate: std,
-        effectiveDate: std
+        effectiveDate: std,
+        displaySummary: `${d} ${TR_MONTH_NAMES[m] || ''} ${y} (1 Gün)`
       };
     }
     return null;
@@ -185,19 +217,37 @@ export const parseDateDetailed = (dateStr?: string): ParsedDateInfo | null => {
 
   const safeStartDay = startDay && startDay >= 1 && startDay <= 31 ? startDay : (endDay || 1);
   const safeEndDay = endDay && endDay >= 1 && endDay <= 31 ? endDay : safeStartDay;
+  if (allDays.length === 0) allDays = [safeStartDay, safeEndDay];
+  allDays = Array.from(new Set(allDays)).sort((a, b) => a - b);
+
   const safeMonth = month !== null && month >= 0 && month <= 11 ? month : 0;
   const startDate = new Date(year, safeMonth, safeStartDay, 12, 0, 0);
   const effectiveDate = new Date(year, safeMonth, safeEndDay, 12, 0, 0);
+
+  const monthName = TR_MONTH_NAMES[safeMonth] || `${safeMonth + 1}. Ay`;
+  let displaySummary = '';
+  if (isMultiDay && allDays.length > 1) {
+    if (allDays.length === 2) {
+      displaySummary = `${allDays[0]} ve ${allDays[1]} ${monthName} ${year} (2 Günlük Eğitim)`;
+    } else {
+      const listStr = allDays.slice(0, -1).join(', ') + ' ve ' + allDays[allDays.length - 1];
+      displaySummary = `${listStr} ${monthName} ${year} (${allDays.length} Günlük Eğitim)`;
+    }
+  } else {
+    displaySummary = `${safeEndDay} ${monthName} ${year} (1 Gün)`;
+  }
 
   return {
     raw,
     startDay: safeStartDay,
     endDay: safeEndDay,
+    allDays,
     month: safeMonth,
     year,
     isMultiDay,
     startDate,
-    effectiveDate
+    effectiveDate,
+    displaySummary
   };
 };
 
@@ -259,7 +309,7 @@ export const calculateExpiryDate = (
     };
   }
 
-  const baseDay = parsed.startDay || parsed.endDay;
+  const baseDay = parsed.endDay || parsed.startDay;
   const targetYear = parsed.year + years;
   const targetEffective = new Date(targetYear, parsed.month, baseDay, 12, 0, 0);
 
@@ -303,6 +353,24 @@ export interface EarliestDateResult {
 export const extractDatesFromString = (str: string): { date: Date; formatted: string; raw: string }[] => {
   if (!str || typeof str !== 'string') return [];
   const results: { date: Date; formatted: string; raw: string }[] = [];
+
+  // Try parsing the whole string first (handles multi-day like "(12.13/11/2026)", "12, 13/11/2026", "12 ve 13 Kasım 2026")
+  const wholeParsed = parseDateDetailed(str);
+  if (wholeParsed) {
+    results.push({
+      date: wholeParsed.startDate,
+      formatted: formatDateTR(wholeParsed.startDate),
+      raw: str
+    });
+    if (wholeParsed.isMultiDay && wholeParsed.effectiveDate.getTime() !== wholeParsed.startDate.getTime()) {
+      results.push({
+        date: wholeParsed.effectiveDate,
+        formatted: formatDateTR(wholeParsed.effectiveDate),
+        raw: str
+      });
+    }
+    return results;
+  }
   
   // Split on delimiters that separate distinct dates (commas, semicolons, newlines, "ve", "and", "ile")
   const segments = str.split(/[,;\n\r]+|\s+(?:ve|and|ile)\s+/i).map(s => s.trim()).filter(Boolean);

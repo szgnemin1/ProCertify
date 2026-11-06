@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Trash2, ShieldCheck, UserCheck, X, AlertCircle } from 'lucide-react';
-import { AppUser, UserRole } from '../types';
+import { Users, UserPlus, Trash2, ShieldCheck, UserCheck, X, AlertCircle, Building2 } from 'lucide-react';
+import { AppUser, UserRole, Company } from '../types';
 
 interface UserManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
   getApiUrl: (path: string) => string;
+  companies?: Company[];
 }
 
 export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   isOpen,
   onClose,
-  getApiUrl
+  getApiUrl,
+  companies = []
 }) => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -22,6 +24,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState<UserRole>('user');
+  const [title, setTitle] = useState('İşyeri Hekimi');
+  const [pinCode, setPinCode] = useState('');
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
+  const [selectedCompanyName, setSelectedCompanyName] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const fetchUsers = async () => {
@@ -70,7 +76,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           username: username.trim(),
           password: password.trim(),
           name: name.trim(),
-          role
+          role,
+          title: title.trim(),
+          pinCode: pinCode.trim(),
+          companyId: role === 'company_rep' ? selectedCompanyId : undefined,
+          companyName: role === 'company_rep' ? selectedCompanyName : undefined
         })
       });
 
@@ -79,6 +89,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
         setPassword('');
         setName('');
         setRole('user');
+        setTitle('İşyeri Hekimi');
+        setPinCode('');
+        setSelectedCompanyId('');
+        setSelectedCompanyName('');
         fetchUsers();
       } else {
         const err = await res.json();
@@ -195,10 +209,59 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                   onChange={(e) => setRole(e.target.value as UserRole)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                 >
-                  <option value="user">İSG Uzmanı (Sadece Doldurma & Dashboard)</option>
+                  <option value="user">Sağlık Personeli / İSG Uzmanı</option>
+                  <option value="company_rep">Firma Temsilcisi / Müşteri İK (Sadece Kendi Firmasını Görür)</option>
                   <option value="admin">Yönetici (Tam Yetkili)</option>
                 </select>
               </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1">Mesleki Ünvan</label>
+                <input
+                  type="text"
+                  placeholder="Örn: İşyeri Hekimi, Diğer Sağlık Personeli"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-teal-400 mb-1">Saha Tablet PIN Şifresi (4-6 Rakam)</label>
+                <input
+                  type="text"
+                  maxLength={8}
+                  placeholder="Örn: 1234"
+                  value={pinCode}
+                  onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ''))}
+                  className="w-full bg-slate-900 border border-teal-500/50 rounded-lg px-3 py-2 text-xs font-mono font-bold text-teal-300 focus:outline-none focus:border-teal-400"
+                />
+              </div>
+
+              {role === 'company_rep' && (
+                <div className="col-span-1 sm:col-span-2 bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl space-y-1.5">
+                  <label className="block text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                    <Building2 size={13} /> Temsil Edilecek Müşteri Firması
+                  </label>
+                  <select
+                    value={selectedCompanyId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSelectedCompanyId(id);
+                      const found = companies.find(c => c.id === id);
+                      setSelectedCompanyName(found ? (found.shortName || found.name) : '');
+                    }}
+                    required
+                    className="w-full bg-slate-900 border border-amber-500/50 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="">-- Firma Seçiniz --</option>
+                    {companies.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400">Bu kullanıcı giriş yaptığında yalnızca bu firmanın personellerini, sertifikalarını ve belgelerini görebilir.</p>
+                </div>
+              )}
             </div>
 
             <div className="pt-2 flex justify-end">
@@ -242,14 +305,20 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                       <div>
                         <div className="font-bold text-white text-xs flex items-center gap-2">
                           <span>{u.name}</span>
-                          <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
-                            u.role === 'admin' ? 'bg-amber-500/15 text-amber-400' : 'bg-blue-500/15 text-blue-400'
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                            u.role === 'admin' ? 'bg-amber-500/15 text-amber-400' : (u.role === 'company_rep' ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30' : 'bg-blue-500/15 text-blue-400')
                           }`}>
-                            {u.role === 'admin' ? 'Yönetici' : 'İSG Uzmanı'}
+                            {u.role === 'admin' ? 'Yönetici' : (u.role === 'company_rep' ? `Firma İK (${u.companyName || 'Atanmış Firma'})` : 'İSG Uzmanı')}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                          @{u.username}
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-2">
+                          <span>@{u.username}</span>
+                          {u.title && <span className="text-slate-400">({u.title})</span>}
+                          {u.pinCode && (
+                            <span className="bg-teal-500/15 text-teal-300 px-1.5 py-0.2 rounded text-[10px] font-bold border border-teal-500/30">
+                              PIN: {u.pinCode}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

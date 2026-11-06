@@ -1,6 +1,7 @@
 import express from "express"
 import path from "path"
 import fs from "fs"
+import crypto from "crypto"
 import jwt from "jsonwebtoken"
 import { exec } from "child_process"
 import JSZip from "jszip"
@@ -18,6 +19,8 @@ async function startServer() {
   const CERTS_DIR = path.join(process.cwd(), 'storage', 'certs')
   const EMPLOYEES_FILE = path.join(process.cwd(), 'employees.json')
   const DOCUMENTS_DIR = path.join(process.cwd(), 'storage', 'documents')
+  const EK2_FORMS_FILE = path.join(process.cwd(), 'ek2_forms.json')
+  const EK2_MAPPING_FILE = path.join(process.cwd(), 'ek2_mapping.json')
 
   if (!fs.existsSync(CERTS_DIR)) {
     try { fs.mkdirSync(CERTS_DIR, { recursive: true }) } catch (e) { /* ignore */ }
@@ -45,7 +48,12 @@ async function startServer() {
     try {
       const tempPath = `${filePath}.tmp`
       fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8')
-      fs.renameSync(tempPath, filePath)
+      try {
+        fs.renameSync(tempPath, filePath)
+      } catch {
+        fs.copyFileSync(tempPath, filePath)
+        try { fs.unlinkSync(tempPath) } catch {}
+      }
     } catch (err) {
       console.error(`Error writing ${filePath}:`, err)
     }
@@ -62,6 +70,110 @@ async function startServer() {
     writeJsonFile(EMPLOYEES_FILE, {})
   }
 
+  // --- ULTRA HIGH PERFORMANCE IN-MEMORY CACHE ---
+  let certsCache: Record<string, any> | null = null
+  let employeesCache: Record<string, any> | null = null
+  let dataCache: any = null
+
+  const getCertsCache = (): Record<string, any> => {
+    if (!certsCache) {
+      certsCache = readJsonFile<Record<string, any>>(CERT_FILE, {})
+    }
+    return certsCache
+  }
+
+  const getEmployeesCache = (): Record<string, any> => {
+    if (!employeesCache) {
+      employeesCache = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
+    }
+    return employeesCache
+  }
+
+  const getDataCache = (): any => {
+    if (!dataCache) {
+      dataCache = readJsonFile<any>(DATA_FILE, { projects: [], signatures: [], companies: [], users: [], serverSettings: {} })
+    }
+    return dataCache
+  }
+
+  let saveCertsTimer: NodeJS.Timeout | null = null
+  const persistCertsAsync = (immediate = false) => {
+    if (saveCertsTimer) clearTimeout(saveCertsTimer)
+    const doWrite = async () => {
+      if (certsCache) {
+        try {
+          const tempPath = `${CERT_FILE}.tmp`
+          await fs.promises.writeFile(tempPath, JSON.stringify(certsCache, null, 2), 'utf-8')
+          try {
+            await fs.promises.rename(tempPath, CERT_FILE)
+          } catch {
+            await fs.promises.copyFile(tempPath, CERT_FILE)
+            try { await fs.promises.unlink(tempPath) } catch {}
+          }
+        } catch (err) {
+          console.error("Error persisting certificates to disk:", err)
+        }
+      }
+    }
+    if (immediate) {
+      doWrite()
+    } else {
+      saveCertsTimer = setTimeout(doWrite, 120)
+    }
+  }
+
+  let saveEmployeesTimer: NodeJS.Timeout | null = null
+  const persistEmployeesAsync = (immediate = false) => {
+    if (saveEmployeesTimer) clearTimeout(saveEmployeesTimer)
+    const doWrite = async () => {
+      if (employeesCache) {
+        try {
+          const tempPath = `${EMPLOYEES_FILE}.tmp`
+          await fs.promises.writeFile(tempPath, JSON.stringify(employeesCache, null, 2), 'utf-8')
+          try {
+            await fs.promises.rename(tempPath, EMPLOYEES_FILE)
+          } catch {
+            await fs.promises.copyFile(tempPath, EMPLOYEES_FILE)
+            try { await fs.promises.unlink(tempPath) } catch {}
+          }
+        } catch (err) {
+          console.error("Error persisting employees to disk:", err)
+        }
+      }
+    }
+    if (immediate) {
+      doWrite()
+    } else {
+      saveEmployeesTimer = setTimeout(doWrite, 120)
+    }
+  }
+
+  let saveDataTimer: NodeJS.Timeout | null = null
+  const persistDataAsync = (immediate = false) => {
+    if (saveDataTimer) clearTimeout(saveDataTimer)
+    const doWrite = async () => {
+      if (dataCache) {
+        try {
+          const tempPath = `${DATA_FILE}.tmp`
+          await fs.promises.writeFile(tempPath, JSON.stringify(dataCache, null, 2), 'utf-8')
+          try {
+            await fs.promises.rename(tempPath, DATA_FILE)
+          } catch {
+            await fs.promises.copyFile(tempPath, DATA_FILE)
+            try { await fs.promises.unlink(tempPath) } catch {}
+          }
+        } catch (err) {
+          console.error("Error persisting data to disk:", err)
+        }
+      }
+    }
+    if (immediate) {
+      doWrite()
+    } else {
+      saveDataTimer = setTimeout(doWrite, 120)
+    }
+  }
+
   const turkishToLower = (str: string): string => {
     if (!str) return ''
     return str
@@ -76,20 +188,22 @@ async function startServer() {
       .trim()
   }
 
-  const syncEmployeesFromCerts = () => {
+  const syncEmployeesFromCerts = (specificRecords?: any[]) => {
     try {
-      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
-      const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
+      const certs = getCertsCache()
+      const employees = getEmployeesCache()
       let updated = false
 
-      // Sort certs chronologically so latest certificate data takes precedence
-      const sortedCerts = Object.values(certs).sort((a: any, b: any) => {
-        const timeA = new Date(a.date || a.trainingDate || a.createdAt || 0).getTime()
-        const timeB = new Date(b.date || b.trainingDate || b.createdAt || 0).getTime()
-        return timeA - timeB
-      })
+      // Use specific records if provided for incremental sync, otherwise sort and sync all
+      const targetCerts = (specificRecords && specificRecords.length > 0)
+        ? specificRecords
+        : Object.values(certs).sort((a: any, b: any) => {
+            const timeA = new Date(a.date || a.trainingDate || a.createdAt || 0).getTime()
+            const timeB = new Date(b.date || b.trainingDate || b.createdAt || 0).getTime()
+            return timeA - timeB
+          })
 
-      for (const cert of sortedCerts) {
+      for (const cert of targetCerts) {
         if (!cert || (!cert.recipientName && !cert.recipientTc)) continue
         
         const tc = cert.recipientTc ? String(cert.recipientTc).replace(/\s+/g, '').trim() : ''
@@ -153,7 +267,7 @@ async function startServer() {
       }
 
       if (updated) {
-        writeJsonFile(EMPLOYEES_FILE, employees)
+        persistEmployeesAsync()
       }
     } catch (err) {
       console.error("Error syncing employees from certificates:", err)
@@ -202,9 +316,10 @@ async function startServer() {
 
   app.get('/api/data', async (req, res) => {
     try {
-      const data = readJsonFile<any>(DATA_FILE, { projects: [], signatures: [], companies: [], users: [], serverSettings: {} })
+      const data = readJsonFile<any>(DATA_FILE, { projects: [], signatures: [], companies: [], users: [], serverSettings: {}, assets: [] })
       const safeData = {
         ...data,
+        assets: data.assets || [],
         users: (data.users || []).map((u: any) => ({
           id: u.id,
           username: u.username,
@@ -222,12 +337,13 @@ async function startServer() {
 
   app.post('/api/data', verifyToken, async (req, res) => {
     try {
-      const { projects, signatures, companies, serverSettings } = req.body
-      const current = readJsonFile<any>(DATA_FILE, { projects: [], signatures: [], companies: [], users: [], serverSettings: {} })
+      const { projects, signatures, companies, serverSettings, assets } = req.body
+      const current = readJsonFile<any>(DATA_FILE, { projects: [], signatures: [], companies: [], users: [], serverSettings: {}, assets: [] })
       if (projects !== undefined) current.projects = projects
       if (signatures !== undefined) current.signatures = signatures
       if (companies !== undefined) current.companies = companies
       if (serverSettings !== undefined) current.serverSettings = serverSettings
+      if (assets !== undefined) current.assets = assets
       writeJsonFile(DATA_FILE, current)
       res.json({ success: true })
     } catch (error) {
@@ -255,11 +371,13 @@ async function startServer() {
       const users: any[] = data.users || []
       const found = users.find(u => u.username && u.username.trim().toLowerCase() === cleanUser)
       if (found && found.password === password) {
-        const userPayload = {
+        const userPayload: any = {
           id: found.id,
           username: found.username,
           role: found.role || 'user',
-          name: found.name || found.username
+          name: found.name || found.username,
+          companyId: found.companyId || undefined,
+          companyName: found.companyName || undefined
         }
         const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "24h" })
         return res.json({ success: true, token, user: userPayload })
@@ -278,6 +396,10 @@ async function startServer() {
         username: u.username,
         name: u.name,
         role: u.role || 'user',
+        title: u.title || '',
+        pinCode: u.pinCode || '',
+        companyId: u.companyId || undefined,
+        companyName: u.companyName || undefined,
         createdAt: u.createdAt
       }))
       res.json(safeUsers)
@@ -288,7 +410,7 @@ async function startServer() {
 
   app.post('/api/users', verifyToken, requireAdmin, (req, res) => {
     try {
-      const { username, password, name, role } = req.body
+      const { username, password, name, role, companyId, companyName, pinCode, title } = req.body
       if (!username || !password || !name) {
         return res.status(400).json({ error: "Kullanıcı adı, isim ve şifre zorunludur." })
       }
@@ -301,18 +423,24 @@ async function startServer() {
         return res.status(400).json({ error: "Bu kullanıcı adı zaten kullanılıyor." })
       }
 
+      const assignedRole = role === 'admin' ? 'admin' : (role === 'company_rep' ? 'company_rep' : 'user')
+
       const newUser = {
         id: `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         username: username.trim(),
         password: password.trim(),
         name: name.trim(),
-        role: role === 'admin' ? 'admin' : 'user',
+        role: assignedRole,
+        companyId: assignedRole === 'company_rep' ? companyId : undefined,
+        companyName: assignedRole === 'company_rep' ? companyName : undefined,
+        title: title ? String(title).trim() : 'Sağlık Personeli',
+        pinCode: pinCode ? String(pinCode).trim() : '',
         createdAt: Date.now()
       }
 
       data.users.push(newUser)
       writeJsonFile(DATA_FILE, data)
-      res.json({ success: true, user: { id: newUser.id, username: newUser.username, name: newUser.name, role: newUser.role } })
+      res.json({ success: true, user: { id: newUser.id, username: newUser.username, name: newUser.name, role: newUser.role, companyId: newUser.companyId, companyName: newUser.companyName } })
     } catch (e: any) {
       res.status(500).json({ error: e.message })
     }
@@ -325,6 +453,179 @@ async function startServer() {
       data.users = data.users.filter((u: any) => u.id !== req.params.id)
       writeJsonFile(DATA_FILE, data)
       res.json({ success: true })
+    } catch (e: any) {
+      res.status(500).json({ error: e.message })
+    }
+  })
+
+  // --- SAHA TABLET PIN LOGIN ---
+  app.post('/api/health/pin-login', (req, res) => {
+    try {
+      const { pin } = req.body
+      if (!pin) {
+        return res.status(400).json({ error: "PIN veya şifre zorunludur." })
+      }
+      const cleanPin = String(pin).trim()
+      const data = readJsonFile<any>(DATA_FILE, { serverSettings: {}, users: [] })
+
+      // 1. Admin PIN / Password check
+      const adminPin = data?.serverSettings?.adminPin || "1593"
+      const adminPassword = data?.serverSettings?.adminPassword || "159357Vp!!"
+      if (cleanPin === adminPin || cleanPin === adminPassword) {
+        const userPayload = {
+          id: 'admin',
+          username: 'admin',
+          role: 'admin',
+          name: 'Sistem Yöneticisi',
+          title: 'İşyeri Hekimi / Yönetici'
+        }
+        const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "24h" })
+        return res.json({ success: true, token, user: userPayload })
+      }
+
+      // 2. User PIN or Password check
+      const users: any[] = data.users || []
+      const found = users.find(u => 
+        (u.pinCode && String(u.pinCode).trim() === cleanPin) || 
+        (u.password && String(u.password).trim() === cleanPin)
+      )
+
+      if (found) {
+        const userPayload = {
+          id: found.id,
+          username: found.username,
+          name: found.name || found.username,
+          role: found.role || 'user',
+          title: found.title || 'Sağlık Personeli',
+          companyId: found.companyId || undefined,
+          companyName: found.companyName || undefined
+        }
+        const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "24h" })
+        return res.json({ success: true, token, user: userPayload })
+      }
+
+      return res.status(401).json({ error: "Geçersiz PIN veya şifre." })
+    } catch (e: any) {
+      res.status(500).json({ error: e.message })
+    }
+  })
+
+  // --- UPDATE USER PIN / TITLE ---
+  app.post('/api/users/:id/pin', verifyToken, requireAdmin, (req, res) => {
+    try {
+      const { pinCode, title } = req.body
+      const data = readJsonFile<any>(DATA_FILE, { users: [] })
+      if (!data.users) data.users = []
+      const user = data.users.find((u: any) => u.id === req.params.id)
+      if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı." })
+      if (pinCode !== undefined) user.pinCode = String(pinCode).trim()
+      if (title !== undefined) user.title = String(title).trim()
+      writeJsonFile(DATA_FILE, data)
+      res.json({ success: true, user })
+    } catch (e: any) {
+      res.status(500).json({ error: e.message })
+    }
+  })
+
+  // --- EK-2 FORMS API ---
+  app.get('/api/health/ek2-forms', verifyToken, (req, res) => {
+    try {
+      const forms = readJsonFile<Record<string, any>>(EK2_FORMS_FILE, {})
+      res.json(Object.values(forms).sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)))
+    } catch (e: any) {
+      res.status(500).json({ error: e.message })
+    }
+  })
+
+  app.get('/api/health/ek2-forms/:id', (req, res) => {
+    try {
+      const forms = readJsonFile<Record<string, any>>(EK2_FORMS_FILE, {})
+      const form = forms[req.params.id]
+      if (!form) return res.status(404).json({ error: "Form bulunamadı." })
+      res.json(form)
+    } catch (e: any) {
+      res.status(500).json({ error: e.message })
+    }
+  })
+
+  app.post('/api/health/ek2-forms', verifyToken, (req, res) => {
+    try {
+      const formRecord = req.body
+      if (!formRecord.employeeName || !formRecord.companyName) {
+        return res.status(400).json({ error: "Çalışan ve firma bilgisi zorunludur." })
+      }
+      const formId = formRecord.id || `ek2-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+      formRecord.id = formId
+      formRecord.createdAt = formRecord.createdAt || Date.now()
+
+      const forms = readJsonFile<Record<string, any>>(EK2_FORMS_FILE, {})
+      forms[formId] = formRecord
+      writeJsonFile(EK2_FORMS_FILE, forms)
+
+      // Auto attach document to employee in employees.json
+      if (formRecord.employeeTc || formRecord.employeeName) {
+        const employees = getEmployeesCache()
+        const cleanTc = formRecord.employeeTc ? String(formRecord.employeeTc).replace(/\s+/g, '').trim() : ''
+        let empKey = Object.keys(employees).find(k => 
+          (cleanTc && employees[k].tc && String(employees[k].tc).replace(/\s+/g, '').trim() === cleanTc) ||
+          (formRecord.employeeName && turkishToLower(employees[k].name || '') === turkishToLower(formRecord.employeeName))
+        )
+
+        if (!empKey && cleanTc) {
+          // Auto create employee in company
+          empKey = `emp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+          employees[empKey] = {
+            id: empKey,
+            tc: cleanTc,
+            name: formRecord.employeeName.trim(),
+            companyId: formRecord.companyId || '',
+            companyName: formRecord.companyName.trim(),
+            status: 'active',
+            createdAt: Date.now(),
+            documents: []
+          }
+        }
+
+        if (empKey && employees[empKey]) {
+          const emp = employees[empKey]
+          if (!emp.documents) emp.documents = []
+          const dateStr = new Date().toLocaleDateString('tr-TR')
+          emp.documents.unshift({
+            id: `doc-ek2-${Date.now()}`,
+            name: `İşe Giriş / Periyodik Muayene Formu (Ek-2) - ${dateStr}`,
+            fileName: `Ek2_${cleanTc || formRecord.employeeName.replace(/\s+/g, '_')}_${Date.now()}.json`,
+            fileUrl: `/api/health/ek2-forms/${formId}`,
+            fileSize: 1024 * 6,
+            mimeType: 'application/json',
+            uploadedAt: Date.now()
+          })
+          persistEmployeesAsync(true)
+        }
+      }
+
+      res.json({ success: true, form: formRecord })
+    } catch (e: any) {
+      res.status(500).json({ error: e.message })
+    }
+  })
+
+  // --- EK-2 MAPPING API ---
+  app.get('/api/health/ek2-mapping', (req, res) => {
+    try {
+      const mapping = readJsonFile<any>(EK2_MAPPING_FILE, null)
+      if (mapping) return res.json(mapping)
+      res.json({ version: 1, lastUpdated: Date.now(), items: [] })
+    } catch (e: any) {
+      res.status(500).json({ error: e.message })
+    }
+  })
+
+  app.post('/api/health/ek2-mapping', verifyToken, requireAdmin, (req, res) => {
+    try {
+      const config = req.body
+      config.lastUpdated = Date.now()
+      writeJsonFile(EK2_MAPPING_FILE, config)
+      res.json({ success: true, config })
     } catch (e: any) {
       res.status(500).json({ error: e.message })
     }
@@ -348,20 +649,46 @@ async function startServer() {
   })
 
   const saveCertImageIfBase64 = (record: any) => {
-    if (!record || !record.serialNo || !record.image) return
-    const imgStr = record.image
-    if (typeof imgStr === 'string' && imgStr.startsWith('data:image/')) {
+    if (!record || !record.serialNo) return
+    const safeSerial = record.serialNo.replace(/[^a-zA-Z0-9_\-]/g, '')
+
+    // 1. Offload primary single image if base64
+    if (typeof record.image === 'string' && record.image.startsWith('data:image/')) {
       try {
-        const safeSerial = record.serialNo.replace(/[^a-zA-Z0-9_\-]/g, '')
-        const isPng = imgStr.startsWith('data:image/png')
+        const isPng = record.image.startsWith('data:image/png')
         const ext = isPng ? 'png' : 'jpg'
-        const base64Data = imgStr.replace(/^data:image\/\w+;base64,/, '')
+        const base64Data = record.image.replace(/^data:image\/\w+;base64,/, '')
         const filePath = path.join(CERTS_DIR, `${safeSerial}.${ext}`)
         fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'))
         record.image = `/api/cert-image/${safeSerial}`
       } catch (err) {
         console.error("Error offloading certificate image to disk:", err)
       }
+    }
+
+    // 2. Offload multi-page images array if base64
+    if (Array.isArray(record.images)) {
+      const sanitizedImages: string[] = []
+      for (let idx = 0; idx < record.images.length; idx++) {
+        const imgItem = record.images[idx]
+        if (typeof imgItem === 'string' && imgItem.startsWith('data:image/')) {
+          try {
+            const isPng = imgItem.startsWith('data:image/png')
+            const ext = isPng ? 'png' : 'jpg'
+            const base64Data = imgItem.replace(/^data:image\/\w+;base64,/, '')
+            const filePath = path.join(CERTS_DIR, `${safeSerial}_${idx}.${ext}`)
+            fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'))
+            sanitizedImages.push(`/api/cert-image/${safeSerial}_${idx}`)
+          } catch (err) {
+            console.error(`Error offloading certificate page ${idx} to disk:`, err)
+          }
+        } else if (typeof imgItem === 'string' && imgItem.length > 0) {
+          sanitizedImages.push(imgItem)
+        }
+      }
+      record.images = sanitizedImages
+    } else if (record.image) {
+      record.images = [record.image]
     }
   }
 
@@ -380,10 +707,46 @@ async function startServer() {
 
   app.get('/api/verify/:id', async (req, res) => {
     try {
-      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
+      const certs = getCertsCache()
       const record = certs[req.params.id]
       if (record) {
-        res.json(record)
+        // Calculate deterministic SHA-256 digital stamp hash
+        const hashInput = `${record.serialNo}|${record.recipientTc || ''}|${record.recipientName || ''}|${record.trainingDate || record.date || ''}`
+        const hash = crypto.createHash('sha256').update(hashInput).digest('hex').toUpperCase()
+
+        // Mask TC Kimlik No for public privacy (e.g., 123*****89)
+        let maskedTc = ''
+        if (record.recipientTc && String(record.recipientTc).length >= 11) {
+          const raw = String(record.recipientTc).trim()
+          maskedTc = `${raw.substring(0, 3)}*****${raw.substring(raw.length - 2)}`
+        }
+
+        // Calculate validity status based on expiryDate
+        let status = 'valid'
+        if (record.expiryDate) {
+          const now = new Date()
+          const exp = new Date(record.expiryDate)
+          const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+          if (diffDays <= 0) {
+            status = 'expired'
+          } else if (diffDays <= 30) {
+            status = 'expiring'
+          }
+        }
+
+        const dangerClassLabel = 
+          record.dangerClass === 'cok_tehlikeli' ? 'Çok Tehlikeli (1 Yıl)' :
+          record.dangerClass === 'tehlikeli' ? 'Tehlikeli (2 Yıl)' :
+          record.dangerClass === 'az_tehlikeli' ? 'Az Tehlikeli (3 Yıl)' : 'Belirtilmemiş'
+
+        res.json({
+          ...record,
+          verificationHash: hash,
+          verifiedAt: new Date().toISOString(),
+          maskedTc: maskedTc || record.recipientTc,
+          calculatedStatus: status,
+          dangerClassLabel
+        })
       } else {
         res.status(404).json({ error: "Certificate not found" })
       }
@@ -427,7 +790,7 @@ async function startServer() {
     if (r.recipientTc) {
       r.recipientTc = String(r.recipientTc).replace(/\s+/g, '').trim()
       try {
-        const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
+        const employees = getEmployeesCache()
         const matched = Object.values(employees).find((e: any) => 
           e.tc && e.tc.replace(/\s+/g, '').trim() === r.recipientTc
         )
@@ -441,22 +804,12 @@ async function startServer() {
     }
 
     if (!r.trainingDate && r.fields) {
-      const dateCandidates: { raw: string; ts: number }[] = []
       for (const [k, v] of Object.entries(r.fields)) {
         const lk = k.toLowerCase()
-        if ((lk.includes('tarih') || lk.includes('date')) && !lk.includes('gecerli') && !lk.includes('geçerli') && !lk.includes('bitis') && !lk.includes('bitiş') && typeof v === 'string') {
-          const m = v.match(/\b(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})\b/)
-          if (m) {
-            const dt = new Date(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10), 12, 0, 0)
-            if (!isNaN(dt.getTime())) {
-              dateCandidates.push({ raw: `${String(m[1]).padStart(2, '0')}.${String(m[2]).padStart(2, '0')}.${m[3]}`, ts: dt.getTime() })
-            }
-          }
+        if ((lk.includes('tarih') || lk.includes('date')) && !lk.includes('gecerli') && !lk.includes('geçerli') && !lk.includes('bitis') && !lk.includes('bitiş') && typeof v === 'string' && v.trim()) {
+          r.trainingDate = v.trim()
+          break
         }
-      }
-      if (dateCandidates.length > 0) {
-        dateCandidates.sort((a, b) => a.ts - b.ts)
-        r.trainingDate = dateCandidates[0].raw
       }
     }
 
@@ -472,7 +825,7 @@ async function startServer() {
 
     if (r.company) {
       try {
-        const data = readJsonFile<any>(DATA_FILE, {})
+        const data = getDataCache()
         data.companies = data.companies || []
         const found = data.companies.find((c: any) => 
           (c.id && c.id === r.companyId) ||
@@ -490,7 +843,7 @@ async function startServer() {
             createdAt: Date.now()
           }
           data.companies.push(newComp)
-          writeJsonFile(DATA_FILE, data)
+          persistDataAsync()
           r.companyId = newId
         } else if (!r.companyId) {
           r.companyId = found.id
@@ -502,23 +855,28 @@ async function startServer() {
   app.post('/api/issue', optionalToken, async (req, res) => {
     try {
       const records = req.body
-      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
+      const certs = getCertsCache()
       const callingUser = (req as any).user
+      const processed: any[] = []
 
       if (Array.isArray(records)) {
         for (const r of records) {
           if (r && r.serialNo) {
             enrichRecord(r, callingUser)
             certs[r.serialNo] = r
+            processed.push(r)
           }
         }
       } else if (records && records.serialNo) {
         enrichRecord(records, callingUser)
         certs[records.serialNo] = records
+        processed.push(records)
       }
-      writeJsonFile(CERT_FILE, certs)
-      syncEmployeesFromCerts()
-      res.json({ success: true })
+
+      // Non-blocking disk persist & fast incremental employee sync
+      persistCertsAsync()
+      syncEmployeesFromCerts(processed)
+      res.json({ success: true, count: processed.length })
     } catch (e) {
       console.error(e)
       res.status(500).json({ error: "Failed to issue certificates" })
@@ -529,7 +887,7 @@ async function startServer() {
   app.put('/api/certificates/:serialNo', verifyToken, (req, res) => {
     try {
       const { serialNo } = req.params
-      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
+      const certs = getCertsCache()
       if (!certs[serialNo]) {
         return res.status(404).json({ error: "Sertifika bulunamadı." })
       }
@@ -537,8 +895,8 @@ async function startServer() {
       const updatedData = { ...certs[serialNo], ...req.body, serialNo }
       enrichRecord(updatedData, callingUser)
       certs[serialNo] = updatedData
-      writeJsonFile(CERT_FILE, certs)
-      syncEmployeesFromCerts()
+      persistCertsAsync()
+      syncEmployeesFromCerts([updatedData])
       res.json({ success: true, certificate: updatedData })
     } catch (err: any) {
       res.status(500).json({ error: err.message })
@@ -548,13 +906,19 @@ async function startServer() {
   // --- EMPLOYEE (ÇALIŞAN KARTI & EVRAK) MANAGEMENT ---
   app.get('/api/employees', verifyToken, (req, res) => {
     try {
-      const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
-      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
+      const user = (req as any).user
+      const employees = getEmployeesCache()
+      const certs = getCertsCache()
       const certList = Object.values(certs)
 
       let list = Object.values(employees)
 
-      const company = req.query.company as string
+      // If user is a company representative, restrict exclusively to their assigned company
+      let company = req.query.company as string
+      if (user && user.role === 'company_rep' && user.companyId) {
+        company = user.companyId
+      }
+
       const status = req.query.status as string // 'active' | 'passive' | 'all'
       const search = req.query.search as string
 
@@ -740,7 +1104,7 @@ async function startServer() {
       }
       employees[empKey].documents.push(newDoc)
 
-      writeJsonFile(EMPLOYEES_FILE, employees)
+      persistEmployeesAsync()
       res.json({ success: true, document: newDoc })
     } catch (err: any) {
       console.error("Document upload error:", err)
@@ -750,7 +1114,7 @@ async function startServer() {
 
   app.delete('/api/employees/:id/documents/:docId', verifyToken, (req, res) => {
     try {
-      const employees = readJsonFile<Record<string, any>>(EMPLOYEES_FILE, {})
+      const employees = getEmployeesCache()
       let empKey = req.params.id
       if (!employees[empKey]) {
         const foundKey = Object.keys(employees).find(k => 
@@ -777,7 +1141,7 @@ async function startServer() {
       }
 
       employees[empKey].documents.splice(docIndex, 1)
-      writeJsonFile(EMPLOYEES_FILE, employees)
+      persistEmployeesAsync()
 
       res.json({ success: true })
     } catch (err: any) {
@@ -798,10 +1162,16 @@ async function startServer() {
   // --- CERTIFICATE QUERIES & DASHBOARD STATS ---
   app.get('/api/certificates', verifyToken, (req, res) => {
     try {
-      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
+      const user = (req as any).user
+      const certs = getCertsCache()
       let list = Object.values(certs)
 
-      const company = req.query.company as string
+      // If user is a company representative, restrict exclusively to their company
+      let company = req.query.company as string
+      if (user && user.role === 'company_rep' && user.companyId) {
+        company = user.companyId
+      }
+
       const search = req.query.search as string
       const status = req.query.status as string
       const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined
@@ -854,14 +1224,18 @@ async function startServer() {
 
   app.get('/api/stats/dashboard', verifyToken, (req, res) => {
     try {
-      const certs = readJsonFile<Record<string, any>>(CERT_FILE, {})
-      const list = Object.values(certs)
+      const certs = getCertsCache()
+      let list = Object.values(certs)
 
       const user = (req as any).user
       const userOnly = req.query.userOnly === 'true'
-      const targetList = (userOnly && user?.id && user.id !== 'admin')
-        ? list.filter(c => c.issuedBy === user.id)
-        : list
+
+      let targetList = list
+      if (user && user.role === 'company_rep' && user.companyId) {
+        targetList = list.filter(c => c.companyId === user.companyId || (user.companyName && c.company === user.companyName))
+      } else if (userOnly && user?.id && user.id !== 'admin') {
+        targetList = list.filter(c => c.issuedBy === user.id)
+      }
 
       const now = new Date()
       now.setHours(0, 0, 0, 0)
@@ -1202,12 +1576,18 @@ async function startServer() {
         success: true,
         stdout: stdout || "",
         stderr: stderr || "",
-        message: "Uygulama başarıyla güncellendi ve derlendi! Sunucu PM2 tarafından yeniden başlatılıyor..."
+        message: isProduction 
+          ? "Uygulama başarıyla güncellendi ve derlendi! Sunucu PM2 tarafından yeniden başlatılıyor..."
+          : "Uygulama başarıyla güncellendi ve derlendi! (Local ortamda çalışılıyor)"
       })
       
       setTimeout(() => {
-        console.log("PM2 tetiklemesi için çıkış yapılıyor...")
-        process.exit(0)
+        if (isProduction) {
+          console.log("PM2 tetiklemesi için çıkış yapılıyor...")
+          process.exit(0)
+        } else {
+          console.log("Local geliştirme ortamında çalışılıyor, sunucu kapatılmıyor.")
+        }
       }, 1500)
     })
   })

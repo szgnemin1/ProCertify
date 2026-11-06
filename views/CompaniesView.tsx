@@ -8,8 +8,9 @@ import {
   ShieldAlert, 
   ShieldCheck, 
   Flame, 
-  Filter,
-  X
+  X,
+  FileCheck2,
+  Sparkles
 } from 'lucide-react';
 import { Company, IssuedCertificate, DangerClass } from '../types';
 import { getDangerClassLabel, getDangerClassBadgeClass } from '../services/validityService';
@@ -115,58 +116,76 @@ export const CompaniesView: React.FC<CompaniesViewProps> = ({
   }, [companies, searchTerm, dangerFilter, certCounts]);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-3 sm:p-4 space-y-3 custom-scrollbar">
-      {/* Üst Bar: Kompakt Başlık, Sayaç Rozetleri & Yeni Firma Butonu */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-800/80">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Building2 className="text-amber-400 shrink-0" size={20} />
-            <h1 className="text-lg font-black text-white tracking-tight">Kayıtlı Firmalar</h1>
+    <div className="flex-1 overflow-y-auto bg-slate-950 p-4 sm:p-6 lg:p-8 space-y-6 custom-scrollbar">
+      {/* ========================================================================= */}
+      {/* 1. ÜST HERO BAŞLIK & SAYAÇLAR                                             */}
+      {/* ========================================================================= */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+        <div>
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-400 text-xs font-semibold mb-2">
+            <Sparkles size={13} className="text-amber-400 animate-pulse" />
+            <span>Firma Kayıtları & İSG Tehlike Sınıfı Yönetimi</span>
           </div>
-
-          {/* Kompakt Yatay Sayaç Rozetleri */}
-          <div className="flex items-center gap-1.5 text-[11px] font-medium">
-            <span className="bg-slate-900 border border-slate-800 text-slate-300 px-2 py-0.5 rounded-md">
-              Toplam: <strong className="text-white font-bold">{stats.totalCompanies}</strong>
-            </span>
-            <span className="bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 rounded-md">
-              Sertifikalı: <strong className="font-bold">{stats.companiesWithCerts}</strong>
-            </span>
-            <span className="bg-amber-950/40 border border-amber-500/30 text-amber-300 px-2 py-0.5 rounded-md">
-              Sertifika: <strong className="font-bold">{stats.totalCerts}</strong>
-            </span>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-2.5">
+            <span>Kayıtlı Firmalar Portföyü</span>
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl leading-relaxed">
+            Hizmet verilen firmaların İSG tehlike sınıfları, geçerlilik süreleri, aktif personelleri ve sertifika kayıtları.
+          </p>
         </div>
 
-        {isAdmin && (
-          <button
-            onClick={onOpenSettings}
-            className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-sm active:scale-95 self-start sm:self-auto shrink-0"
-          >
-            <Plus size={14} />
-            <span>Firma Ekle / Düzenle</span>
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0 self-start md:self-auto">
+          {/* İstatistik Rozetleri */}
+          <div className="flex items-center gap-2 text-xs font-semibold">
+            <span className="bg-slate-900 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5">
+              <span>Toplam:</span>
+              <strong className="text-white font-bold text-sm">{stats.totalCompanies}</strong>
+            </span>
+            <span className="bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5">
+              <FileCheck2 size={13} />
+              <span>Sertifikalı:</span>
+              <strong className="font-bold text-sm text-emerald-300">{stats.companiesWithCerts}</strong>
+            </span>
+            <span className="bg-amber-950/40 border border-amber-500/30 text-amber-300 px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5">
+              <Award size={13} />
+              <span>Sertifika:</span>
+              <strong className="font-bold text-sm text-amber-200">{stats.totalCerts}</strong>
+            </span>
+          </div>
+
+          {isAdmin && (
+            <button
+              onClick={onOpenSettings}
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:brightness-110 text-slate-950 font-black px-4 py-2 rounded-xl text-xs sm:text-sm transition-all shadow-lg shadow-amber-500/20 active:scale-95"
+            >
+              <Plus size={16} strokeWidth={3} />
+              <span>Firma Ekle / Düzenle</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Kompakt Arama ve Hızlı Filtre Satırı */}
-      <div className="bg-slate-900/90 border border-slate-800/90 px-3 py-2 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+      {/* ========================================================================= */}
+      {/* 2. ARAMA VE TEHLİKE SINIFI FİLTRE BARI                                    */}
+      {/* ========================================================================= */}
+      <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/90 p-3 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-md">
         {/* Arama Kutusu */}
-        <div className="relative w-full sm:w-64">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+        <div className="relative w-full sm:w-80">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             placeholder="Firma Adı veya Kodu Ara..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-700/80 rounded-lg pl-8 pr-7 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
+            className="w-full bg-slate-950/90 border border-slate-700/80 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition shadow-inner"
           />
           {searchTerm && (
             <button
               onClick={() => setSearchTerm('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded transition"
+              title="Aramayı Temizle"
             >
-              <X size={13} />
+              <X size={14} />
             </button>
           )}
         </div>
@@ -175,10 +194,10 @@ export const CompaniesView: React.FC<CompaniesViewProps> = ({
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={() => setDangerFilter('all')}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
               dangerFilter === 'all'
-                ? 'bg-amber-500 text-slate-950'
-                : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-700/60'
             }`}
           >
             Tümü ({companies.length})
@@ -186,87 +205,94 @@ export const CompaniesView: React.FC<CompaniesViewProps> = ({
 
           <button
             onClick={() => setDangerFilter('with_certs')}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1 ${
               dangerFilter === 'with_certs'
-                ? 'bg-amber-500 text-slate-950'
-                : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-700/60'
             }`}
           >
-            Sertifikalılar ({stats.companiesWithCerts})
+            <Award size={13} />
+            <span>Sertifikalılar ({stats.companiesWithCerts})</span>
           </button>
 
           <button
             onClick={() => setDangerFilter('cok_tehlikeli')}
-            className={`px-2 py-1 rounded-md text-[11px] font-semibold transition ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1 ${
               dangerFilter === 'cok_tehlikeli'
-                ? 'bg-red-500/30 text-red-300 border border-red-500/50'
-                : 'bg-slate-800/70 text-slate-400 hover:text-red-300'
+                ? 'bg-rose-500 text-white font-bold shadow-md shadow-rose-500/20'
+                : 'bg-slate-800/70 text-slate-300 hover:text-rose-300 border border-slate-700/60'
             }`}
           >
-            Çok Tehlikeli (1 Yıl)
+            <Flame size={13} className="text-rose-400" />
+            <span>Çok Tehlikeli (1 Yıl)</span>
           </button>
 
           <button
             onClick={() => setDangerFilter('tehlikeli')}
-            className={`px-2 py-1 rounded-md text-[11px] font-semibold transition ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1 ${
               dangerFilter === 'tehlikeli'
-                ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50'
-                : 'bg-slate-800/70 text-slate-400 hover:text-amber-300'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                : 'bg-slate-800/70 text-slate-300 hover:text-amber-300 border border-slate-700/60'
             }`}
           >
-            Tehlikeli (2 Yıl)
+            <ShieldAlert size={13} className="text-amber-400" />
+            <span>Tehlikeli (2 Yıl)</span>
           </button>
 
           <button
             onClick={() => setDangerFilter('az_tehlikeli')}
-            className={`px-2 py-1 rounded-md text-[11px] font-semibold transition ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1 ${
               dangerFilter === 'az_tehlikeli'
-                ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
-                : 'bg-slate-800/70 text-slate-400 hover:text-emerald-300'
+                ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20'
+                : 'bg-slate-800/70 text-slate-300 hover:text-emerald-300 border border-slate-700/60'
             }`}
           >
-            Az Tehlikeli (3 Yıl)
+            <ShieldCheck size={13} className="text-emerald-400" />
+            <span>Az Tehlikeli (3 Yıl)</span>
           </button>
-
-          <span className="text-[11px] text-slate-400 ml-1 font-mono">
-            {sortedAndFilteredCompanies.length} firma
-          </span>
         </div>
       </div>
 
-      {/* KOMPAKT LİSTE TABLOSU (Genişliği ekrana sığar, yatay kaydırma gerektirmez) */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-md">
+      {/* ========================================================================= */}
+      {/* 3. FİRMA LİSTESİ TABLOSU                                                  */}
+      {/* ========================================================================= */}
+      <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/90 rounded-2xl overflow-hidden shadow-xl">
         {sortedAndFilteredCompanies.length === 0 ? (
-          <div className="py-10 text-center text-slate-500 text-xs p-4">
-            <Building2 size={28} className="mx-auto mb-2 text-slate-600 stroke-[1.5]" />
-            <div className="font-semibold text-slate-400">
+          <div className="py-16 text-center text-slate-400 text-xs p-6">
+            <div className="w-16 h-16 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-center mx-auto mb-3 text-slate-500">
+              <Building2 size={32} strokeWidth={1.5} />
+            </div>
+            <div className="font-bold text-white text-sm">
               {searchTerm.trim() || dangerFilter !== 'all' 
                 ? 'Seçilen filtrelere uygun firma bulunamadı.' 
                 : 'Sistemde henüz kayıtlı firma bulunmuyor.'}
             </div>
+            <p className="text-slate-500 text-xs mt-1 max-w-sm mx-auto">
+              Filtreleri temizleyebilir veya Ayarlar sekmesinden yeni firma tanımlayabilirsiniz.
+            </p>
             {(searchTerm.trim() || dangerFilter !== 'all') && (
               <button
                 onClick={() => { setSearchTerm(''); setDangerFilter('all'); }}
-                className="mt-2 text-xs text-amber-400 hover:underline inline-flex items-center gap-1 font-semibold"
+                className="mt-3 text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3.5 py-1.5 rounded-lg inline-flex items-center gap-1.5 font-bold transition"
               >
-                Filtreleri Temizle
+                <X size={12} /> Filtreleri Temizle
               </button>
             )}
           </div>
         ) : (
           <div className="w-full overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left border-collapse min-w-[600px]">
+            <table className="w-full text-left border-collapse min-w-[650px]">
               <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
-                  <th className="py-2 px-2.5 w-10 text-center">#</th>
-                  <th className="py-2 px-2.5">Firma Adı</th>
-                  <th className="py-2 px-2 w-32 hidden md:table-cell">Kısa Kod</th>
-                  <th className="py-2 px-2 w-36">Tehlike Sınıfı</th>
-                  <th className="py-2 px-2 w-28 text-center">Sertifika</th>
-                  <th className="py-2 px-2 w-14 text-right">İşlem</th>
+                <tr className="border-b border-slate-800 bg-slate-950/90 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                  <th className="py-3 px-3.5 w-12 text-center">#</th>
+                  <th className="py-3 px-3">Firma Adı & Ünvanı</th>
+                  <th className="py-3 px-3 w-36 hidden md:table-cell font-mono">Kısa Kod</th>
+                  <th className="py-3 px-3 w-44">İSG Tehlike Sınıfı</th>
+                  <th className="py-3 px-3 w-32 text-center">Düzenlenen Belge</th>
+                  <th className="py-3 px-3.5 w-20 text-right">Detay</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50 font-medium text-xs">
+              <tbody className="divide-y divide-slate-800/60 font-medium text-xs">
                 {sortedAndFilteredCompanies.map((company, index) => {
                   const count = certCounts[company.id] || 0;
                   const badgeClass = getDangerClassBadgeClass(company.dangerClass);
@@ -281,29 +307,34 @@ export const CompaniesView: React.FC<CompaniesViewProps> = ({
                     <tr
                       key={company.id}
                       onClick={() => onSelectCompany(company)}
-                      className="group hover:bg-slate-800/60 cursor-pointer transition-colors duration-100"
+                      className="group hover:bg-slate-800/50 cursor-pointer transition-colors duration-150"
                     >
                       {/* Sıra No */}
-                      <td className="py-2 px-2.5 text-center font-mono text-slate-500 text-[11px]">
+                      <td className="py-3 px-3.5 text-center font-mono text-slate-500 text-[11px]">
                         {index + 1}
                       </td>
 
                       {/* Firma Bilgisi */}
-                      <td className="py-2 px-2.5 truncate">
-                        <div className="flex items-center gap-2 truncate">
-                          <div className="w-6 h-6 rounded-md bg-slate-800 border border-slate-700/80 flex items-center justify-center text-amber-400 shrink-0 font-bold text-[10px] group-hover:border-amber-500/50 group-hover:bg-slate-700 transition">
+                      <td className="py-3 px-3 truncate">
+                        <div className="flex items-center gap-2.5 truncate">
+                          <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700/80 flex items-center justify-center text-amber-400 shrink-0 font-bold text-xs group-hover:border-amber-500/50 group-hover:bg-slate-750 transition shadow-inner">
                             {initials}
                           </div>
-                          <span className="font-semibold text-white group-hover:text-amber-400 transition truncate text-xs">
-                            {company.name}
-                          </span>
+                          <div className="min-w-0">
+                            <span className="font-bold text-white group-hover:text-amber-400 transition truncate text-xs block">
+                              {company.name}
+                            </span>
+                            <span className="text-[10px] text-slate-500 hidden sm:block">
+                              {count > 0 ? `${count} adet aktif sertifikalı personel` : 'Henüz sertifika düzenlenmemiş'}
+                            </span>
+                          </div>
                         </div>
                       </td>
 
                       {/* Kısa Kod */}
-                      <td className="py-2 px-2 hidden md:table-cell truncate">
+                      <td className="py-3 px-3 hidden md:table-cell truncate">
                         {company.shortName ? (
-                          <span className="font-mono text-[11px] text-amber-300/80 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                          <span className="font-mono text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-md">
                             {company.shortName}
                           </span>
                         ) : (
@@ -312,21 +343,21 @@ export const CompaniesView: React.FC<CompaniesViewProps> = ({
                       </td>
 
                       {/* Tehlike Sınıfı */}
-                      <td className="py-2 px-2 truncate">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${badgeClass}`}>
-                          {company.dangerClass === 'cok_tehlikeli' && <Flame size={10} />}
-                          {company.dangerClass === 'tehlikeli' && <ShieldAlert size={10} />}
-                          {company.dangerClass === 'az_tehlikeli' && <ShieldCheck size={10} />}
+                      <td className="py-3 px-3 truncate">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${badgeClass}`}>
+                          {company.dangerClass === 'cok_tehlikeli' && <Flame size={12} />}
+                          {company.dangerClass === 'tehlikeli' && <ShieldAlert size={12} />}
+                          {company.dangerClass === 'az_tehlikeli' && <ShieldCheck size={12} />}
                           <span className="truncate">{dangerLabel}</span>
                         </span>
                       </td>
 
                       {/* Sertifika Sayısı */}
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-3 px-3 text-center">
                         {count > 0 ? (
-                          <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold text-[10px]">
-                            <Award size={11} />
-                            <span>{count}</span>
+                          <span className="inline-flex items-center gap-1.5 bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full font-bold text-[11px] shadow-sm">
+                            <Award size={13} className="text-emerald-400" />
+                            <span>{count} Belge</span>
                           </span>
                         ) : (
                           <span className="text-slate-500 font-mono text-[11px]">0</span>
@@ -334,17 +365,17 @@ export const CompaniesView: React.FC<CompaniesViewProps> = ({
                       </td>
 
                       {/* İşlem */}
-                      <td className="py-2 px-2 text-right">
+                      <td className="py-3 px-3.5 text-right">
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             onSelectCompany(company);
                           }}
-                          className="p-1 rounded-md text-slate-400 group-hover:text-amber-400 group-hover:bg-slate-700/60 transition"
-                          title="Firma Detayını Gör"
+                          className="p-1.5 rounded-lg text-slate-400 group-hover:text-amber-400 group-hover:bg-slate-800 transition"
+                          title="Firma Personel ve Sertifika Listesini Aç"
                         >
-                          <ChevronRight size={15} />
+                          <ChevronRight size={17} />
                         </button>
                       </td>
                     </tr>

@@ -7,7 +7,10 @@ export enum ElementType {
   COMPANY = 'COMPANY', // Company selection component linked to global settings
   TCKN = 'TCKN', // Masked Identity Number
   CHOICE_BOX = 'CHOICE_BOX', // Boolean selection with two distinct positions (Yes/No check)
-  DATE = 'DATE' // Date picker with auto-validity calculation based on danger class
+  DATE = 'DATE', // Date picker with auto-validity calculation based on danger class
+  BORDER = 'BORDER', // Decorative certificate frames and borders
+  BADGE = 'BADGE', // Official seals, approval stamps, and achievement medals
+  SHAPE = 'SHAPE' // Geometric shapes, dividers, banners, and accent boxes
 }
 
 // Extended FontStyle map is now handled in constants.ts via generic strings to allow more flexibility
@@ -43,7 +46,15 @@ export interface CanvasElement {
   secondaryX?: number; // X position for the "False/Option 2" box
   secondaryY?: number; // Y position for the "False/Option 2" box
   dateKind?: 'training' | 'validity'; // For DATE element: training date or calculated validity date
+  borderStyle?: 'classic_gold' | 'modern_double' | 'geometric_isg' | 'corner_ornament' | 'minimal' | 'tricolor_lines';
+  badgeStyle?: 'isg_approved' | 'achievement_star' | 'gold_seal' | 'quality_guarantee';
+  shapeType?: 'rectangle' | 'line' | 'circle' | 'divider';
+  borderWidth?: number;
+  borderColor?: string;
+  fillColor?: string;
 }
+
+export type Side = 'front' | 'back';
 
 export interface CertificateSide {
   id?: string; // Unique ID for multi-side support
@@ -69,12 +80,25 @@ export interface CertificateProject {
   backVariants?: BackgroundVariant[];  
   selectedFrontId?: string; 
   selectedBackId?: string;  
-  createdAt: number;
+  createdAt?: number;
   filenamePattern?: string; 
   isActive?: boolean; // When false, project is inactive and hidden from the certificate issuance list
+  enableCropMarks?: boolean; // Matbaa kesim ve taşma çizgileri (Crop Marks)
 }
 
 export type DangerClass = 'az_tehlikeli' | 'tehlikeli' | 'cok_tehlikeli';
+
+export interface UserAsset {
+  id: string;
+  name: string;
+  category: 'all' | 'seal' | 'border' | 'isg' | 'ribbon' | 'ornament' | 'logo' | 'custom';
+  dataUrl: string;
+  width: number;
+  height: number;
+  createdAt: number;
+  fileSize?: string;
+  mimeType?: string;
+}
 
 export interface Company {
   id: string;
@@ -85,7 +109,7 @@ export interface Company {
   createdAt?: number;
 }
 
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'admin' | 'user' | 'company_rep';
 
 export interface AppUser {
   id: string;
@@ -93,7 +117,50 @@ export interface AppUser {
   password?: string;
   name: string;
   role: UserRole;
+  title?: string; // e.g. 'İşyeri Hekimi', 'Diğer Sağlık Personeli', 'İSG Uzmanı'
+  pinCode?: string; // 4-6 digit numeric PIN for tablet login
+  companyId?: string;
+  companyName?: string;
   createdAt: number;
+}
+
+export interface Ek2FormRecord {
+  id: string;
+  protocolNo: string;
+  companyId: string;
+  companyName: string;
+  employeeTc: string;
+  employeeName: string;
+  photoUrl?: string;
+  fields: Record<string, any>;
+  employeeSignature: string; // Base64 data URL
+  doctorSignature?: string;
+  doctorName?: string;
+  hasMedicalTests: boolean;
+  medicalTestNotes?: string;
+  selectedTests?: string[];
+  createdAt: number;
+  createdById: string;
+  createdByName: string;
+  pdfUrl?: string;
+}
+
+export interface Ek2FieldMappingItem {
+  id: string;
+  category: 'personal' | 'past_work' | 'anamnez_complaints' | 'anamnez_diseases' | 'anamnez_questions' | 'physical_exam' | 'lab_results' | 'decision';
+  label: string;
+  fieldKey: string;
+  type: 'text' | 'choice' | 'yes_no_date' | 'textarea' | 'number';
+  targetCellOrLocation: string; // e.g. "Sayfa 1 - Satır 22", "Tıbbi Anamnez Tablosu"
+  defaultValue?: string;
+  options?: string[];
+  helpText?: string;
+}
+
+export interface Ek2FieldMappingConfig {
+  version: number;
+  lastUpdated: number;
+  items: Ek2FieldMappingItem[];
 }
 
 export interface IssuedCertificate {

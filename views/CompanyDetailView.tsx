@@ -221,7 +221,7 @@ export const CompanyDetailView: React.FC<CompanyDetailViewProps> = ({
     : '1 Yıl';
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-3 sm:p-4 space-y-3 custom-scrollbar">
+    <div className="flex-1 overflow-y-auto bg-slate-950 p-4 sm:p-6 lg:p-8 space-y-5 custom-scrollbar">
       {/* Üst Başlık Kartı: Geri Dönüş, Firma Başlığı ve İşlem Butonu */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 sm:p-4 shadow-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

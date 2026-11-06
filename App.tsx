@@ -58,6 +58,8 @@ import {
   Calendar,
   ZoomIn,
   ZoomOut,
+  Layers,
+  Palette,
   Maximize,
   ArrowLeft,
   Undo2,
@@ -74,11 +76,22 @@ import {
   Search,
   Building2,
   UserCheck,
-  UserX
+  UserX,
+  Award,
+  Shapes,
+  BoxSelect,
+  Sparkles,
+  Magnet,
+  Grid
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import QRCode from 'qrcode';
 import JSZip from 'jszip';
+import { 
+  registerFontsInPdf, 
+  renderSideToNativePDF, 
+  generateProjectThumbnail 
+} from './services/vectorPdfService';
 import { 
   CanvasElement, 
   ElementType, 
@@ -92,7 +105,8 @@ import {
   UserRole,
   AppUser,
   IssuedCertificate,
-  DashboardStats
+  DashboardStats,
+  UserAsset
 } from './types';
 import { TEMPLATES, FONTS, FONT_WEIGHTS } from './constants';
 import CanvasEditor from './components/CanvasEditor';
@@ -100,10 +114,16 @@ import SignaturePad from './components/SignaturePad';
 import { Sidebar, ActiveNavTab } from './components/Sidebar';
 import { DashboardView } from './views/DashboardView';
 import { CompaniesView } from './views/CompaniesView';
+import { AssetLibraryModal } from './components/AssetLibraryModal';
+import { LayersModal } from './components/LayersModal';
+import { ColorPaletteModal, ColorTheme } from './components/ColorPaletteModal';
 import { CompanyDetailView } from './views/CompanyDetailView';
 import { LoginView } from './views/LoginView';
+import { FieldHealthView } from './views/FieldHealthView';
+import { AdminEk2TemplateEditor } from './views/AdminEk2TemplateEditor';
 import { UserManagementModal } from './components/UserManagementModal';
 import { EmployeeModal } from './components/EmployeeModal';
+import { MultiDayDateModal } from './components/MultiDayDateModal';
 import { 
   calculateExpiryDate, 
   getValidityYears, 
@@ -124,24 +144,560 @@ const APP_VERSION = "v1.7.3";
 const GITHUB_URL = "https://github.com/szgnemin1/ProCertify";
 
 const createNewProject = (name: string): CertificateProject => {
+  const projId = Date.now().toString();
   return {
-    id: Date.now().toString(),
-    name: name,
+    id: projId,
+    name: name || 'EĞİTİME KATILIM BELGESİ',
     width: DEFAULT_WIDTH,
     height: DEFAULT_HEIGHT,
     createdAt: Date.now(),
     isActive: true,
     filenamePattern: 'Sertifika-{Ad Soyad}', 
     front: {
-      id: `front-${Date.now()}`,
+      id: `front-${projId}`,
       name: 'Ön Yüz',
-      bgUrl: TEMPLATES[0].bgUrl,
+      bgUrl: '',
       elements: [
-         { id: '1', type: ElementType.TEXT, content: '{AD SOYAD}', x: 800, y: 600, width: 400, height: 100, fontSize: 80, fontFamily: FontStyle.SERIF, color: '#000000', fontWeight: 700, fontStyle: 'normal', textAlign: 'center', label: 'Ad Soyad' },
+        // 1. Çankaya 3 Renk Çerçeve (Logodaki 3 renk: #27617e, #ca474a, #2e8542)
+        {
+          id: 'vec_border_0',
+          type: ElementType.BORDER,
+          content: '',
+          x: 35,
+          y: 35,
+          width: 1930,
+          height: 1344,
+          fontSize: 60,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          label: 'Çankaya 3 Renk Çerçeve',
+          fontWeight: 400,
+          fontStyle: 'normal',
+          textAlign: 'center',
+          borderStyle: 'tricolor_lines',
+          borderColor: '#27617e'
+        },
+
+        // 2. SERTİFİKA ADI (ÜSTTE)
+        {
+          id: 'vec_title_0',
+          type: ElementType.TEXT,
+          content: 'EĞİTİME KATILIM BELGESİ',
+          x: 300,
+          y: 120,
+          width: 1400,
+          height: 85,
+          fontSize: 72,
+          fontFamily: FontStyle.SERIF,
+          color: '#27617e',
+          fontWeight: 800,
+          fontStyle: 'normal',
+          textAlign: 'center',
+          label: 'Sertifika Başlığı'
+        },
+        {
+          id: 'vec_title_line_0',
+          type: ElementType.SHAPE,
+          content: '',
+          x: 750,
+          y: 218,
+          width: 500,
+          height: 3,
+          shapeType: 'line',
+          borderColor: '#ca474a',
+          borderWidth: 3,
+          label: 'Başlık Ayracı'
+        },
+
+        // 3. İÇİNDEKİ BİLGİLER (ORTADA - GÖZ ÖNÜNDE VE AYNI RENK)
+        {
+          id: 'vec_cardbg_0',
+          type: ElementType.SHAPE,
+          content: '',
+          x: 180,
+          y: 250,
+          width: 1640,
+          height: 480,
+          shapeType: 'rectangle',
+          fillColor: '#f8fafc',
+          borderColor: '#cbd5e1',
+          borderWidth: 2,
+          label: 'Bilgi Kartı Kutusu'
+        },
+
+        // A. Ad Soyad (Hero Section in Card - Same Unified Color)
+        {
+          id: 'lbl_adsoyad',
+          type: ElementType.TEXT,
+          content: 'KATILIMCI ADI SOYADI',
+          x: 200,
+          y: 275,
+          width: 1600,
+          height: 30,
+          fontSize: 24,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'center',
+          label: 'Etiket - Katılımcı'
+        },
+        {
+          id: 'val_adsoyad',
+          type: ElementType.TEXT,
+          content: '{Ad Soyad}',
+          x: 200,
+          y: 312,
+          width: 1600,
+          height: 75,
+          fontSize: 58,
+          fontFamily: FontStyle.SERIF,
+          color: '#27617e',
+          fontWeight: 800,
+          fontStyle: 'normal',
+          textAlign: 'center',
+          label: 'Ad Soyad'
+        },
+        {
+          id: 'vec_nameline_0',
+          type: ElementType.SHAPE,
+          content: '',
+          x: 450,
+          y: 400,
+          width: 1100,
+          height: 2,
+          shapeType: 'line',
+          borderColor: '#e2e8f0',
+          borderWidth: 2,
+          label: 'İsim Alt Çizgisi'
+        },
+
+        // Sütun Ayracı (Vertical Center Divider)
+        {
+          id: 'vec_carddiv_0',
+          type: ElementType.SHAPE,
+          content: '',
+          x: 1000,
+          y: 425,
+          width: 2,
+          height: 280,
+          shapeType: 'line',
+          borderColor: '#e2e8f0',
+          borderWidth: 2,
+          label: 'Bilgi Kartı Ayracı'
+        },
+
+        // B. Sol Sütun: TCKN, Görevi, Eğitim Türü (Same Unified Color #27617e)
+        {
+          id: 'vec_lbl_tc_0',
+          type: ElementType.TEXT,
+          content: 'T.C. Kimlik No :',
+          x: 230,
+          y: 440,
+          width: 330,
+          height: 45,
+          fontSize: 34,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'left',
+          label: 'Etiket - TCKN'
+        },
+        {
+          id: 'val_tckn',
+          type: ElementType.TCKN,
+          content: '{TCKN}',
+          x: 570,
+          y: 440,
+          width: 400,
+          height: 45,
+          fontSize: 36,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'left',
+          label: 'TC Kimlik No'
+        },
+
+        {
+          id: 'vec_lbl_gorev_0',
+          type: ElementType.TEXT,
+          content: 'Görevi / Pozisyonu :',
+          x: 230,
+          y: 530,
+          width: 330,
+          height: 45,
+          fontSize: 34,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'left',
+          label: 'Etiket - Görev'
+        },
+        {
+          id: 'val_gorev',
+          type: ElementType.TEXT,
+          content: '{Görevi}',
+          x: 570,
+          y: 530,
+          width: 400,
+          height: 45,
+          fontSize: 36,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'left',
+          label: 'Görevi'
+        },
+
+        {
+          id: 'vec_lbl_tur_0',
+          type: ElementType.TEXT,
+          content: 'Eğitim Türü :',
+          x: 230,
+          y: 620,
+          width: 330,
+          height: 45,
+          fontSize: 34,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'left',
+          label: 'Etiket - Tür'
+        },
+        {
+          id: 'val_tur',
+          type: ElementType.DROPDOWN,
+          content: 'TEMEL EĞİTİM (YÜZ YÜZE)',
+          x: 570,
+          y: 620,
+          width: 400,
+          height: 45,
+          fontSize: 34,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'left',
+          label: 'Eğitim Türü',
+          options: [
+            'TEMEL EĞİTİM (YÜZ YÜZE)',
+            'İLK DEFA',
+            'TEKRAR'
+          ]
+        },
+
+        // C. Sağ Sütun: Eğitim Tarihi, Eğitim Süresi
+        {
+          id: 'vec_lbl_tarih_0',
+          type: ElementType.TEXT,
+          content: 'Eğitim Tarihi :',
+          x: 1050,
+          y: 440,
+          width: 300,
+          height: 45,
+          fontSize: 34,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'left',
+          label: 'Etiket - Tarih'
+        },
+        {
+          id: 'val_tarih',
+          type: ElementType.DATE,
+          content: '{Eğitim Tarihi}',
+          x: 1360,
+          y: 440,
+          width: 400,
+          height: 45,
+          fontSize: 36,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'left',
+          label: 'Eğitim Tarihi',
+          dateKind: 'training'
+        },
+
+        {
+          id: 'vec_lbl_saat_0',
+          type: ElementType.TEXT,
+          content: 'Eğitim Süresi :',
+          x: 1050,
+          y: 530,
+          width: 300,
+          height: 45,
+          fontSize: 34,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'left',
+          label: 'Etiket - Süre'
+        },
+        {
+          id: 'val_saat',
+          type: ElementType.DROPDOWN,
+          content: '16 DERS SAATİ',
+          x: 1360,
+          y: 530,
+          width: 400,
+          height: 45,
+          fontSize: 36,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'left',
+          label: 'Eğitim Süresi',
+          options: [
+            '16 DERS SAATİ',
+            '8 DERS SAATİ',
+            '12 DERS SAATİ'
+          ]
+        },
+
+        // 4. İÇ YAZI (ALTTА - 5-6 FONT BÜYÜTÜLDÜ: 31 -> 37)
+        {
+          id: 'vec_inner_text_0',
+          type: ElementType.TEXT,
+          content: 'Yukarıda adı geçen katılımcı Çalışanların İş Sağlığı ve Güvenliği Eğitimlerinin Usul ve Esasları Hakkında Yönetmelik kapsamında verilen İş Sağlığı ve Güvenliği TEMEL eğitimlerini YÜZ YÜZE eğitim yöntemiyle başarıyla tamamlayarak bu eğitim belgesini almaya hak kazanmıştır.',
+          x: 180,
+          y: 760,
+          width: 1640,
+          height: 135,
+          fontSize: 37,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 600,
+          fontStyle: 'normal',
+          textAlign: 'center',
+          label: 'İç Yazı / Açıklama Metni'
+        },
+
+        // 5. İMZALAR (EN ALTTА - 1-2 FONT BÜYÜTÜLDÜ: 28 -> 30)
+        // Doktor
+        {
+          id: 'sig_line_doktor',
+          type: ElementType.SHAPE,
+          content: '',
+          x: 180,
+          y: 1075,
+          width: 380,
+          height: 2,
+          shapeType: 'line',
+          borderColor: '#cbd5e1',
+          borderWidth: 2,
+          label: 'Doktor İmza Çizgisi'
+        },
+        {
+          id: 'sig_lbl_doktor',
+          type: ElementType.TEXT,
+          content: 'İşyeri Hekimi',
+          x: 180,
+          y: 1088,
+          width: 380,
+          height: 45,
+          fontSize: 30,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'center',
+          label: 'Doktor Başlığı'
+        },
+        {
+          id: 'sig_val_doktor',
+          type: ElementType.SIGNATURE,
+          content: '',
+          x: 180,
+          y: 925,
+          width: 380,
+          height: 145,
+          fontSize: 60,
+          fontFamily: FontStyle.SANS,
+          color: '#000000',
+          label: 'DOKTOR',
+          fontWeight: 400,
+          fontStyle: 'normal',
+          textAlign: 'center'
+        },
+
+        // Uzman
+        {
+          id: 'sig_line_uzman',
+          type: ElementType.SHAPE,
+          content: '',
+          x: 810,
+          y: 1075,
+          width: 380,
+          height: 2,
+          shapeType: 'line',
+          borderColor: '#cbd5e1',
+          borderWidth: 2,
+          label: 'Uzman İmza Çizgisi'
+        },
+        {
+          id: 'sig_lbl_uzman',
+          type: ElementType.TEXT,
+          content: 'İş Güvenliği Uzmanı',
+          x: 810,
+          y: 1088,
+          width: 380,
+          height: 45,
+          fontSize: 30,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'center',
+          label: 'Uzman Başlığı'
+        },
+        {
+          id: 'sig_val_uzman',
+          type: ElementType.SIGNATURE,
+          content: '',
+          x: 810,
+          y: 925,
+          width: 380,
+          height: 145,
+          fontSize: 60,
+          fontFamily: FontStyle.SANS,
+          color: '#000000',
+          label: 'UZMAN',
+          fontWeight: 400,
+          fontStyle: 'normal',
+          textAlign: 'center'
+        },
+
+        // İşveren
+        {
+          id: 'sig_line_isveren',
+          type: ElementType.SHAPE,
+          content: '',
+          x: 1420,
+          y: 1075,
+          width: 380,
+          height: 2,
+          shapeType: 'line',
+          borderColor: '#cbd5e1',
+          borderWidth: 2,
+          label: 'İşveren İmza Çizgisi'
+        },
+        {
+          id: 'sig_lbl_isveren',
+          type: ElementType.TEXT,
+          content: 'İşveren / Vekili',
+          x: 1420,
+          y: 1088,
+          width: 380,
+          height: 45,
+          fontSize: 30,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          fontWeight: 700,
+          fontStyle: 'normal',
+          textAlign: 'center',
+          label: 'İşveren Başlığı'
+        },
+        {
+          id: 'sig_val_isveren',
+          type: ElementType.SIGNATURE,
+          content: '',
+          x: 1420,
+          y: 925,
+          width: 380,
+          height: 145,
+          fontSize: 60,
+          fontFamily: FontStyle.SANS,
+          color: '#000000',
+          label: 'İŞVEREN',
+          fontWeight: 400,
+          fontStyle: 'normal',
+          textAlign: 'center'
+        },
+
+        // 6. ÇANKAYA OSGB LOGOSU (Onay mührünün yerine tam ortaya konuldu)
+        {
+          id: 'vec_logo_cankaya',
+          type: ElementType.IMAGE,
+          content: '/logo_cankaya.png',
+          x: 800,
+          y: 1150,
+          width: 400,
+          height: 122,
+          fontSize: 60,
+          fontFamily: FontStyle.SANS,
+          color: '#0f172a',
+          label: 'Çankaya OSGB Logosu',
+          fontWeight: 400,
+          fontStyle: 'normal',
+          textAlign: 'center'
+        },
+
+        // 7. BELGE ONAY QR KODU (SAĞ ALTA KONULDU)
+        {
+          id: 'val_qr',
+          type: ElementType.QRCODE,
+          content: 'https://sertifika.cankayaosgb.tr/dogrula.html?id={Seri No}',
+          x: 1720,
+          y: 1115,
+          width: 140,
+          height: 140,
+          fontSize: 60,
+          fontFamily: FontStyle.SANS,
+          color: '#27617e',
+          label: 'QR',
+          fontWeight: 400,
+          fontStyle: 'normal',
+          textAlign: 'center'
+        },
+        {
+          id: 'vec_lbl_qr_sub',
+          type: ElementType.TEXT,
+          content: 'Belge Doğrulama',
+          x: 1670,
+          y: 1262,
+          width: 240,
+          height: 30,
+          fontSize: 20,
+          fontFamily: FontStyle.SANS,
+          color: '#64748b',
+          fontWeight: 600,
+          fontStyle: 'normal',
+          textAlign: 'center',
+          label: 'QR Açıklama'
+        },
+
+        // 8. Mevzuat Dipnotu (En Altta)
+        {
+          id: 'vec_footer_note_0',
+          type: ElementType.TEXT,
+          content: '6331 Sayılı İş Sağlığı ve Güvenliği Kanunu Gereğince Düzenlenmiştir.',
+          x: 400,
+          y: 1315,
+          width: 1200,
+          height: 30,
+          fontSize: 20,
+          fontFamily: FontStyle.SANS,
+          color: '#94a3b8',
+          fontWeight: 500,
+          fontStyle: 'normal',
+          textAlign: 'center',
+          label: 'Mevzuat Dipnotu'
+        }
       ]
     },
     back: {
-      id: `back-${Date.now()}`,
+      id: `back-${projId}`,
       name: 'Arka Yüz',
       bgUrl: '', 
       elements: []
@@ -305,7 +861,20 @@ const App = () => {
 
   // UI State
   const [activeSide, setActiveSide] = useState<Side>('front');
-  const [currentView, setCurrentView] = useState<ViewMode>('fill');
+  const [currentView, setCurrentView] = useState<ViewMode>(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (
+        searchParams.get('mode') === 'saha' ||
+        searchParams.get('mode') === 'saglik' ||
+        window.location.pathname.includes('/saha') ||
+        window.location.pathname.includes('/saglik')
+      ) {
+        return 'field-health';
+      }
+    } catch { /* ignore */ }
+    return 'fill';
+  });
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [showSigPermissions, setShowSigPermissions] = useState(false); 
   const [showOptionManager, setShowOptionManager] = useState(false); 
@@ -313,9 +882,28 @@ const App = () => {
   const [tempOptionInput, setTempOptionInput] = useState(''); 
   const [isEditingName, setIsEditingName] = useState(false); 
   const [showChoiceFields, setShowChoiceFields] = useState(false);
+  const [showBgManagerModal, setShowBgManagerModal] = useState(false);
+  const [showProjectSettingsModal, setShowProjectSettingsModal] = useState(false);
+  const [showAssetLibraryModal, setShowAssetLibraryModal] = useState(false);
+  const [showLayersModal, setShowLayersModal] = useState(false);
+  const [showColorPaletteModal, setShowColorPaletteModal] = useState(false);
+  const [assetLibraryInitialTab, setAssetLibraryInitialTab] = useState<'elements' | 'uploads'>('elements');
+  const [userAssets, setUserAssets] = useState<UserAsset[]>(() => {
+    try {
+      const stored = localStorage.getItem('procertify_user_assets');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('procertify_user_assets', JSON.stringify(userAssets));
+    } catch {}
+  }, [userAssets]);
   
   // User Session & Role
-  const [sessionUser, setSessionUser] = useState<{ id: string; username: string; role: UserRole; name: string } | null>(() => {
+  const [sessionUser, setSessionUser] = useState<{ id: string; username: string; role: UserRole; name: string; companyId?: string; companyName?: string } | null>(() => {
     try {
       const stored = localStorage.getItem('vps_user_info');
       const token = localStorage.getItem('vps_session_token');
@@ -423,6 +1011,7 @@ const App = () => {
   const [isFillSidebarOpen, setIsFillSidebarOpen] = useState(true);
   const [selectedTrainingDateKey, setSelectedTrainingDateKey] = useState<string>('');
   const [preferSingleDateExpiry, setPreferSingleDateExpiry] = useState<boolean>(false);
+  const [multiDayModalField, setMultiDayModalField] = useState<string | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const unifiedFieldsRef = useRef<string>('');
 
@@ -706,18 +1295,22 @@ const App = () => {
             return (lk.includes('tarih') || lk.includes('date')) && !isValidityDateField(lk);
           }));
 
-      const dateVal = earliestTr ? earliestTr.formatted : (effectiveTrKey ? (updated[effectiveTrKey] || '') : '');
+      // Pass the raw training date to calculateExpiryDate so multi-day training dates are honored
+      const dateVal = (isDateComponent && value.trim()) 
+        ? value.trim() 
+        : (effectiveTrKey && updated[effectiveTrKey] ? updated[effectiveTrKey] : (earliestTr ? (earliestTr.raw || earliestTr.formatted) : ''));
 
-      // Ortak grup tarih etiketlerine en erken günü senkronize et
-      if (isDateComponent && earliestTr) {
+      // Ortak grup tarih etiketlerine senkronize et (mevcut girilen değeri ezmeden)
+      if (isDateComponent) {
         const syncKeys = [
           'tarih', 'tarihi', 'eğitim tarihi', 'egitim tarihi', 'egitim_tarihi',
           'başlangıç tarihi', 'baslangic tarihi', 'baslangic_tarihi',
           'Tarih', 'Eğitim Tarihi', 'Başlangıç Tarihi'
         ];
         for (const sk of syncKeys) {
+          if (sk.toLowerCase() === fieldLabel.toLowerCase()) continue;
           if (!updated[sk] || updated[sk] === prev[fieldLabel]) {
-            updated[sk] = earliestTr.formatted;
+            updated[sk] = value;
           }
         }
       }
@@ -886,6 +1479,8 @@ const App = () => {
   // --- Editor State ---
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scale, setScale] = useState(0.4);
+  const [enableSnapping, setEnableSnapping] = useState(true);
+  const [showCanvasGrid, setShowCanvasGrid] = useState(false);
   
   // Undo / Redo History for Canvas Elements
   const [undoStack, setUndoStack] = useState<CanvasElement[][]>([]);
@@ -902,10 +1497,11 @@ const App = () => {
   const handleZoomFit = () => {
     if (editorContainerRef.current && activeProject) {
       const { clientWidth, clientHeight } = editorContainerRef.current;
-      const padding = 60;
+      const padding = 64;
       const scaleX = (clientWidth - padding) / activeProject.width;
       const scaleY = (clientHeight - padding) / activeProject.height;
-      setScale(Math.max(0.15, Math.min(scaleX, scaleY)));
+      const fitted = Math.max(0.15, Math.min(1.2, Math.min(scaleX, scaleY)));
+      setScale(Number(fitted.toFixed(2)));
     }
   };
   
@@ -1014,7 +1610,8 @@ const App = () => {
           
           if (data.signatures) setSignatures(data.signatures);
           if (data.companies) setCompanies(data.companies);
-                } else if (!isNetworkError) {
+          if (data.assets && Array.isArray(data.assets)) setUserAssets(data.assets);
+        } else if (!isNetworkError) {
           console.log("Data completely invalid or empty, creating new default project");
           const newP = createNewProject('Yeni Sertifika Projesi');
           setProjects([newP]);
@@ -1033,7 +1630,7 @@ const App = () => {
       const token = localStorage.getItem('vps_session_token');
       if (!token) return; // Only admin changes are saved to server
 
-      const dataObj = { projects, signatures, companies };
+      const dataObj = { projects, signatures, companies, assets: userAssets };
       console.log("SAVING DATA TO API:", dataObj);
       
       try {
@@ -1057,7 +1654,7 @@ const App = () => {
 
     const timer = setTimeout(saveData, 2500);
     return () => clearTimeout(timer);
-  }, [projects, signatures, companies, isDataLoaded]);
+  }, [projects, signatures, companies, userAssets, isDataLoaded]);
 
   useEffect(() => {
      if (isDataLoaded && !projects.find(p => p.id === activeProjectId) && projects.length > 0) {
@@ -1075,20 +1672,25 @@ const App = () => {
     if (currentView !== 'template' || !activeProject) return;
 
     const handleResize = () => {
-      if (editorContainerRef.current) {
+      if (editorContainerRef.current && activeProject) {
         const { clientWidth, clientHeight } = editorContainerRef.current;
-        const padding = 80;
+        const padding = 64;
         const scaleX = (clientWidth - padding) / activeProject.width;
         const scaleY = (clientHeight - padding) / activeProject.height;
-        setScale(Math.min(scaleX, scaleY));
+        const fitted = Math.max(0.15, Math.min(1.2, Math.min(scaleX, scaleY)));
+        setScale(Number(fitted.toFixed(2)));
       }
     };
     const debouncedResize = () => requestAnimationFrame(handleResize);
     
-    setTimeout(handleResize, 100);
+    // Auto-fit smoothly on initial view switch or orientation change
+    const timer = setTimeout(handleResize, 60);
     window.addEventListener('resize', debouncedResize);
-    return () => window.removeEventListener('resize', debouncedResize);
-  }, [activeProject?.width, activeProject?.height, currentView]);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', debouncedResize);
+    };
+  }, [activeProject?.id, activeProject?.width, activeProject?.height, currentView]);
 
   // --- Functions ---
   const updateProjectSide = (side: Side, updates: Partial<CertificateSide>) => {
@@ -1221,6 +1823,58 @@ const App = () => {
         });
     });
     return Array.from(labelMap.values());
+  };
+
+  // --- Canva-Style Asset Library Handlers ---
+  const handleUploadUserAsset = (newAsset: UserAsset) => {
+    setUserAssets(prev => [newAsset, ...prev]);
+  };
+
+  const handleDeleteUserAsset = (id: string) => {
+    setUserAssets(prev => prev.filter(a => a.id !== id));
+  };
+
+  const handleInsertAsset = (asset: { name: string; dataUrl: string; width: number; height: number; isBorder?: boolean }) => {
+    if (!activeProject) return;
+    pushUndoSnapshot();
+
+    const isBorder = asset.isBorder || asset.width >= 800;
+    let targetW = asset.width;
+    let targetH = asset.height;
+
+    if (isBorder) {
+      targetW = Math.max(300, activeProject.width - 80);
+      targetH = Math.max(300, activeProject.height - 80);
+    } else {
+      const maxDim = 380;
+      if (targetW > maxDim || targetH > maxDim) {
+        const ratio = Math.min(maxDim / targetW, maxDim / targetH);
+        targetW = Math.round(targetW * ratio);
+        targetH = Math.round(targetH * ratio);
+      }
+    }
+
+    const posX = isBorder ? 40 : Math.round(activeProject.width / 2 - (targetW / 2));
+    const posY = isBorder ? 40 : Math.round(activeProject.height / 2 - (targetH / 2));
+
+    const newEl: CanvasElement = {
+      id: Date.now().toString(),
+      type: ElementType.IMAGE,
+      content: asset.dataUrl,
+      x: posX,
+      y: posY,
+      width: targetW,
+      height: targetH,
+      label: asset.name,
+      fontWeight: 400,
+      fontStyle: 'normal',
+      textAlign: 'center'
+    };
+
+    const sideData = getActiveSideData(activeProject, activeSide);
+    const currentElements = sideData?.elements || [];
+    updateProjectElements(activeSide, [...currentElements, newEl]);
+    setSelectedId(newEl.id);
   };
 
   // --- CRUD Actions ---
@@ -1401,7 +2055,11 @@ const App = () => {
 
     pushUndoSnapshot();
 
-    const content = type === ElementType.TEXT ? '{METİN}' 
+    const isBorder = type === ElementType.BORDER;
+    const isBadge = type === ElementType.BADGE;
+    const isShape = type === ElementType.SHAPE;
+
+    const content = type === ElementType.TEXT ? 'Metin Yazısı' 
                     : (type === ElementType.DROPDOWN ? '{SEÇENEK}' 
                     : (type === ElementType.COMPANY ? '{FİRMA}' 
                     : (type === ElementType.TCKN ? '{TCKN}' 
@@ -1409,20 +2067,57 @@ const App = () => {
                     : (type === ElementType.DATE ? '{Eğitim Tarihi}'
                     : (type === ElementType.QRCODE ? '{Sistem URL}?id={Seri No}' : ''))))));
     
-    const width = (type === ElementType.SIGNATURE || type === ElementType.QRCODE) ? 200 : (type === ElementType.CHOICE_BOX ? 40 : (type === ElementType.DATE ? 320 : 400));
-    const height = (type === ElementType.SIGNATURE) ? 100 : (type === ElementType.QRCODE ? 200 : (type === ElementType.CHOICE_BOX ? 40 : (type === ElementType.DATE ? 60 : 100)));
+    let width = 400;
+    let height = 100;
+    let posX = activeProject.width / 2 - 200;
+    let posY = activeProject.height / 2 - 50;
+
+    if (isBorder) {
+      width = Math.max(200, activeProject.width - 80);
+      height = Math.max(200, activeProject.height - 80);
+      posX = 40;
+      posY = 40;
+    } else if (isBadge) {
+      width = 220;
+      height = 220;
+      posX = Math.max(40, activeProject.width - 280);
+      posY = Math.max(40, activeProject.height - 280);
+    } else if (isShape) {
+      width = 450;
+      height = 60;
+      posX = activeProject.width / 2 - 225;
+      posY = activeProject.height / 2 - 30;
+    } else if (type === ElementType.SIGNATURE || type === ElementType.QRCODE) {
+      width = 200;
+      height = type === ElementType.SIGNATURE ? 100 : 200;
+      posX = activeProject.width / 2 - (width / 2);
+      posY = activeProject.height / 2 - (height / 2);
+    } else if (type === ElementType.CHOICE_BOX) {
+      width = 40;
+      height = 40;
+      posX = activeProject.width / 2 - 20;
+      posY = activeProject.height / 2 - 20;
+    } else if (type === ElementType.DATE) {
+      width = 320;
+      height = 60;
+      posX = activeProject.width / 2 - 160;
+      posY = activeProject.height / 2 - 30;
+    } else {
+      posX = activeProject.width / 2 - (width / 2);
+      posY = activeProject.height / 2 - (height / 2);
+    }
     
     const newEl: CanvasElement = {
       id: Date.now().toString(),
       type,
       content,
-      x: activeProject.width / 2 - (width/2),
-      y: activeProject.height / 2 - (height/2),
-      width,
-      height,
+      x: Math.round(posX),
+      y: Math.round(posY),
+      width: Math.round(width),
+      height: Math.round(height),
       fontSize: type === ElementType.DATE ? 48 : 60,
       fontFamily: FontStyle.SANS,
-      color: '#000000',
+      color: (isBorder || isBadge) ? '#d97706' : '#000000',
       label: type === ElementType.TEXT ? 'Metin' 
               : (type === ElementType.SIGNATURE ? 'İmza' 
               : (type === ElementType.DROPDOWN ? 'Seçenek' 
@@ -1430,7 +2125,10 @@ const App = () => {
               : (type === ElementType.TCKN ? 'TC Kimlik No'
               : (type === ElementType.CHOICE_BOX ? 'Seçim Kutusu'
               : (type === ElementType.DATE ? 'Eğitim Tarihi'
-              : (type === ElementType.QRCODE ? 'QR' : 'Görsel'))))))),
+              : (type === ElementType.QRCODE ? 'QR' 
+              : (type === ElementType.BORDER ? 'Çerçeve'
+              : (type === ElementType.BADGE ? 'Mühür / Rozet'
+              : (type === ElementType.SHAPE ? 'Şekil Kutusu' : 'Görsel')))))))))),
       options: type === ElementType.DROPDOWN ? [] : (type === ElementType.CHOICE_BOX ? ['Evet', 'Hayır'] : undefined),
       fontWeight: 400,
       fontStyle: 'normal',
@@ -1438,6 +2136,12 @@ const App = () => {
       dateKind: type === ElementType.DATE ? 'training' : undefined,
       secondaryX: type === ElementType.CHOICE_BOX ? (activeProject.width / 2 - (width/2)) + 150 : undefined,
       secondaryY: type === ElementType.CHOICE_BOX ? (activeProject.height / 2 - (height/2)) : undefined,
+      borderStyle: isBorder ? 'classic_gold' : undefined,
+      badgeStyle: isBadge ? 'isg_approved' : undefined,
+      shapeType: isShape ? 'rectangle' : undefined,
+      borderColor: (isBorder || isBadge || isShape) ? '#d97706' : undefined,
+      fillColor: isShape ? '#f8fafc' : undefined,
+      borderWidth: isShape ? 2 : undefined,
     };
 
     const sideData = getActiveSideData(activeProject, activeSide);
@@ -1822,6 +2526,15 @@ const App = () => {
     setChatInputValue('');
     setChatOptionSearch('');
   };
+
+  if (currentView === 'field-health') {
+    return (
+      <FieldHealthView 
+        onBackToApp={() => setCurrentView('fill')} 
+        currentUser={sessionUser}
+      />
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -2363,12 +3076,14 @@ const App = () => {
   };
 
   const renderProjectToPDF = async (pdf: jsPDF, proj: CertificateProject, isFirstInDoc: boolean, activeValues: Record<string, string> = fillValues) => {
+        // 1. Register Turkish Unicode TTF fonts into this jsPDF instance
+        await registerFontsInPdf(pdf);
+
         const sides: Side[] = ['front', 'back'];
         const activeBackData = getActiveSideData(proj, 'back', true);
         const hasBack = activeBackData && (activeBackData.bgUrl || activeBackData.elements.length > 0);
         const sidesToPrint = hasBack ? sides : ['front'];
         let pageAddedForProj = false;
-        let firstPageImgData = '';
 
         for (const side of sidesToPrint) {
             if (!isFirstInDoc || pageAddedForProj) {
@@ -2379,107 +3094,12 @@ const App = () => {
             const sideData = getActiveSideData(proj, side as Side, true);
             if (!sideData) continue;
 
-            const canvas = document.createElement('canvas');
-            canvas.width = proj.width;
-            canvas.height = proj.height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) continue;
-
-            if (sideData.bgUrl) {
-                const bgImg = new Image();
-                bgImg.src = sideData.bgUrl;
-                await new Promise<void>(resolve => {
-                    bgImg.onload = () => {
-                        ctx.drawImage(bgImg, 0, 0, proj.width, proj.height);
-                        resolve();
-                    };
-                    bgImg.onerror = () => resolve();
-                });
-            } else {
-                 ctx.fillStyle = "#ffffff";
-                 ctx.fillRect(0,0, proj.width, proj.height);
-            }
-
-            for (const el of sideData.elements) {
-                let content = '';
-
-                if (el.type === ElementType.QRCODE || el.type === ElementType.TEXT) {
-                   content = formatContent(el.content, activeValues);
-                } else if (el.type === ElementType.DATE) {
-                   const key = normalizeKey(el.label || el.id);
-                   content = activeValues[key] || formatContent(el.content, activeValues);
-                } else {
-                   const key = normalizeKey(el.label || '');
-                   content = activeValues[key] || el.content;
-                }
-
-                if (el.type === ElementType.SIGNATURE && !content) continue;
-
-                // HANDLE CHOICE BOX PDF RENDER
-                if (el.type === ElementType.CHOICE_BOX) {
-                    ctx.font = `${el.fontWeight || 400} ${el.fontSize}px ${el.fontFamily?.split(',')[0]}`;
-                    ctx.fillStyle = el.color || '#000';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-
-                    const opt1 = el.options?.[0] || 'Evet';
-                    const isOpt1 = content === opt1;
-                    
-                    const tickX = isOpt1 ? el.x : (el.secondaryX || el.x + 100);
-                    const tickY = isOpt1 ? el.y : (el.secondaryY || el.y);
-                    
-                    ctx.fillText("✓", tickX + (el.width/2), tickY + (el.height/2));
-                    continue; 
-                }
-
-                if (el.type === ElementType.TEXT || el.type === ElementType.DROPDOWN || el.type === ElementType.COMPANY || el.type === ElementType.TCKN || el.type === ElementType.DATE) {
-                    ctx.font = `${el.fontStyle === 'italic' ? 'italic ' : ''}${el.fontWeight || 400} ${el.fontSize}px ${el.fontFamily?.split(',')[0]}`;
-                    ctx.fillStyle = el.color || '#000';
-                    const align = el.textAlign || 'center';
-                    ctx.textAlign = align as CanvasTextAlign;
-                    ctx.textBaseline = 'top'; 
-                    
-                    let textToRender = content || '';
-                    if (el.type === ElementType.TCKN) {
-                        textToRender = maskTCKN(textToRender);
-                    }
-
-                    const allLines = getWrappedLines(ctx, textToRender, el.width);
-                    let startX = el.x; 
-                    if (align === 'center') startX = el.x + (el.width / 2);
-                    if (align === 'right') startX = el.x + el.width;
-                    const startY = el.y; 
-                    const lineHeight = el.fontSize! * 1.2;
-
-                    allLines.forEach((line, idx) => {
-                        ctx.fillText(line, startX, startY + (idx * lineHeight));
-                    });
-                } else if (el.type === ElementType.QRCODE) {
-                    try {
-                        const qrDataUrl = await QRCode.toDataURL(content || ' ', {
-                             width: el.width, margin: 1,
-                             color: { dark: el.color || '#000000', light: '#00000000' }
-                        });
-                        const img = new Image();
-                        img.src = qrDataUrl;
-                         await new Promise<void>(resolve => {
-                            img.onload = () => { ctx.drawImage(img, el.x, el.y, el.width, el.height); resolve(); };
-                            img.onerror = () => resolve(); 
-                        });
-                    } catch (e) { console.error("QR Export Error", e); }
-                } else {
-                    const img = new Image();
-                    img.src = content;
-                    await new Promise<void>(resolve => {
-                        img.onload = () => { ctx.drawImage(img, el.x, el.y, el.width, el.height); resolve(); };
-                        img.onerror = () => resolve();
-                    });
-                }
-            }
-            const imgData = canvas.toDataURL('image/jpeg', 0.95);
-            if (!firstPageImgData) firstPageImgData = imgData;
-            pdf.addImage(imgData, 'JPEG', 0, 0, proj.width, proj.height);
+            // 2. 100% Native Vector & Text PDF Generation
+            await renderSideToNativePDF(pdf, proj, sideData, activeValues, { cropMarks: !!proj.enableCropMarks });
         }
+
+        // 3. Fast lightweight raster thumbnail (~40-60KB) for database & verification preview
+        const firstPageImgData = await generateProjectThumbnail(proj, activeValues);
         return firstPageImgData;
   };
 
@@ -2589,11 +3209,11 @@ const App = () => {
         const resolvedTrKey = selectedTrainingDateKey && activeValues[selectedTrainingDateKey]
             ? selectedTrainingDateKey
             : null;
-        const trDate = earliestTr 
-            ? earliestTr.formatted 
-            : (resolvedTrKey && typeof activeValues[resolvedTrKey] === 'string' ? activeValues[resolvedTrKey] : '');
+        const trDate = (resolvedTrKey && typeof activeValues[resolvedTrKey] === 'string' && activeValues[resolvedTrKey].trim())
+            ? activeValues[resolvedTrKey]
+            : (earliestTr ? (earliestTr.raw || earliestTr.formatted) : '');
 
-        // 3c. Ortak referans başlangıç tarihini en erken gün ile senkronize et
+        // 3c. Ortak referans başlangıç tarihini senkronize et
         if (trDate) {
             const syncKeys = [
                 'tarih', 'tarihi', 'eğitim tarihi', 'egitim tarihi', 'egitim_tarihi',
@@ -2601,7 +3221,9 @@ const App = () => {
                 'Tarih', 'Eğitim Tarihi', 'Başlangıç Tarihi'
             ];
             for (const sk of syncKeys) {
-                activeValues[sk] = trDate;
+                if (!activeValues[sk]) {
+                    activeValues[sk] = trDate;
+                }
             }
         }
 
@@ -2800,8 +3422,9 @@ const App = () => {
       if (el.type === ElementType.QRCODE || el.type === ElementType.TEXT) {
          return { ...el, content: formatContent(el.content, fillValues) };
       }
-      const key = normalizeKey(el.label || '');
-      const val = fillValues[key];
+      const rawLabel = (el.label || '').trim();
+      const normKey = normalizeKey(rawLabel);
+      const val = fillValues[rawLabel] || fillValues[normKey] || fillValues[el.id];
       if (el.type === ElementType.TCKN) {
           if (val) return { ...el, content: maskTCKN(val) };
           return el;
@@ -2903,6 +3526,11 @@ const App = () => {
             }}
             getApiUrl={getApiUrl}
           />
+        )}
+
+        {/* VIEW: EK-2 EVRAK & ALAN EŞLEME (ADMIN) */}
+        {currentView === 'ek2-mapping' && (
+          <AdminEk2TemplateEditor />
         )}
 
         {/* VIEW: PROJECTS LIST */}
@@ -3065,282 +3693,241 @@ const App = () => {
 
         {/* VIEW: TEMPLATE EDITOR */}
         {currentView === 'template' && (
-          <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-w-0">
-            {/* Left Sidebar */}
-            <div className="w-full md:w-80 h-[40vh] md:h-auto bg-slate-850 border-b md:border-b-0 md:border-r border-slate-700/80 flex flex-col z-20 shadow-2xl flex-shrink-0 select-none">
-               {/* Project Header */}
-               <div className="p-4 border-b border-slate-700/80 bg-slate-900/80 backdrop-blur">
-                 {isEditingName ? (
-                     <input ref={projectNameInputRef} type="text" value={activeProject.name} onChange={(e) => updateProjectMeta({ name: e.target.value })} onBlur={() => setIsEditingName(false)} onKeyDown={(e) => e.key === 'Enter' && setIsEditingName(false)} className="w-full bg-slate-950 border border-amber-500 rounded-lg px-2.5 py-1.5 text-sm text-white outline-none font-bold" />
-                 ) : (
-                     <div className="flex items-center justify-between group hover:bg-slate-800/60 p-1.5 rounded-lg -ml-1 cursor-pointer transition" onClick={() => setIsEditingName(true)}>
-                         <div className="overflow-hidden">
-                           <h2 className="text-base font-bold text-white truncate flex items-center gap-1.5" title={activeProject.name}>
-                             <span>{activeProject.name}</span>
-                             <Edit2 size={12} className="text-slate-500 opacity-60 group-hover:opacity-100 transition" />
-                           </h2>
-                           <p className="text-[11px] text-slate-400">Şablon Tasarım Stüdyosu</p>
-                         </div>
-                     </div>
-                 )}
-                 {/* Status & Orientation */}
-                 <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-slate-800 text-xs">
-                    <span className="text-[11px] text-slate-400">Sertifika Durumu:</span>
-                    <button
-                       type="button"
-                       onClick={(e) => handleToggleProjectActive(activeProject.id, e)}
-                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 transition border ${
-                         activeProject.isActive !== false
-                           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                           : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750'
-                       }`}
-                       title={activeProject.isActive !== false ? "Pasife alarak sertifika listesinde gizleyin" : "Aktif ederek sertifika listesinde gösterin"}
-                    >
-                       {activeProject.isActive !== false ? (
-                          <><Check size={11} className="text-emerald-400" /> Aktif (Görünür)</>
-                       ) : (
-                          <><EyeOff size={11} className="text-amber-400" /> Pasif (Gizli)</>
-                       )}
-                    </button>
-                 </div>
-                 {/* Orientation Switcher */}
-                 <div className="mt-2.5 flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-                     <button onClick={() => handleOrientationChange('landscape')} className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition ${activeProject.width > activeProject.height ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}><RectangleHorizontal size={14} /> Yatay Belge</button>
-                     <button onClick={() => handleOrientationChange('portrait')} className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition ${activeProject.height > activeProject.width ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}><RectangleVertical size={14} /> Dikey Belge</button>
-                 </div>
-               </div>
-               
-               <div className="p-3.5 space-y-5 overflow-y-auto custom-scrollbar flex-1">
-                 {/* Bileşen Ekle (2-Column Grid) */}
-                 <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs font-bold uppercase text-slate-400 tracking-wider">
-                      <span>Bileşenler</span>
-                      <span className="text-[10px] text-slate-500 font-normal">Tıkla & Ekle</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button onClick={() => addElement(ElementType.TEXT)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-blue-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
-                        <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 group-hover:bg-blue-500/20 shrink-0">
-                          <Type size={15} />
-                        </div>
-                        <div className="truncate">
-                          <div className="font-semibold text-slate-200 group-hover:text-white">Metin</div>
-                          <div className="text-[10px] text-slate-500">Alan ekle</div>
-                        </div>
-                      </button>
+          activeProject ? (
+          <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-w-0 h-full">
+            {/* Left Sidebar / Permanent Sleek Icon-Rail Toolbox (w-16 = 64px) */}
+            <div className="w-full md:w-16 h-auto md:h-full bg-slate-850 border-b md:border-b-0 md:border-r border-slate-700/80 flex md:flex-col items-center py-2 md:py-3 px-2 justify-between z-20 shadow-2xl flex-shrink-0 select-none overflow-x-auto md:overflow-y-auto custom-scrollbar">
+              {/* Quick Element Adders */}
+              <div className="flex md:flex-col items-center gap-2 shrink-0">
+                {/* Canva-Style Asset Library Trigger */}
+                <button 
+                  onClick={() => { setAssetLibraryInitialTab('elements'); setShowAssetLibraryModal(true); }} 
+                  className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 via-amber-500 to-yellow-400 text-slate-950 flex items-center justify-center transition shadow-lg shadow-amber-900/30 active:scale-95 group relative hover:brightness-110" 
+                  title="Bileşen Deposu (Canva Tarzı 30+ Hazır Mühür, Çerçeve, İSG İkonu)"
+                >
+                  <Sparkles size={19} />
+                </button>
 
-                      <button onClick={() => addElement(ElementType.DATE)} className="p-2.5 bg-amber-500/10 hover:bg-amber-500/20 hover:border-amber-500/60 border border-amber-500/30 rounded-xl flex items-center gap-2 transition text-xs text-amber-200 group text-left shadow-sm">
-                        <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
-                          <Calendar size={15} />
-                        </div>
-                        <div className="truncate">
-                          <div className="font-semibold text-amber-300">Tarih</div>
-                          <div className="text-[10px] text-amber-400/70">Başlangıç</div>
-                        </div>
-                      </button>
+                {/* Canva-Style User Uploads Trigger */}
+                <button 
+                  onClick={() => { setAssetLibraryInitialTab('uploads'); setShowAssetLibraryModal(true); }} 
+                  className="w-10 h-10 rounded-xl bg-slate-900/90 hover:bg-sky-600/20 text-sky-400 border border-slate-750 hover:border-sky-500/40 flex items-center justify-center transition shadow-sm group relative" 
+                  title="Yüklemelerim / Dosya Deposu (Kendi Dosyalarını Yükle ve Kullan)"
+                >
+                  <FolderOpen size={18} />
+                </button>
 
-                      <button onClick={() => addElement(ElementType.COMPANY)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-emerald-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
-                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:bg-emerald-500/20 shrink-0">
-                          <Building size={15} />
-                        </div>
-                        <div className="truncate">
-                          <div className="font-semibold text-slate-200 group-hover:text-white">Firma</div>
-                          <div className="text-[10px] text-slate-500">Kurum adı</div>
-                        </div>
-                      </button>
+                <div className="w-8 h-[1px] bg-slate-750 my-1 hidden md:block"></div>
 
-                      <button onClick={() => addElement(ElementType.TCKN)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-purple-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
-                        <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:bg-purple-500/20 shrink-0">
-                          <ShieldCheck size={15} />
-                        </div>
-                        <div className="truncate">
-                          <div className="font-semibold text-slate-200 group-hover:text-white">TC No</div>
-                          <div className="text-[10px] text-slate-500">11 Hane</div>
-                        </div>
-                      </button>
+                <button 
+                  onClick={() => addElement(ElementType.TEXT)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900/90 hover:bg-blue-600/20 text-blue-400 border border-slate-750 hover:border-blue-500/40 flex items-center justify-center transition shadow-sm group relative" 
+                  title="Metin Alanı Ekle"
+                >
+                  <Type size={18} />
+                </button>
 
-                      <button onClick={() => addElement(ElementType.DROPDOWN)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-sky-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
-                        <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:bg-sky-500/20 shrink-0">
-                          <List size={15} />
-                        </div>
-                        <div className="truncate">
-                          <div className="font-semibold text-slate-200 group-hover:text-white">Seçenek</div>
-                          <div className="text-[10px] text-slate-500">Açılır liste</div>
-                        </div>
-                      </button>
+                <button 
+                  onClick={() => addElement(ElementType.DATE)} 
+                  className="w-10 h-10 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center transition shadow-sm group relative" 
+                  title="Tarih Alanı Ekle"
+                >
+                  <Calendar size={18} />
+                </button>
 
-                      <button onClick={() => addElement(ElementType.CHOICE_BOX)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-teal-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
-                        <div className="w-7 h-7 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 group-hover:bg-teal-500/20 shrink-0">
-                          <CheckCircle2 size={15} />
-                        </div>
-                        <div className="truncate">
-                          <div className="font-semibold text-slate-200 group-hover:text-white">Seçim</div>
-                          <div className="text-[10px] text-slate-500">Evet/Hayır</div>
-                        </div>
-                      </button>
+                <button 
+                  onClick={() => addElement(ElementType.COMPANY)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900/90 hover:bg-emerald-600/20 text-emerald-400 border border-slate-750 hover:border-emerald-500/40 flex items-center justify-center transition shadow-sm group relative" 
+                  title="Firma Alanı Ekle"
+                >
+                  <Building size={18} />
+                </button>
 
-                      <button onClick={() => addElement(ElementType.QRCODE)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-rose-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
-                        <div className="w-7 h-7 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 group-hover:bg-rose-500/20 shrink-0">
-                          <QrCode size={15} />
-                        </div>
-                        <div className="truncate">
-                          <div className="font-semibold text-slate-200 group-hover:text-white">QR Kod</div>
-                          <div className="text-[10px] text-slate-500">Doğrulama</div>
-                        </div>
-                      </button>
+                <button 
+                  onClick={() => addElement(ElementType.TCKN)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900/90 hover:bg-purple-600/20 text-purple-400 border border-slate-750 hover:border-purple-500/40 flex items-center justify-center transition shadow-sm group relative" 
+                  title="TC No Alanı Ekle"
+                >
+                  <ShieldCheck size={18} />
+                </button>
 
-                      <button onClick={() => addElement(ElementType.SIGNATURE)} className="p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-violet-500/50 border border-slate-750 rounded-xl flex items-center gap-2 transition text-xs text-slate-200 group text-left shadow-sm">
-                        <div className="w-7 h-7 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 group-hover:bg-violet-500/20 shrink-0">
-                          <PenTool size={15} />
-                        </div>
-                        <div className="truncate">
-                          <div className="font-semibold text-slate-200 group-hover:text-white">İmza</div>
-                          <div className="text-[10px] text-slate-500">Yetkili imza</div>
-                        </div>
-                      </button>
+                <button 
+                  onClick={() => addElement(ElementType.DROPDOWN)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900/90 hover:bg-sky-600/20 text-sky-400 border border-slate-750 hover:border-sky-500/40 flex items-center justify-center transition shadow-sm group relative" 
+                  title="Açılır Liste Ekle"
+                >
+                  <List size={18} />
+                </button>
 
-                      <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
-                      <button onClick={() => addElement(ElementType.IMAGE)} className="col-span-2 p-2.5 bg-slate-900/90 hover:bg-slate-800 hover:border-amber-500/50 border border-slate-750 rounded-xl flex items-center justify-center gap-2 transition text-xs text-slate-200 group shadow-sm">
-                        <div className="w-6 h-6 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:bg-amber-500/20 shrink-0">
-                          <ImageIcon size={14} />
-                        </div>
-                        <span className="font-semibold text-slate-200 group-hover:text-white">Logo / Resim Ekle</span>
-                      </button>
-                    </div>
-                 </div>
+                <button 
+                  onClick={() => addElement(ElementType.CHOICE_BOX)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900/90 hover:bg-teal-600/20 text-teal-400 border border-slate-750 hover:border-teal-500/40 flex items-center justify-center transition shadow-sm group relative" 
+                  title="Seçim Kutusu Ekle"
+                >
+                  <CheckCircle2 size={18} />
+                </button>
 
-                 {/* Arkaplan Yönetimi */}
-                 <div className="space-y-2 pt-2 border-t border-slate-800">
-                    <div className="flex justify-between items-center">
-                        <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider">Arkaplan ({activeSide === 'front' ? 'Ön Yüz' : 'Arka Yüz'})</h3>
-                        <button onClick={() => variantFileInputRef.current?.click()} className="flex items-center gap-1 text-[11px] bg-amber-500/15 border border-amber-500/30 text-amber-400 px-2.5 py-1 rounded-lg hover:bg-amber-500/25 transition font-semibold">
-                            <Plus size={12} /> Yeni Seçenek
-                        </button>
-                    </div>
-                    <input type="file" ref={fileInputRef} onChange={handleTemplateUpload} accept="image/*" className="hidden" />
-                    <input type="file" ref={variantFileInputRef} onChange={handleVariantUpload} accept="image/*" multiple className="hidden" />
-                    
-                    {activeProject && (
-                        <div className="flex flex-col gap-1.5 max-h-44 overflow-y-auto custom-scrollbar pr-0.5">
-                            <div 
-                                onClick={() => handleSelectVariant(activeSide, '')} 
-                                className={`group flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer transition border ${!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? 'bg-amber-500/15 border-amber-500/50 text-amber-200 shadow-sm' : 'bg-slate-900/90 border-slate-750 text-slate-300 hover:bg-slate-800'}`}
-                            >
-                                <div className="flex items-center gap-2 truncate flex-1 font-medium">
-                                    {!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? <Check size={13} className="text-amber-400 font-bold" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-700" />}
-                                    <span>Varsayılan Arkaplan</span>
-                                </div>
-                                <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100 transition-all">
-                                    <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="p-1 text-slate-400 hover:text-amber-400 transition-all" title="Arkaplanı Değiştir">
-                                        <Upload size={13} />
-                                    </button>
-                                    <button onClick={(e) => { 
-                                        e.stopPropagation(); 
-                                        if(confirm('Arkaplanı temizlemek istediğinize emin misiniz?')) {
-                                            updateProjectSide(activeSide, { bgUrl: '' });
-                                        }
-                                    }} className="p-1 text-slate-400 hover:text-rose-400 transition-all" title="Arkaplanı Temizle">
-                                        <Trash2 size={13} />
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            {(() => {
-                                const side = activeSide;
-                                const variantsKey = side === 'front' ? 'frontVariants' : 'backVariants';
-                                const selectedKey = side === 'front' ? 'selectedFrontId' : 'selectedBackId';
-                                const variants = activeProject[variantsKey] || [];
-                                
-                                return variants.map(v => {
-                                    const isSelected = activeProject[selectedKey] === v.id;
-                                    return (
-                                        <div 
-                                            key={v.id} 
-                                            onClick={() => handleSelectVariant(side, v.id)} 
-                                            className={`group flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer transition border ${isSelected ? 'bg-amber-500/15 border-amber-500/50 text-amber-200 shadow-sm' : 'bg-slate-900/90 border-slate-750 text-slate-300 hover:bg-slate-800'}`}
-                                        >
-                                            <div className="flex items-center gap-2 truncate flex-1">
-                                                {isSelected ? <Check size={13} className="text-amber-400 font-bold" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-700" />}
-                                                <input 
-                                                    type="text" 
-                                                    value={v.name || ''} 
-                                                    onChange={(e) => {
-                                                        e.stopPropagation();
-                                                        handleRenameVariant(side, v.id, e.target.value);
-                                                    }}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    className="bg-transparent border-none text-xs focus:outline-none w-full text-inherit font-medium underline decoration-transparent focus:decoration-amber-500/40"
-                                                    placeholder="Varyant İsmi"
-                                                />
-                                            </div>
-                                            <button onClick={(e) => handleDeleteVariant(side, v.id, e)} className="p-1 text-slate-400 hover:text-rose-400 opacity-70 group-hover:opacity-100 transition-all" title="Varyantı Sil">
-                                                <Trash2 size={13} />
-                                            </button>
-                                        </div>
-                                    );
-                                });
-                            })()}
-                        </div>
-                    )}
-                 </div>
+                <button 
+                  onClick={() => addElement(ElementType.QRCODE)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900/90 hover:bg-rose-600/20 text-rose-400 border border-slate-750 hover:border-rose-500/40 flex items-center justify-center transition shadow-sm group relative" 
+                  title="QR Kod Ekle"
+                >
+                  <QrCode size={18} />
+                </button>
 
-                 {/* QR İçerik Ayarı (Sadece QR seçiliyken) */}
-                 {selectedElement && selectedElement.type === ElementType.QRCODE && (
-                   <div className="space-y-2 pt-2 border-t border-slate-800 animate-in fade-in duration-150">
-                       <h3 className="text-xs font-bold uppercase text-amber-400 tracking-wider flex items-center gap-1.5"><QrCode size={13} /> QR İçerik Formatı</h3>
-                       <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-750 space-y-2">
-                           <p className="text-[10px] text-slate-400">QR Koda eklenecek metin veya etiketler:</p>
-                           <textarea rows={3} value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-amber-500 outline-none resize-none font-mono" placeholder="Örn: {Ad Soyad} - {Tarih}" />
-                       </div>
-                   </div>
-                 )}
+                <button 
+                  onClick={() => addElement(ElementType.SIGNATURE)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900/90 hover:bg-violet-600/20 text-violet-400 border border-slate-750 hover:border-violet-500/40 flex items-center justify-center transition shadow-sm group relative" 
+                  title="İmza Alanı Ekle"
+                >
+                  <PenTool size={18} />
+                </button>
 
-                 {/* Proje Ayarları & Çıktı */}
-                 <div className="space-y-2 pt-2 border-t border-slate-800">
-                      <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider flex items-center gap-1.5"><FileBadge size={13} /> PDF Dosya Adı & Şablon</h3>
-                      <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-750 space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 block">PDF İndirme Dosya Adı:</label>
-                          <input type="text" value={activeProject.filenamePattern || 'Sertifika-{Ad Soyad}'} onChange={(e) => updateProjectMeta({ filenamePattern: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-amber-500 outline-none font-mono" placeholder="Örn: {Ad Soyad}-{Tarih}" />
-                          <div className="text-[9px] text-slate-500 mb-1">Mevcut etiketleri ekle:</div>
-                          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto custom-scrollbar">
-                              {getProjectLabels().map(label => (
-                                  <button key={label} onClick={() => { const current = activeProject.filenamePattern || ''; updateProjectMeta({ filenamePattern: current + `{${label}}` }); }} className={`text-[10px] px-2 py-0.5 rounded-md transition border border-slate-700 hover:border-slate-600 ${label.endsWith('_Kisa') ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`} title={label.endsWith('_Kisa') ? "Firma kısaltmasını ekle" : "Değeri ekle"}>+ {label}</button>
-                              ))}
-                          </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        <input type="file" ref={htmlTemplateInputRef} onChange={handleImportHTMLTemplate} accept=".json" className="hidden" />
-                        <button onClick={() => htmlTemplateInputRef.current?.click()} className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-[11px] font-bold shadow-sm border border-slate-700 flex items-center justify-center gap-1.5 transition"><Import size={13} /> Şablon Yükle</button>
-                        <button onClick={handleSaveTemplateAsHTML} className="w-full py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-xl text-[11px] font-bold shadow-sm border border-purple-500/30 flex items-center justify-center gap-1.5 transition"><FileCode size={13} /> Şablon Kaydet</button>
-                      </div>
-                 </div>
-               </div>
+                <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
+                <button 
+                  onClick={() => addElement(ElementType.IMAGE)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900/90 hover:bg-amber-600/20 text-amber-400 border border-slate-750 hover:border-amber-500/40 flex items-center justify-center transition shadow-sm group relative" 
+                  title="Logo / Resim Ekle"
+                >
+                  <ImageIcon size={18} />
+                </button>
+
+                <div className="w-8 h-[1px] bg-slate-800 my-1 hidden md:block"></div>
+
+                {/* Vector Studio Elements */}
+                <button 
+                  onClick={() => addElement(ElementType.BORDER)} 
+                  className="w-10 h-10 rounded-xl bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 hover:border-amber-400 flex items-center justify-center transition shadow-sm group relative" 
+                  title="Vektörel Çerçeve Ekle (Altın / Çift Çizgi / İSG)"
+                >
+                  <BoxSelect size={18} />
+                </button>
+
+                <button 
+                  onClick={() => addElement(ElementType.BADGE)} 
+                  className="w-10 h-10 rounded-xl bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 hover:border-amber-400 flex items-center justify-center transition shadow-sm group relative" 
+                  title="Resmi Mühür / Başarı Rozeti Ekle"
+                >
+                  <Award size={18} />
+                </button>
+
+                <button 
+                  onClick={() => addElement(ElementType.SHAPE)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900/90 hover:bg-indigo-600/20 text-indigo-400 border border-slate-750 hover:border-indigo-500/40 flex items-center justify-center transition shadow-sm group relative" 
+                  title="Vektörel Şekil / Ayraç Ekle"
+                >
+                  <Shapes size={18} />
+                </button>
+              </div>
+
+              {/* Utility & Management Tools */}
+              <div className="flex md:flex-col items-center gap-2 pt-0 md:pt-3 border-l md:border-l-0 md:border-t border-slate-800 shrink-0">
+                {/* Katmanlar (Layers) */}
+                <button 
+                  onClick={() => setShowLayersModal(true)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-amber-400 border border-slate-750 hover:border-amber-500/40 flex items-center justify-center transition shadow-sm" 
+                  title="Katmanlar Paneli (Z-Index Sıralaması)"
+                >
+                  <Layers size={18} />
+                </button>
+
+                {/* 1-Tıkla Renk Paleti Dönüştürücü */}
+                <button 
+                  onClick={() => setShowColorPaletteModal(true)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-amber-400 border border-slate-750 hover:border-amber-500/40 flex items-center justify-center transition shadow-sm" 
+                  title="1-Tıkla Renk Paleti Dönüştürücü"
+                >
+                  <Palette size={18} />
+                </button>
+                {/* Background Manager Modal Trigger */}
+                <button 
+                  onClick={() => setShowBgManagerModal(true)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-750 hover:border-amber-500/40 flex items-center justify-center transition shadow-sm" 
+                  title="Arkaplan Yönetimi (Görsel & Varyantlar)"
+                >
+                  <Upload size={18} />
+                </button>
+
+                {/* Quick Orientation Switcher */}
+                <button 
+                  onClick={() => handleOrientationChange(activeProject.width > activeProject.height ? 'portrait' : 'landscape')}
+                  className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-750 hover:bg-slate-800 text-slate-300 hover:text-amber-400 flex items-center justify-center transition shadow-sm"
+                  title={activeProject.width > activeProject.height ? "Dikey Belgeye Çevir" : "Yatay Belgeye Çevir"}
+                >
+                  {activeProject.width > activeProject.height ? <RectangleHorizontal size={18} /> : <RectangleVertical size={18} />}
+                </button>
+
+                {/* Project & Output Settings Trigger */}
+                <button 
+                  onClick={() => setShowProjectSettingsModal(true)} 
+                  className="w-10 h-10 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-purple-300 border border-slate-750 hover:border-purple-500/40 flex items-center justify-center transition shadow-sm" 
+                  title="Belge Ayarları & PDF Çıktı Şablonu"
+                >
+                  <Settings size={18} />
+                </button>
+              </div>
             </div>
 
+            {/* Hidden File Inputs for Backgrounds & Templates */}
+            <input type="file" ref={fileInputRef} onChange={handleTemplateUpload} accept="image/*" className="hidden" />
+            <input type="file" ref={variantFileInputRef} onChange={handleVariantUpload} accept="image/*" multiple className="hidden" />
+            <input type="file" ref={htmlTemplateInputRef} onChange={handleImportHTMLTemplate} accept=".json" className="hidden" />
+            
             {/* Canvas Area with Locked-Height Top Properties Bar (Zero Layout Shift) */}
+
             <div className="flex-1 flex flex-col relative bg-[#0b0f19] min-w-0 overflow-hidden">
-              <div className="h-14 min-h-[3.5rem] max-h-[3.5rem] bg-slate-850/95 backdrop-blur border-b border-slate-750 flex items-center px-4 gap-3 justify-between relative select-none shrink-0 z-30 min-w-0">
-                 {/* Left: Navigation & Side Switcher */}
-                 <div className="flex items-center gap-2 shrink-0">
+              <div className="h-14 min-h-[3.5rem] max-h-[3.5rem] bg-slate-850/95 backdrop-blur border-b border-slate-750 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 justify-between relative select-none shrink-0 z-30 min-w-0 overflow-hidden">
+                 {/* Left: Navigation, Project Name & Side Switcher */}
+                 <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 min-w-0">
                     <button 
                       onClick={() => setCurrentView('fill')} 
-                      className="bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                      className="bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm shrink-0 whitespace-nowrap"
                       title="Sertifika Doldurma Ekranına Dön"
                     >
-                      <ArrowLeft size={14} /> Doldur'a Dön
+                      <ArrowLeft size={14} className="shrink-0" />
+                      <span className="hidden sm:inline">Doldur'a Dön</span>
+                      <span className="sm:hidden">Doldur</span>
                     </button>
-                    <div className="w-[1px] h-5 bg-slate-700 mx-1 hidden sm:block"></div>
-                    <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-700 shrink-0">
-                        <button onClick={() => { setActiveSide('front'); setSelectedId(null); }} className={`px-3 py-1 text-xs rounded-md transition font-semibold ${activeSide === 'front' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Ön Yüz</button>
-                        <button onClick={() => { setActiveSide('back'); setSelectedId(null); }} className={`px-3 py-1 text-xs rounded-md transition font-semibold ${activeSide === 'back' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Arka Yüz</button>
+
+                    <div className="w-[1px] h-5 bg-slate-700/80 mx-0.5 shrink-0"></div>
+
+                    {/* Project Name (Editable on click) */}
+                    {isEditingName ? (
+                      <input 
+                        ref={projectNameInputRef} 
+                        type="text" 
+                        value={activeProject.name} 
+                        onChange={(e) => updateProjectMeta({ name: e.target.value })} 
+                        onBlur={() => setIsEditingName(false)} 
+                        onKeyDown={(e) => e.key === 'Enter' && setIsEditingName(false)} 
+                        className="bg-slate-950 border border-amber-500 rounded-lg px-2.5 py-1 text-xs text-white outline-none font-bold w-36 sm:w-48 md:w-60" 
+                        autoFocus
+                      />
+                    ) : (
+                      <div 
+                        onClick={() => setIsEditingName(true)} 
+                        className="flex items-center gap-1.5 cursor-pointer max-w-[120px] sm:max-w-[180px] md:max-w-[240px] truncate hover:bg-slate-800/60 px-2 py-1 rounded-lg transition group shrink-0"
+                        title="Şablon İsmini Düzenle"
+                      >
+                        <span className="text-xs sm:text-sm font-bold text-white truncate">{activeProject.name}</span>
+                        <Edit2 size={12} className="text-slate-500 opacity-60 group-hover:opacity-100 transition shrink-0" />
+                      </div>
+                    )}
+
+                    <div className="w-[1px] h-5 bg-slate-700/80 mx-0.5 hidden md:block shrink-0"></div>
+
+                    {/* Side Switcher (Ön Yüz / Arka Yüz) */}
+                    <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-700 shrink-0 whitespace-nowrap">
+                        <button onClick={() => { setActiveSide('front'); setSelectedId(null); }} className={`px-2.5 sm:px-3 py-1 text-xs rounded-md transition font-semibold shrink-0 whitespace-nowrap ${activeSide === 'front' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Ön Yüz</button>
+                        <button onClick={() => { setActiveSide('back'); setSelectedId(null); }} className={`px-2.5 sm:px-3 py-1 text-xs rounded-md transition font-semibold shrink-0 whitespace-nowrap ${activeSide === 'back' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Arka Yüz</button>
                     </div>
 
-                    <div className="w-[1px] h-5 bg-slate-700 mx-1 hidden sm:block"></div>
-                    {/* Undo / Redo controls */}
-                    <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-700 shrink-0">
+                    {/* Undo / Redo */}
+                    <div className="hidden sm:flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-700 shrink-0">
                         <button 
                           onClick={handleUndo} 
                           disabled={undoStack.length === 0} 
-                          className={`p-1.5 rounded-md transition ${undoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-slate-800' : 'text-slate-600 cursor-not-allowed'}`}
+                          className={`p-1.5 rounded-md transition shrink-0 ${undoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-slate-800' : 'text-slate-600 cursor-not-allowed'}`}
                           title={`Geri Al (Ctrl+Z)${undoStack.length > 0 ? ` (${undoStack.length})` : ''}`}
                         >
                           <Undo2 size={14} />
@@ -3348,7 +3935,7 @@ const App = () => {
                         <button 
                           onClick={handleRedo} 
                           disabled={redoStack.length === 0} 
-                          className={`p-1.5 rounded-md transition ${redoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-slate-800' : 'text-slate-600 cursor-not-allowed'}`}
+                          className={`p-1.5 rounded-md transition shrink-0 ${redoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-slate-800' : 'text-slate-600 cursor-not-allowed'}`}
                           title={`İleri Al (Ctrl+Y / Ctrl+Shift+Z)${redoStack.length > 0 ? ` (${redoStack.length})` : ''}`}
                         >
                           <Redo2 size={14} />
@@ -3356,123 +3943,78 @@ const App = () => {
                     </div>
                  </div>
 
-                 {/* Center: Properties Toolbar or Document Info (min-w-0 + no-scrollbar ensures NO width blowouts) */}
-                 <div className="flex-1 flex items-center gap-2 overflow-x-auto no-scrollbar min-w-0 px-2">
-                     {selectedElement ? (
-                    <>
-                        {/* Type Badge */}
-                        <span className="text-[11px] font-bold px-2 py-1 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase whitespace-nowrap shrink-0">
-                          {selectedElement.type === ElementType.COMPANY ? '🏢 FİRMA' : (selectedElement.type === ElementType.CHOICE_BOX ? '☑️ SEÇİM' : (selectedElement.type === ElementType.DATE ? '📅 TARİH' : (selectedElement.type === ElementType.TCKN ? '🛡️ TC NO' : (selectedElement.type === ElementType.SIGNATURE ? '✍️ İMZA' : (selectedElement.type === ElementType.QRCODE ? '📱 QR' : selectedElement.type)))))}
-                        </span>
+                 {/* Center: Dimensions & Orientation (Only on large screens >=1280px, immune to wrapping/squeezing) */}
+                 <div className="hidden xl:flex items-center justify-center gap-2 overflow-hidden min-w-0 px-2 select-none whitespace-nowrap shrink-0">
+                    <span className="font-mono bg-slate-900 border border-slate-700/80 px-2.5 py-1 rounded-lg text-[11px] text-slate-300 shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 shadow-sm leading-none">
+                      <span className="opacity-75">📐</span>
+                      <span className="font-bold text-amber-400">{activeProject.width}</span>
+                      <span className="text-slate-500">×</span>
+                      <span className="font-bold text-amber-400">{activeProject.height}</span>
+                      <span className="text-slate-400 text-[10px]">px</span>
+                    </span>
 
-                        {/* Label Input */}
-                        <input value={selectedElement.label || ''} onChange={(e) => updateElement(selectedElement.id, { label: e.target.value })} className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white w-32 focus:border-amber-500 outline-none shrink-0" placeholder="Etiket / İsim" title="Bileşen Etiketi" />
-                        
-                        {/* Date Role Dropdown */}
-                        {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DATE) && (
-                          <select 
-                            value={selectedElement.dateKind || (selectedElement.type === ElementType.DATE ? 'training' : 'auto')} 
-                            onChange={(e) => updateElement(selectedElement.id, { dateKind: e.target.value === 'auto' ? undefined : (e.target.value as any) })}
-                            className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-amber-400 outline-none hover:border-amber-500 transition shrink-0 cursor-pointer"
-                            title="İSG Geçerlilik Tarih Rolü"
-                          >
-                            <option value="auto">Tarih Rolü: Otomatik</option>
-                            <option value="training">📅 Başlangıç Tarihi (Referans)</option>
-                            <option value="validity">⌛ Geçerlilik Tarihi (Hesaplanan)</option>
-                          </select>
-                        )}
+                    <span className="inline-flex items-center font-medium bg-slate-900/80 border border-slate-700/70 px-2.5 py-1 rounded-lg text-[11px] text-slate-300 shrink-0 whitespace-nowrap shadow-sm leading-none">
+                      {activeProject.width > activeProject.height ? 'Yatay Belge' : 'Dikey Belge'}
+                    </span>
 
-                        {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DROPDOWN || selectedElement.type === ElementType.QRCODE || selectedElement.type === ElementType.COMPANY || selectedElement.type === ElementType.TCKN || selectedElement.type === ElementType.CHOICE_BOX || selectedElement.type === ElementType.DATE) && (
-                        <>
-                            <div className="w-[1px] h-5 bg-slate-700 shrink-0"></div>
-                            {selectedElement.type !== ElementType.QRCODE && (
-                            <>
-                                <select value={selectedElement.fontFamily} onChange={(e) => updateElement(selectedElement.id, { fontFamily: e.target.value })} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white w-32 shrink-0 outline-none focus:border-amber-500">{FONTS.map(group => (<optgroup key={group.group} label={group.group}>{group.options.map(f => (<option key={f.value} value={f.value}>{f.name}</option>))}</optgroup>))}</select>
-                                <select value={selectedElement.fontWeight || 400} onChange={(e) => updateElement(selectedElement.id, { fontWeight: Number(e.target.value) })} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white w-24 shrink-0 outline-none focus:border-amber-500">{FONT_WEIGHTS.map(w => (<option key={w.value} value={w.value}>{w.name}</option>))}</select>
-                                {selectedElement.type !== ElementType.CHOICE_BOX && (
-                                  <div className="flex items-center bg-slate-900 rounded-lg border border-slate-700 p-0.5 shrink-0">
-                                    <button onClick={() => updateElement(selectedElement.id, { textAlign: 'left' })} className={`p-1 rounded ${selectedElement.textAlign === 'left' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`} title="Sola Hizala"><AlignLeft size={14} /></button>
-                                    <button onClick={() => updateElement(selectedElement.id, { textAlign: 'center' })} className={`p-1 rounded ${(!selectedElement.textAlign || selectedElement.textAlign === 'center') ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`} title="Ortala"><AlignCenter size={14} /></button>
-                                    <button onClick={() => updateElement(selectedElement.id, { textAlign: 'right' })} className={`p-1 rounded ${selectedElement.textAlign === 'right' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`} title="Sağa Hizala"><AlignRight size={14} /></button>
-                                  </div>
-                                )}
-                                <button onClick={() => updateElement(selectedElement.id, { fontStyle: selectedElement.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`p-1.5 rounded-lg border text-xs flex items-center justify-center shrink-0 ${selectedElement.fontStyle === 'italic' ? 'bg-amber-500 text-slate-950 border-amber-500' : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'}`} title="İtalik"><Italic size={14} /></button>
-                                <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-0.5 shrink-0" title="Font Boyutu (px)">
-                                  <span className="text-[10px] text-slate-500 font-mono mr-1">px</span>
-                                  <input type="number" value={Math.round(selectedElement.fontSize || 0)} onChange={(e) => updateElement(selectedElement.id, { fontSize: Number(e.target.value) })} className="w-12 bg-transparent text-xs text-white text-center outline-none" />
-                                </div>
-                            </>
-                            )}
-                            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 shrink-0" title="Yazı Rengi">
-                              <input type="color" value={selectedElement.color || '#000000'} onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })} className="w-5 h-5 rounded cursor-pointer border-none bg-transparent" />
-                              <span className="text-[10px] font-mono text-slate-400 uppercase">{selectedElement.color || '#000000'}</span>
-                            </div>
-                            {selectedElement.type === ElementType.DROPDOWN && (<button onClick={() => setShowOptionManager(true)} className="flex items-center gap-1.5 bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border border-sky-500/30 px-2.5 py-1 rounded-lg text-xs font-medium shrink-0 transition"><List size={13} /> Seçenekler ({selectedElement.options?.length || 0})</button>)}
-                            {selectedElement.type === ElementType.CHOICE_BOX && selectedElement.options && (<div className="flex items-center gap-1.5 bg-slate-900 px-2 py-1 rounded-lg border border-slate-700 shrink-0"><span className="text-[10px] text-slate-400">Varsayılan:</span><select value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-xs text-white outline-none">{selectedElement.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>)}
-                            {(selectedElement.type === ElementType.TEXT || selectedElement.type === ElementType.DATE) && (<input value={selectedElement.content} onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })} className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white w-36 shrink-0 font-mono outline-none focus:border-amber-500" placeholder={selectedElement.type === ElementType.DATE ? "{Eğitim Tarihi}" : "Örn metin"} title="Varsayılan Değer / Yer Tutucu" />)}
-                        </>
-                        )}
-                        {selectedElement.type === ElementType.SIGNATURE && (<button onClick={() => setShowSigPermissions(true)} className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded-lg text-xs text-white border border-slate-600 shrink-0 transition"><Filter size={13} /> İmza İzinleri ({selectedElement.allowedSignatureIds?.length || 'Tümü'})</button>)}
+                    <span className="hidden 2xl:inline-flex items-center text-slate-400 text-[11px] shrink-0 whitespace-nowrap">
+                      • {currentSideElements.length} bileşen
+                    </span>
+                 </div>
 
-                        {/* Duplicate Button */}
-                        <button 
-                          onClick={() => handleDuplicateElement(selectedElement.id)}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 shrink-0 transition ml-1"
-                          title="Bileşeni Çoğalt (Ctrl+D)"
-                        >
-                          <Copy size={14} />
-                        </button>
-
-                        {/* Top bar delete shortcut */}
-                        <button 
-                          onClick={() => { deleteElement(selectedElement.id); setSelectedId(null); }}
-                          className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 shrink-0 transition"
-                          title="Seçili Bileşeni Sil (Delete)"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                    </>
-                    ) : (
-                      <div className="flex items-center gap-3 text-xs text-slate-400 select-none">
-                        <span className="font-mono bg-slate-900 border border-slate-700 px-2.5 py-0.5 rounded-lg text-[11px] text-slate-300">
-                          📐 {activeProject.width} × {activeProject.height} px
-                        </span>
-                        <span className="bg-slate-900/60 border border-slate-700/60 px-2.5 py-0.5 rounded-lg text-[11px] text-slate-300">
-                          {activeProject.width > activeProject.height ? 'Yatay Belge' : 'Dikey Belge'}
-                        </span>
-                        <span className="text-slate-500 hidden sm:inline">
-                          • {currentSideElements.length} bileşen mevcut
-                        </span>
-                        <span className="text-amber-500/70 text-[11px] hidden lg:inline">
-                          (Düzenlemek ve taşımak için bir bileşene tıklayın)
-                        </span>
-                      </div>
-                    )}
+                 {/* Canvas Helpers: Smart Magnetic Snap & Grid Toggles */}
+                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-700 shrink-0 whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => setEnableSnapping(!enableSnapping)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                        enableSnapping 
+                          ? 'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/40 shadow-sm' 
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      }`}
+                      title={enableSnapping ? 'Manyetik Akıllı Hizalama Aktif (Alt tuşuna basarak serbest hareket ettirebilirsiniz)' : 'Akıllı Hizalamayı Aç'}
+                    >
+                      <Magnet size={13} className={enableSnapping ? 'text-fuchsia-400' : 'text-slate-400'} />
+                      <span className="hidden sm:inline">Hizalama Çizgileri</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowCanvasGrid(!showCanvasGrid)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                        showCanvasGrid 
+                          ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm' 
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      }`}
+                      title={showCanvasGrid ? 'Kılavuz Izgarayı Gizle' : 'Kılavuz Izgarayı Göster (24px Grid)'}
+                    >
+                      <Grid size={13} className={showCanvasGrid ? 'text-sky-400' : 'text-slate-400'} />
+                      <span className="hidden sm:inline">Izgara</span>
+                    </button>
                  </div>
 
                  {/* Right: Zoom Controls */}
-                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-700 shrink-0">
+                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-700 shrink-0 whitespace-nowrap">
                     <button 
                       onClick={handleZoomOut} 
-                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" 
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" 
                       title="Uzaklaştır (%5)"
                     >
                       <ZoomOut size={14} />
                     </button>
-                    <span className="text-[11px] font-mono font-bold text-amber-400 px-1 min-w-[38px] text-center">
+                    <span className="text-[11px] font-mono font-bold text-amber-400 px-1 min-w-[36px] text-center shrink-0">
                       %{Math.round(scale * 100)}
                     </span>
                     <button 
                       onClick={handleZoomIn} 
-                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" 
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" 
                       title="Yakınlaştır (%5)"
                     >
                       <ZoomIn size={14} />
                     </button>
-                    <div className="w-[1px] h-4 bg-slate-700 mx-0.5"></div>
+                    <div className="w-[1px] h-4 bg-slate-700 mx-0.5 shrink-0"></div>
                     <button 
                       onClick={handleZoomFit} 
-                      className="px-2 py-0.5 text-[10px] font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition" 
+                      className="px-2 py-1 text-[10px] font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition shrink-0 whitespace-nowrap" 
                       title="Ekrana Sığdır"
                     >
                       Sığdır
@@ -3480,9 +4022,27 @@ const App = () => {
                  </div>
               </div>
 
-              {/* Canvas Container with Smooth Scroll and Absolute Zero Jitter */}
-              <div ref={editorContainerRef} className="flex-1 overflow-auto relative flex items-center justify-center p-4 md:p-8 bg-dots-pattern min-w-0 custom-scrollbar" style={{ backgroundImage: 'radial-gradient(#1e293b 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' }}>
-                <CanvasEditor elements={currentSideElements} width={activeProject.width} height={activeProject.height} bgUrl={currentSideBg} selectedId={selectedId} onSelect={setSelectedId} onUpdateElement={updateElement} onDeleteElement={deleteElement} onActionStart={pushUndoSnapshot} scale={scale} />
+              {/* Canvas Container with Zero Clipping and Smooth Margin Centering */}
+              <div ref={editorContainerRef} className="flex-1 overflow-auto relative p-6 md:p-10 bg-dots-pattern min-w-0 custom-scrollbar" style={{ backgroundImage: 'radial-gradient(#1e293b 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' }}>
+                <div className="min-w-full min-h-full flex items-center justify-center m-auto w-max h-max">
+                  <CanvasEditor 
+                    elements={currentSideElements} 
+                    width={activeProject.width} 
+                    height={activeProject.height} 
+                    bgUrl={currentSideBg} 
+                    selectedId={selectedId} 
+                    onSelect={setSelectedId} 
+                    onUpdateElement={updateElement} 
+                    onDeleteElement={deleteElement} 
+                    onDuplicateElement={handleDuplicateElement}
+                    onOpenOptionManager={() => setShowOptionManager(true)}
+                    onOpenSigPermissions={() => setShowSigPermissions(true)}
+                    onActionStart={pushUndoSnapshot} 
+                    scale={scale} 
+                    enableSnapping={enableSnapping}
+                    showGrid={showCanvasGrid}
+                  />
+                </div>
               </div>
               {showSigPermissions && selectedElement && selectedElement.type === ElementType.SIGNATURE && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -3515,8 +4075,352 @@ const App = () => {
                       </div>
                   </div>
               )}
+              {/* Background Manager Modal */}
+              {showBgManagerModal && activeProject && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                  <div className="bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col animate-in fade-in zoom-in duration-150">
+                    <div className="p-4 sm:p-5 border-b border-slate-700 flex justify-between items-center bg-slate-850 rounded-t-2xl">
+                      <div>
+                        <h3 className="font-bold text-white flex items-center gap-2">
+                          <ImageIcon size={18} className="text-amber-400" />
+                          Arkaplan Yönetimi
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Şablon arkaplan görsellerini ve varyantlarını yönetin
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => setShowBgManagerModal(false)} 
+                        className="p-1.5 hover:bg-slate-700 rounded-full transition text-slate-400 hover:text-white"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4 custom-scrollbar">
+                      {/* Side Switcher in Modal */}
+                      <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                        <button 
+                          onClick={() => setActiveSide('front')} 
+                          className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${activeSide === 'front' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                        >
+                          Ön Yüz Arkaplanı
+                        </button>
+                        <button 
+                          onClick={() => setActiveSide('back')} 
+                          className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${activeSide === 'back' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                        >
+                          Arka Yüz Arkaplanı
+                        </button>
+                      </div>
+
+                      {/* Current Background Preview & Action */}
+                      <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold uppercase text-slate-400">Varsayılan Görsel</span>
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={() => fileInputRef.current?.click()} 
+                              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+                            >
+                              <Upload size={13} /> Görsel Yükle
+                            </button>
+                            {currentSideBg && (
+                              <button 
+                                onClick={() => {
+                                  if (confirm('Mevcut arkaplanı kaldırmak istediğinize emin misiniz?')) {
+                                    updateProjectSide(activeSide, { bgUrl: '' });
+                                  }
+                                }} 
+                                className="px-2.5 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 rounded-lg text-xs font-semibold transition"
+                                title="Arkaplanı Kaldır"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {currentSideBg ? (
+                          <div className="w-full h-36 bg-slate-900 rounded-lg border border-slate-800 overflow-hidden flex items-center justify-center p-2 relative group">
+                            <img src={currentSideBg} alt="Background" className="max-w-full max-h-full object-contain rounded" />
+                          </div>
+                        ) : (
+                          <div className="w-full h-24 bg-slate-900/60 rounded-lg border border-slate-800 border-dashed flex flex-col items-center justify-center text-slate-500 text-xs gap-1">
+                            <ImageIcon size={20} className="opacity-40" />
+                            <span>Arkaplan görseli yüklü değil (Boş Beyaz)</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Variant Management */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold uppercase text-slate-400">
+                            Varyantlar ({activeSide === 'front' ? 'Ön Yüz' : 'Arka Yüz'})
+                          </span>
+                          <button 
+                            onClick={() => variantFileInputRef.current?.click()} 
+                            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
+                          >
+                            <Plus size={12} /> Varyant Ekle
+                          </button>
+                        </div>
+
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                          {/* Default option */}
+                          <div 
+                            onClick={() => handleSelectVariant(activeSide, '')}
+                            className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition text-xs ${
+                              !(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId)
+                                ? 'bg-amber-500/15 border-amber-500/50 text-amber-200'
+                                : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-900'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {!(activeSide === 'front' ? activeProject.selectedFrontId : activeProject.selectedBackId) ? (
+                                <Check size={14} className="text-amber-400 font-bold" />
+                              ) : (
+                                <div className="w-3.5 h-3.5 rounded-full border border-slate-700" />
+                              )}
+                              <span className="font-medium">Varsayılan Arkaplan</span>
+                            </div>
+                          </div>
+
+                          {/* Dynamic Variants list */}
+                          {(() => {
+                            const side = activeSide;
+                            const variantsKey = side === 'front' ? 'frontVariants' : 'backVariants';
+                            const selectedKey = side === 'front' ? 'selectedFrontId' : 'selectedBackId';
+                            const variants = activeProject[variantsKey] || [];
+
+                            if (variants.length === 0) {
+                              return (
+                                <div className="text-[11px] text-slate-500 text-center py-2 italic">
+                                  Ek varyant bulunmuyor.
+                                </div>
+                              );
+                            }
+
+                            return variants.map(v => {
+                              const isSelected = activeProject[selectedKey] === v.id;
+                              return (
+                                <div 
+                                  key={v.id}
+                                  onClick={() => handleSelectVariant(side, v.id)}
+                                  className={`p-2 rounded-xl border flex items-center justify-between cursor-pointer transition text-xs ${
+                                    isSelected 
+                                      ? 'bg-amber-500/15 border-amber-500/50 text-amber-200' 
+                                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-900'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
+                                    {isSelected ? <Check size={14} className="text-amber-400 font-bold" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-700" />}
+                                    <input 
+                                      type="text" 
+                                      value={v.name || ''} 
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        handleRenameVariant(side, v.id, e.target.value);
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="bg-transparent border-none text-xs focus:outline-none w-full text-inherit font-medium underline decoration-transparent focus:decoration-amber-500/40"
+                                      placeholder="Varyant Adı"
+                                    />
+                                  </div>
+                                  <button 
+                                    onClick={(e) => handleDeleteVariant(side, v.id, e)} 
+                                    className="p-1 text-slate-400 hover:text-rose-400 transition" 
+                                    title="Varyantı Sil"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 border-t border-slate-700 bg-slate-850 rounded-b-2xl flex justify-end">
+                      <button 
+                        onClick={() => setShowBgManagerModal(false)} 
+                        className="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2 rounded-xl text-xs font-semibold transition"
+                      >
+                        Tamam
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Project & Output Settings Modal */}
+              {showProjectSettingsModal && activeProject && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                  <div className="bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col animate-in fade-in zoom-in duration-150">
+                    <div className="p-4 sm:p-5 border-b border-slate-700 flex justify-between items-center bg-slate-850 rounded-t-2xl">
+                      <div>
+                        <h3 className="font-bold text-white flex items-center gap-2">
+                          <Settings size={18} className="text-purple-400" />
+                          Belge & Çıktı Ayarları
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          PDF indirme dosya adı şablonu, sayfa yönü ve şablon yönetimi
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => setShowProjectSettingsModal(false)} 
+                        className="p-1.5 hover:bg-slate-700 rounded-full transition text-slate-400 hover:text-white"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4 custom-scrollbar">
+                      {/* Document Orientation */}
+                      <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                        <label className="text-xs font-bold uppercase text-slate-400 block">Belge Yönü & Boyut</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button 
+                            onClick={() => handleOrientationChange('landscape')} 
+                            className={`flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition border ${
+                              activeProject.width > activeProject.height 
+                                ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm' 
+                                : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
+                            }`}
+                          >
+                            <RectangleHorizontal size={16} /> Yatay Belge
+                          </button>
+                          <button 
+                            onClick={() => handleOrientationChange('portrait')} 
+                            className={`flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition border ${
+                              activeProject.height > activeProject.width 
+                                ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm' 
+                                : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
+                            }`}
+                          >
+                            <RectangleVertical size={16} /> Dikey Belge
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Active / Passive Toggle */}
+                      <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-white">Sertifika Görünürlüğü</div>
+                          <div className="text-[11px] text-slate-400">Doldurma ekranında listelenme durumu</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => handleToggleProjectActive(activeProject.id, e)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition border ${
+                            activeProject.isActive !== false
+                              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
+                              : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750'
+                          }`}
+                        >
+                          {activeProject.isActive !== false ? (
+                            <><Check size={13} className="text-emerald-400" /> Aktif (Görünür)</>
+                          ) : (
+                            <><EyeOff size={13} className="text-amber-400" /> Pasif (Gizli)</>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* PDF Filename Pattern */}
+                      <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                        <label className="text-xs font-bold uppercase text-slate-400 block">PDF İndirme Dosya Adı Şablonu</label>
+                        <input 
+                          type="text" 
+                          value={activeProject.filenamePattern || 'Sertifika-{Ad Soyad}'} 
+                          onChange={(e) => updateProjectMeta({ filenamePattern: e.target.value })} 
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-purple-500 outline-none font-mono" 
+                          placeholder="Örn: {Ad Soyad}-{Tarih}" 
+                        />
+                        <div className="text-[10px] text-slate-400 mt-1">Dinamik etiket ekle:</div>
+                        <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto custom-scrollbar pt-1">
+                          {getProjectLabels().map(label => (
+                            <button 
+                              key={label} 
+                              onClick={() => { 
+                                const current = activeProject.filenamePattern || ''; 
+                                updateProjectMeta({ filenamePattern: current + `{${label}}` }); 
+                              }} 
+                              className={`text-[10px] px-2.5 py-1 rounded-lg transition border border-slate-750 hover:border-purple-500/50 ${
+                                label.endsWith('_Kisa') 
+                                  ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' 
+                                  : 'bg-slate-900 text-slate-300 hover:text-white'
+                              }`}
+                            >
+                              + {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Template Backup & Restore */}
+                      <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                        <label className="text-xs font-bold uppercase text-slate-400 block">Şablon Yedekleme & Aktarım</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button 
+                            onClick={() => htmlTemplateInputRef.current?.click()} 
+                            className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded-xl text-xs font-semibold shadow-sm border border-slate-750 flex items-center justify-center gap-1.5 transition"
+                          >
+                            <Import size={14} /> Şablon İçe Aktar (.json)
+                          </button>
+                          <button 
+                            onClick={handleSaveTemplateAsHTML} 
+                            className="w-full py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-xl text-xs font-semibold shadow-sm border border-purple-500/30 flex items-center justify-center gap-1.5 transition"
+                          >
+                            <FileCode size={14} /> Şablonu Kaydet (.json)
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 border-t border-slate-700 bg-slate-850 rounded-b-2xl flex justify-end">
+                      <button 
+                        onClick={() => setShowProjectSettingsModal(false)} 
+                        className="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2 rounded-xl text-xs font-semibold transition"
+                      >
+                        Tamam
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Canva-Style Asset & Element Library Modal */}
+              <AssetLibraryModal
+                isOpen={showAssetLibraryModal}
+                onClose={() => setShowAssetLibraryModal(false)}
+                userAssets={userAssets}
+                onUploadAsset={handleUploadUserAsset}
+                onDeleteUserAsset={handleDeleteUserAsset}
+                onInsertAsset={handleInsertAsset}
+                initialTab={assetLibraryInitialTab}
+              />
+
             </div>
           </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-900">
+               <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 animate-pulse">
+                  <LayoutTemplate size={32} />
+               </div>
+               <h3 className="text-lg font-bold text-white mb-2">Aktif Şablon Bulunamadı</h3>
+               <p className="text-sm text-slate-400 max-w-md mb-6">
+                 Düzenlemek için projeler sekmesinden bir şablon seçin veya yeni bir proje oluşturun.
+               </p>
+               <button 
+                 onClick={handleCreateProject}
+                 className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm transition shadow-lg shadow-amber-500/20 active:scale-95"
+               >
+                 <Plus size={18} /> Yeni Şablon Oluştur
+               </button>
+            </div>
+          )
         )}
 
         {/* VIEW: SETTINGS */}
@@ -4485,11 +5389,11 @@ const App = () => {
 
               <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
               {/* Pillar 1: Project Selection (Collapsible) */}
-              <div className={`${mobileFillStep === 0 ? 'flex flex-1 w-full md:flex-none' : 'hidden md:flex'} ${isFillSidebarOpen ? 'md:w-48' : 'md:w-0'} bg-slate-950 border-r border-slate-800 flex-col shrink-0 transition-all duration-300 overflow-hidden relative`}>
+              <div className={`${mobileFillStep === 0 ? 'flex flex-1 w-full md:flex-none' : 'hidden md:flex'} ${isFillSidebarOpen ? 'md:w-56' : 'md:w-0'} bg-slate-950 border-r border-slate-800/80 flex-col shrink-0 transition-all duration-300 overflow-hidden relative`}>
                   <div className="p-4 border-b border-slate-800 bg-slate-900/30 whitespace-nowrap flex justify-between items-center">
                     <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sertifikalar</h2>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar min-w-[192px]">
+                  <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar min-w-[220px]">
                      {projects.filter(p => p.isActive !== false).length === 0 ? (
                        <div className="text-[11px] text-slate-500 text-center py-8 px-2 space-y-2">
                           <EyeOff size={22} className="mx-auto text-slate-600" />
@@ -4526,13 +5430,13 @@ const App = () => {
               {/* Sidebar Toggle Button */}
               <button 
                 onClick={() => setIsFillSidebarOpen(!isFillSidebarOpen)}
-                className={`hidden md:block absolute top-1/2 -translate-y-1/2 z-50 p-1.5 bg-slate-800 border border-slate-700 text-slate-300 rounded-full shadow-xl hover:text-white transition-all ${isFillSidebarOpen ? 'left-[180px]' : 'left-2'}`}
+                className={`hidden md:block absolute top-1/2 -translate-y-1/2 z-50 p-1.5 bg-slate-800 border border-slate-700 text-slate-300 rounded-full shadow-xl hover:text-white transition-all ${isFillSidebarOpen ? 'left-[212px]' : 'left-2'}`}
               >
                 {isFillSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
               </button>
               
               {/* Pillar 2: Data Entry */}
-              <div className={`${mobileFillStep === 1 ? 'flex flex-1 w-full md:flex-none' : 'hidden md:flex'} md:w-[360px] bg-slate-800 border-r border-slate-700 flex-col z-20 overflow-hidden shadow-2xl shrink-0`}>
+              <div className={`${mobileFillStep === 1 ? 'flex flex-1 w-full md:flex-none' : 'hidden md:flex'} md:w-[380px] bg-slate-900 border-r border-slate-800 flex-col z-20 overflow-hidden shadow-2xl shrink-0`}>
                  <div className="p-4 border-b border-slate-700 bg-slate-900 shrink-0 flex justify-between items-center">
                    <div>
                      <h2 className="text-base font-bold text-white leading-tight">Veri Girişi</h2>
@@ -4924,28 +5828,18 @@ const App = () => {
                                     type="text"
                                     value={fillValues[field.label] || ''} 
                                     onChange={(e) => handleFillFieldChange(field.label, e.target.value, ElementType.DATE)}
-                                    placeholder="Örn: 22.25/10/2026 veya 25.10.2026"
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-4 pr-10 py-3 focus:border-amber-500 outline-none text-white transition placeholder-slate-600 font-mono text-sm"
+                                    placeholder="Örn: (12.13/11/2026) veya 25.10.2026"
+                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-4 pr-12 py-3 focus:border-amber-500 outline-none text-white transition placeholder-slate-600 font-mono text-sm"
                                   />
-                                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
-                                    <input 
-                                      type="date" 
-                                      id={`native-date-picker-${idx}`}
-                                      className="sr-only"
-                                      onChange={(e) => {
-                                        if (e.target.value) {
-                                          const [y, m, d] = e.target.value.split('-');
-                                          handleFillFieldChange(field.label, `${d}.${m}.${y}`, ElementType.DATE);
-                                        }
-                                      }}
-                                    />
-                                    <label 
-                                      htmlFor={`native-date-picker-${idx}`} 
-                                      className="p-1.5 hover:bg-slate-800 rounded-md text-slate-400 hover:text-amber-400 cursor-pointer transition"
-                                      title="Takvimden Tek Gün Seç"
+                                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => setMultiDayModalField(field.label)}
+                                      className="p-1.5 hover:bg-amber-500/20 text-slate-400 hover:text-amber-400 rounded-md transition flex items-center gap-1"
+                                      title="2-3 Günlük Çoklu Eğitim Tarihi Seçiciyi Aç"
                                     >
-                                      <Calendar size={16} />
-                                    </label>
+                                      <Calendar size={18} />
+                                    </button>
                                   </div>
                                 </div>
                                 {(() => {
@@ -4954,20 +5848,23 @@ const App = () => {
                                   const parsed = parseDateDetailed(val);
                                   if (parsed) {
                                     return (
-                                      <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 pl-1">
-                                        <Check size={12} />
-                                        <span>
-                                          {parsed.isMultiDay 
-                                            ? `Çok Günlü Eğitim: Bitiş ${String(parsed.endDay).padStart(2,'0')}.${String(parsed.month+1).padStart(2,'0')}.${parsed.year}` 
-                                            : `Algılanan Tarih: ${String(parsed.endDay).padStart(2,'0')}.${String(parsed.month+1).padStart(2,'0')}.${parsed.year}`}
-                                        </span>
+                                      <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-1 mt-1">
+                                        <div className="flex items-center gap-1.5 font-medium">
+                                          <Check size={13} className="text-emerald-400 shrink-0" />
+                                          <span>{parsed.displaySummary}</span>
+                                        </div>
+                                        {parsed.isMultiDay && (
+                                          <span className="text-[10px] text-amber-300 font-bold bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">
+                                            Geçerlilik Bitiş: {String(parsed.endDay).padStart(2,'0')}.{String(parsed.month+1).padStart(2,'0')}.{parsed.year}
+                                          </span>
+                                        )}
                                       </div>
                                     );
                                   }
                                   return null;
                                 })()}
                                 <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                                  <div className="flex items-center gap-1.5 text-[10px]">
+                                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
                                     <button 
                                       type="button" 
                                       onClick={() => {
@@ -4980,7 +5877,7 @@ const App = () => {
                                       className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 transition"
                                       title="Bugünün tarihini gir"
                                     >
-                                      Bugün ({formatDateTR(new Date())})
+                                      Bugün
                                     </button>
                                     <button 
                                       type="button" 
@@ -4996,6 +5893,32 @@ const App = () => {
                                       title="Dünün tarihini gir"
                                     >
                                       Dün
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        const now = new Date();
+                                        const yesterday = new Date();
+                                        yesterday.setDate(yesterday.getDate() - 1);
+                                        const d1 = String(yesterday.getDate()).padStart(2, '0');
+                                        const d2 = String(now.getDate()).padStart(2, '0');
+                                        const m = String(now.getMonth() + 1).padStart(2, '0');
+                                        const y = now.getFullYear();
+                                        handleFillFieldChange(field.label, `(${d1}.${d2}/${m}/${y})`, ElementType.DATE);
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition font-semibold"
+                                      title="2 Günlük Eğitim (Dün & Bugün)"
+                                    >
+                                      2 Gün (Dün & Bugün)
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => setMultiDayModalField(field.label)}
+                                      className="px-2 py-0.5 rounded bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 transition font-semibold flex items-center gap-1"
+                                      title="Çok Günlü Tarih Seçiciyi Aç"
+                                    >
+                                      <Calendar size={11} />
+                                      <span>2-3 Gün Seç...</span>
                                     </button>
                                   </div>
                                   <span className="text-[10px] text-amber-400/90 italic">
@@ -5155,6 +6078,18 @@ const App = () => {
           fetchCertificatesAndStats();
         }}
         getApiUrl={getApiUrl}
+      />
+
+      {/* MULTI-DAY DATE MODAL (2-3 GÜNLÜK EĞİTİM TARİHİ SEÇİCİ) */}
+      <MultiDayDateModal
+        isOpen={multiDayModalField !== null}
+        initialValue={multiDayModalField ? (fillValues[multiDayModalField] || '') : ''}
+        onClose={() => setMultiDayModalField(null)}
+        onApply={(formattedDate) => {
+          if (multiDayModalField) {
+            handleFillFieldChange(multiDayModalField, formattedDate, ElementType.DATE);
+          }
+        }}
       />
     </div>
   );
