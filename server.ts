@@ -548,6 +548,43 @@ async function startServer() {
     }
   })
 
+  // Direct export of filled Ek-2 form in original Excel template format
+  app.get('/api/health/ek2-forms/:id/export-excel', (req, res) => {
+    try {
+      const forms = readJsonFile<Record<string, any>>(EK2_FORMS_FILE, {})
+      const form = forms[req.params.id]
+      if (!form) return res.status(404).json({ error: "Form bulunamadı." })
+
+      const tmpDir = path.join(process.cwd(), 'archive', 'temp')
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
+
+      const tempJson = path.join(tmpDir, `form_${Date.now()}_${Math.random().toString(36).substr(2, 4)}.json`)
+      const tempXlsx = path.join(tmpDir, `ek2_${Date.now()}_${Math.random().toString(36).substr(2, 4)}.xlsx`)
+      fs.writeFileSync(tempJson, JSON.stringify(form), 'utf8')
+
+      const scriptPath = path.join(process.cwd(), 'scripts', 'fill_ek2_excel.py')
+      const cmd = `python "${scriptPath}" "${tempJson}" "${tempXlsx}"`
+
+      exec(cmd, (err, stdout, stderr) => {
+        try { if (fs.existsSync(tempJson)) fs.unlinkSync(tempJson) } catch {}
+        if (err || !fs.existsSync(tempXlsx)) {
+          console.error("Excel oluşturma hatası:", err, stderr)
+          return res.status(500).json({ error: "Excel dosyası oluşturulamadı." })
+        }
+
+        const safeEmpName = (form.employeeName || 'Calisan').replace(/[^a-zA-Z0-9_\-]/g, '_')
+        const safeTc = (form.employeeTc || '').replace(/[^0-9]/g, '')
+        const downloadName = `Ek2_${safeEmpName}${safeTc ? '_' + safeTc : ''}.xlsx`
+
+        res.download(tempXlsx, downloadName, () => {
+          try { if (fs.existsSync(tempXlsx)) fs.unlinkSync(tempXlsx) } catch {}
+        })
+      })
+    } catch (e: any) {
+      res.status(500).json({ error: e.message })
+    }
+  })
+
   app.post('/api/health/ek2-forms', (req, res) => {
     try {
       const formRecord = req.body

@@ -26,6 +26,7 @@ import {
   Square
 } from 'lucide-react';
 import { Ek2FieldMappingConfig, Ek2FieldMappingItem } from '../types';
+import { Ek2ExactExcelDocument } from '../components/Ek2ExactExcelDocument';
 
 export const AdminEk2TemplateEditor: React.FC = () => {
   const [config, setConfig] = useState<Ek2FieldMappingConfig | null>(null);
@@ -37,14 +38,15 @@ export const AdminEk2TemplateEditor: React.FC = () => {
   const [editingItem, setEditingItem] = useState<Ek2FieldMappingItem | null>(null);
 
   // View modes: 'split' (Document + List), 'doc' (Full Visual Document), 'table' (Table only), 'questions' (Question Selector)
-  const [viewMode, setViewMode] = useState<'split' | 'doc' | 'table' | 'questions'>('split');
+  const [viewMode, setViewMode] = useState<'split' | 'doc' | 'table' | 'questions'>('questions');
+  const [questionSubMode, setQuestionSubMode] = useState<'excel' | 'list'>('excel');
   const [activeDocPage, setActiveDocPage] = useState<1 | 2>(1);
   const [selectedHighlightKey, setSelectedHighlightKey] = useState<string | null>(null);
 
-  const toggleQuestionEnabled = (id: string) => {
+  const toggleQuestionEnabled = (idOrKey: string) => {
     if (!config) return;
     const updated = config.items.map(it => {
-      if (it.id === id) {
+      if (it.id === idOrKey || it.fieldKey === idOrKey) {
         return { ...it, enabled: it.enabled === false ? true : false };
       }
       return it;
@@ -755,89 +757,179 @@ export const AdminEk2TemplateEditor: React.FC = () => {
         {viewMode === 'questions' && (
           <div className="w-full flex-1 flex flex-col bg-slate-50 overflow-hidden">
             {/* Ribbon */}
-            <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Sliders className="w-5 h-5 text-teal-600" />
-                  Saha Soru Seçimi ve Görünürlük Yönetimi
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Tablet ekranında sağlık personelinin karşısına hangi soruların geleceğini buradan belirleyebilirsiniz. Pasif yapılan sorular formda gizlenir.
-                </p>
+            <div className="bg-white border-b border-slate-200 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-sm z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2.5">
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Saha Soru Seçimi ve Görünürlük Yönetimi
+                    </h3>
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 border border-teal-300 shadow-sm">
+                      {config?.items?.filter(i => i.enabled !== false).length || 0} / {config?.items?.length || 0} Soru Sahada Aktif
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Resmi Excel üzerinde sorulara tıklayarak sahada sorulup sorulmayacağını seçebilirsiniz. Pasif yapılan sorular formda gizlenir.
+                  </p>
+                </div>
               </div>
 
+              {/* Sub-mode selector: Excel vs List */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setQuestionSubMode('excel')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
+                    questionSubMode === 'excel' ? 'bg-teal-700 text-white shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  Birebir Excel Tasarımı Üzerinde Seçim
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuestionSubMode('list')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
+                    questionSubMode === 'list' ? 'bg-teal-700 text-white shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  Arama & Hızlı Liste
+                </button>
+              </div>
+
+              {/* Presets and Save */}
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => applyPreset('all')}
-                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition flex items-center gap-1"
+                  title="Tüm soruları sahada aktif yapar"
                 >
-                  <CheckSquare className="w-4 h-4 text-teal-600" />
+                  <CheckSquare className="w-3.5 h-3.5 text-teal-600" />
                   Tümünü Aç
                 </button>
                 <button
                   type="button"
                   onClick={() => applyPreset('essential')}
-                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition flex items-center gap-1"
+                  title="Standart muayene sorularını aktif yapar"
                 >
-                  <Sparkles className="w-4 h-4 text-amber-600" />
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                   Standart Muayene
                 </button>
                 <button
                   type="button"
                   onClick={() => applyPreset('rapid')}
-                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition flex items-center gap-1"
+                  title="Sadece temel kimlik, vital ve kanaat sorularını aktif yapar"
                 >
-                  <Layers className="w-4 h-4 text-blue-600" />
-                  Hızlı Ön Muayene
+                  <Layers className="w-3.5 h-3.5 text-blue-600" />
+                  Hızlı Ön Giriş
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition text-xs shadow-md"
+                >
+                  {saveSuccess ? (
+                    <>
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-emerald-400">Kaydedildi!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>{saving ? 'Kaydediliyor...' : 'Kaydet'}</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
 
-            {/* Questions Grid */}
-            <div className="flex-1 overflow-auto p-6 space-y-4">
-              <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-3">
-                {config?.items.map(item => {
-                  const isChecked = item.enabled !== false;
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => toggleQuestionEnabled(item.id)}
-                      className={`flex items-start gap-3 p-3 rounded-2xl border transition cursor-pointer select-none ${
-                        isChecked
-                          ? 'bg-white border-teal-200 shadow-sm hover:border-teal-400'
-                          : 'bg-slate-100/70 border-slate-200 opacity-60 hover:opacity-90'
-                      }`}
-                    >
-                      <div className="mt-0.5">
-                        {isChecked ? (
-                          <CheckSquare className="w-5 h-5 text-teal-600" />
-                        ) : (
-                          <Square className="w-5 h-5 text-slate-400" />
-                        )}
-                      </div>
+            {/* Questions View Content */}
+            {questionSubMode === 'excel' ? (
+              <div className="flex-1 overflow-auto p-4 flex flex-col items-center bg-slate-200">
+                <div className="w-full max-w-5xl mb-3 flex items-center justify-between text-xs text-slate-700 bg-white/90 backdrop-blur px-4 py-2.5 rounded-2xl border border-slate-300 shadow-sm">
+                  <span className="flex items-center gap-2 font-bold text-teal-900">
+                    <MousePointerClick className="w-4 h-4 text-teal-600" />
+                    Hücreye veya Anamnez satırına tıklayarak soruyu Açık [✓ Sorulsun] veya Pasif [✕ Pasif] yapabilirsiniz.
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    (Değişiklikleri tamamladıktan sonra sağ üstteki "Kaydet" butonuna basınız)
+                  </span>
+                </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`text-xs font-bold leading-tight ${isChecked ? 'text-slate-900' : 'text-slate-500 line-through'}`}>
-                            {item.label}
-                          </span>
-                          {(item.excelCell || item.targetCellOrLocation) && (
-                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                              {item.excelCell || item.targetCellOrLocation}
-                            </span>
+                <Ek2ExactExcelDocument
+                  activeQuestions={config?.items || []}
+                  selectionMode={true}
+                  onToggleQuestion={toggleQuestionEnabled}
+                  readOnly={true}
+                />
+              </div>
+            ) : (
+              <div className="flex-1 overflow-auto p-6 space-y-4">
+                <div className="max-w-5xl mx-auto flex items-center justify-between gap-4 mb-2">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      placeholder="Soru veya hücre kodunda ara..."
+                      className="w-full pl-9 pr-3 py-2 text-xs bg-white text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredItems.map(item => {
+                    const isChecked = item.enabled !== false;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => toggleQuestionEnabled(item.id)}
+                        className={`flex items-start gap-3 p-3 rounded-2xl border transition cursor-pointer select-none ${
+                          isChecked
+                            ? 'bg-white border-teal-200 shadow-sm hover:border-teal-400'
+                            : 'bg-slate-100/70 border-slate-200 opacity-60 hover:opacity-90'
+                        }`}
+                      >
+                        <div className="mt-0.5">
+                          {isChecked ? (
+                            <CheckSquare className="w-5 h-5 text-teal-600" />
+                          ) : (
+                            <Square className="w-5 h-5 text-slate-400" />
                           )}
                         </div>
-                        <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
-                          <span className="font-mono">{item.fieldKey}</span>
-                          <span className="capitalize">{item.section || item.category}</span>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-xs font-bold leading-tight ${isChecked ? 'text-slate-900' : 'text-slate-500 line-through'}`}>
+                              {item.label}
+                            </span>
+                            {(item.excelCell || item.targetCellOrLocation) && (
+                              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                {item.excelCell || item.targetCellOrLocation}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
+                            <span className="font-mono">{item.fieldKey}</span>
+                            <span className="capitalize">{item.section || item.category}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

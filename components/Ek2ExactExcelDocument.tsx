@@ -15,21 +15,25 @@ import {
 import { Ek2FieldMappingItem } from '../types';
 
 interface Ek2ExactExcelDocumentProps {
-  formData: Record<string, any>;
-  onUpdateField: (key: string, value: any) => void;
+  formData?: Record<string, any>;
+  onUpdateField?: (key: string, value: any) => void;
   employeeSignature?: string;
   onOpenSignaturePad?: () => void;
   activeQuestions?: Ek2FieldMappingItem[];
   readOnly?: boolean;
+  selectionMode?: boolean;
+  onToggleQuestion?: (fieldKey: string) => void;
 }
 
 export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
-  formData,
-  onUpdateField,
+  formData = {},
+  onUpdateField = () => {},
   employeeSignature,
   onOpenSignaturePad,
   activeQuestions = [],
-  readOnly = false
+  readOnly = false,
+  selectionMode = false,
+  onToggleQuestion
 }) => {
   const [currentPage, setCurrentPage] = useState<1 | 2>(1);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -41,7 +45,7 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
     return item ? item.enabled !== false : true;
   };
 
-  // Helper to render editable table cell input
+  // Helper to render editable table cell input or selection toggle
   const renderCellInput = (
     fieldKey: string, 
     placeholder: string = '', 
@@ -50,6 +54,30 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
   ) => {
     const enabled = isEnabled(fieldKey);
     const val = formData[fieldKey] || '';
+
+    // SELECTION MODE: Clicking cell toggles question active state!
+    if (selectionMode) {
+      return (
+        <div 
+          onClick={() => onToggleQuestion && onToggleQuestion(fieldKey)}
+          className={`w-full h-full min-h-[26px] px-2 py-1 flex items-center justify-between gap-1 cursor-pointer transition select-none ${
+            enabled 
+              ? 'bg-emerald-50/60 hover:bg-emerald-100 border border-emerald-300' 
+              : 'bg-slate-100 hover:bg-slate-200 border border-dashed border-slate-300 opacity-60'
+          }`}
+          title="Sahada sorulmasını açmak / kapatmak için tıklayın"
+        >
+          <span className={`text-[11px] truncate ${enabled ? 'font-bold text-slate-900' : 'text-slate-400 line-through'}`}>
+            {val || placeholder || fieldKey}
+          </span>
+          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm whitespace-nowrap ${
+            enabled ? 'bg-emerald-600 text-white' : 'bg-slate-400 text-white'
+          }`}>
+            {enabled ? <><Check className="w-2.5 h-2.5" /> Sorulsun</> : <><X className="w-2.5 h-2.5" /> Pasif</>}
+          </span>
+        </div>
+      );
+    }
 
     if (!enabled) {
       return (
@@ -100,6 +128,30 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
     const enabled = isEnabled(fieldKey);
     const currentVal = formData[fieldKey] || 'Hayır';
     const dateVal = dateKey ? (formData[dateKey] || '') : '';
+
+    // SELECTION MODE for Anamnez rows
+    if (selectionMode) {
+      return (
+        <tr 
+          onClick={() => onToggleQuestion && onToggleQuestion(fieldKey)}
+          className={`border-b border-slate-300 transition cursor-pointer select-none ${
+            enabled ? 'bg-emerald-50/40 hover:bg-emerald-100/60' : 'bg-slate-100/70 opacity-60 hover:opacity-90'
+          }`}
+          title="Sahada sorulmasını açmak / kapatmak için tıklayın"
+        >
+          <td className="p-1.5 text-xs text-slate-900 font-semibold border-r border-slate-300">
+            <span className={enabled ? 'text-slate-900' : 'line-through text-slate-400'}>{label}</span>
+          </td>
+          <td colSpan={3} className="p-1 text-center">
+            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm ${
+              enabled ? 'bg-emerald-600 text-white' : 'bg-slate-400 text-white'
+            }`}>
+              {enabled ? <><Check className="w-3 h-3" /> Sahada Sorulsun</> : <><X className="w-3 h-3" /> Pasif</>}
+            </span>
+          </td>
+        </tr>
+      );
+    }
 
     if (!enabled) {
       return (
@@ -157,6 +209,54 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
             <span className="text-[10px] text-slate-400 text-center block">-</span>
           )}
         </td>
+      </tr>
+    );
+  };
+
+  // Helper for Anamnez 3-10 special rows in selection mode and readOnly
+  const renderSpecialAnamnezRow = (
+    label: string, 
+    fieldKey: string, 
+    content: React.ReactNode
+  ) => {
+    const enabled = isEnabled(fieldKey);
+
+    if (selectionMode) {
+      return (
+        <tr 
+          onClick={() => onToggleQuestion && onToggleQuestion(fieldKey)}
+          className={`border-b border-slate-300 transition cursor-pointer select-none ${
+            enabled ? 'bg-emerald-50/40 hover:bg-emerald-100/60' : 'bg-slate-100/70 opacity-60 hover:opacity-90'
+          }`}
+          title="Sahada sorulmasını açmak / kapatmak için tıklayın"
+        >
+          <td className="p-1.5 text-xs text-slate-900 font-semibold w-72">
+            <span className={enabled ? 'text-slate-900' : 'line-through text-slate-400'}>{label}</span>
+          </td>
+          <td className="p-1 text-right">
+            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm ${
+              enabled ? 'bg-emerald-600 text-white' : 'bg-slate-400 text-white'
+            }`}>
+              {enabled ? <><Check className="w-3 h-3" /> Sahada Sorulsun</> : <><X className="w-3 h-3" /> Pasif</>}
+            </span>
+          </td>
+        </tr>
+      );
+    }
+
+    if (!enabled) {
+      return (
+        <tr className="border-b border-slate-300 bg-slate-50/50 opacity-60">
+          <td className="p-1.5 text-[11px] text-slate-400 font-medium line-through">{label}</td>
+          <td className="p-1 text-right text-[10px] text-slate-400 italic">Devre Dışı</td>
+        </tr>
+      );
+    }
+
+    return (
+      <tr className="border-b border-slate-300">
+        <td className="p-1.5 text-xs font-semibold w-72">{label}</td>
+        <td className="p-1">{content}</td>
       </tr>
     );
   };
@@ -509,165 +609,157 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
                 {/* 7. ÖZEL ANAMNEZ SORULARI 3-10 */}
                 <table className="w-full border-collapse border-2 border-slate-900 text-[11px] mb-2">
                   <tbody>
-                    <tr className="border-b border-slate-300">
-                      <td className="p-1 font-semibold w-72">3. Hastanede yattınız mı?</td>
-                      <td className="p-1">
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_hastane" checked={formData.an_hastane === 'Hayır'} onChange={() => onUpdateField('an_hastane', 'Hayır')} />
-                            <span>Hayır</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_hastane" checked={formData.an_hastane === 'Evet'} onChange={() => onUpdateField('an_hastane', 'Evet')} />
-                            <span>Evet (Tanı:)</span>
-                          </label>
-                          {formData.an_hastane === 'Evet' && (
-                            <input type="text" value={formData.an_hastane_detay || ''} onChange={(e) => onUpdateField('an_hastane_detay', e.target.value)} placeholder="Tanı giriniz..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    {renderSpecialAnamnezRow(
+                      '3. Hastanede yattınız mı?',
+                      'an_hastane',
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_hastane" checked={formData.an_hastane === 'Hayır'} onChange={() => onUpdateField('an_hastane', 'Hayır')} />
+                          <span>Hayır</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_hastane" checked={formData.an_hastane === 'Evet'} onChange={() => onUpdateField('an_hastane', 'Evet')} />
+                          <span>Evet (Tanı:)</span>
+                        </label>
+                        {formData.an_hastane === 'Evet' && (
+                          <input type="text" value={formData.an_hastane_detay || ''} onChange={(e) => onUpdateField('an_hastane_detay', e.target.value)} placeholder="Tanı giriniz..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
+                        )}
+                      </div>
+                    )}
 
-                    <tr className="border-b border-slate-300">
-                      <td className="p-1 font-semibold">4. Ameliyat oldunuz mu?</td>
-                      <td className="p-1">
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_ameliyat" checked={formData.an_ameliyat === 'Hayır'} onChange={() => onUpdateField('an_ameliyat', 'Hayır')} />
-                            <span>Hayır</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_ameliyat" checked={formData.an_ameliyat === 'Evet'} onChange={() => onUpdateField('an_ameliyat', 'Evet')} />
-                            <span>Evet (Neden:)</span>
-                          </label>
-                          {formData.an_ameliyat === 'Evet' && (
-                            <input type="text" value={formData.an_ameliyat_detay || ''} onChange={(e) => onUpdateField('an_ameliyat_detay', e.target.value)} placeholder="Ameliyat nedeni..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    {renderSpecialAnamnezRow(
+                      '4. Ameliyat oldunuz mu?',
+                      'an_ameliyat',
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_ameliyat" checked={formData.an_ameliyat === 'Hayır'} onChange={() => onUpdateField('an_ameliyat', 'Hayır')} />
+                          <span>Hayır</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_ameliyat" checked={formData.an_ameliyat === 'Evet'} onChange={() => onUpdateField('an_ameliyat', 'Evet')} />
+                          <span>Evet (Neden:)</span>
+                        </label>
+                        {formData.an_ameliyat === 'Evet' && (
+                          <input type="text" value={formData.an_ameliyat_detay || ''} onChange={(e) => onUpdateField('an_ameliyat_detay', e.target.value)} placeholder="Ameliyat nedeni..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
+                        )}
+                      </div>
+                    )}
 
-                    <tr className="border-b border-slate-300">
-                      <td className="p-1 font-semibold">5. İş kazası geçirdiniz mi?</td>
-                      <td className="p-1">
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_is_kazasi" checked={formData.an_is_kazasi === 'Hayır'} onChange={() => onUpdateField('an_is_kazasi', 'Hayır')} />
-                            <span>Hayır</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_is_kazasi" checked={formData.an_is_kazasi === 'Evet'} onChange={() => onUpdateField('an_is_kazasi', 'Evet')} />
-                            <span>Evet (Açıklama:)</span>
-                          </label>
-                          {formData.an_is_kazasi === 'Evet' && (
-                            <input type="text" value={formData.an_is_kazasi_detay || ''} onChange={(e) => onUpdateField('an_is_kazasi_detay', e.target.value)} placeholder="Kaza detayı..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    {renderSpecialAnamnezRow(
+                      '5. İş kazası geçirdiniz mi?',
+                      'an_is_kazasi',
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_is_kazasi" checked={formData.an_is_kazasi === 'Hayır'} onChange={() => onUpdateField('an_is_kazasi', 'Hayır')} />
+                          <span>Hayır</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_is_kazasi" checked={formData.an_is_kazasi === 'Evet'} onChange={() => onUpdateField('an_is_kazasi', 'Evet')} />
+                          <span>Evet (Açıklama:)</span>
+                        </label>
+                        {formData.an_is_kazasi === 'Evet' && (
+                          <input type="text" value={formData.an_is_kazasi_detay || ''} onChange={(e) => onUpdateField('an_is_kazasi_detay', e.target.value)} placeholder="Kaza detayı..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
+                        )}
+                      </div>
+                    )}
 
-                    <tr className="border-b border-slate-300">
-                      <td className="p-1 font-semibold">6. Meslek hastalığı şüphesi ile tetkik/muayene?</td>
-                      <td className="p-1">
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_meslek_hastaligi" checked={formData.an_meslek_hastaligi === 'Hayır'} onChange={() => onUpdateField('an_meslek_hastaligi', 'Hayır')} />
-                            <span>Hayır</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_meslek_hastaligi" checked={formData.an_meslek_hastaligi === 'Evet'} onChange={() => onUpdateField('an_meslek_hastaligi', 'Evet')} />
-                            <span>Evet (Sonuç:)</span>
-                          </label>
-                          {formData.an_meslek_hastaligi === 'Evet' && (
-                            <input type="text" value={formData.an_meslek_detay || ''} onChange={(e) => onUpdateField('an_meslek_detay', e.target.value)} placeholder="Sonuç..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    {renderSpecialAnamnezRow(
+                      '6. Meslek hastalığı şüphesi ile tetkik/muayene?',
+                      'an_meslek_hastaligi',
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_meslek_hastaligi" checked={formData.an_meslek_hastaligi === 'Hayır'} onChange={() => onUpdateField('an_meslek_hastaligi', 'Hayır')} />
+                          <span>Hayır</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_meslek_hastaligi" checked={formData.an_meslek_hastaligi === 'Evet'} onChange={() => onUpdateField('an_meslek_hastaligi', 'Evet')} />
+                          <span>Evet (Sonuç:)</span>
+                        </label>
+                        {formData.an_meslek_hastaligi === 'Evet' && (
+                          <input type="text" value={formData.an_meslek_detay || ''} onChange={(e) => onUpdateField('an_meslek_detay', e.target.value)} placeholder="Sonuç..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
+                        )}
+                      </div>
+                    )}
 
-                    <tr className="border-b border-slate-300">
-                      <td className="p-1 font-semibold">7. Maluliyet aldınız mı?</td>
-                      <td className="p-1">
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_maluliyet" checked={formData.an_maluliyet === 'Hayır'} onChange={() => onUpdateField('an_maluliyet', 'Hayır')} />
-                            <span>Hayır</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_maluliyet" checked={formData.an_maluliyet === 'Evet'} onChange={() => onUpdateField('an_maluliyet', 'Evet')} />
-                            <span>Evet (Neden ve Oran:)</span>
-                          </label>
-                          {formData.an_maluliyet === 'Evet' && (
-                            <input type="text" value={formData.an_maluliyet_detay || ''} onChange={(e) => onUpdateField('an_maluliyet_detay', e.target.value)} placeholder="Oran ve neden..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    {renderSpecialAnamnezRow(
+                      '7. Maluliyet aldınız mı?',
+                      'an_maluliyet',
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_maluliyet" checked={formData.an_maluliyet === 'Hayır'} onChange={() => onUpdateField('an_maluliyet', 'Hayır')} />
+                          <span>Hayır</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_maluliyet" checked={formData.an_maluliyet === 'Evet'} onChange={() => onUpdateField('an_maluliyet', 'Evet')} />
+                          <span>Evet (Neden ve Oran:)</span>
+                        </label>
+                        {formData.an_maluliyet === 'Evet' && (
+                          <input type="text" value={formData.an_maluliyet_detay || ''} onChange={(e) => onUpdateField('an_maluliyet_detay', e.target.value)} placeholder="Oran ve neden..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
+                        )}
+                      </div>
+                    )}
 
-                    <tr className="border-b border-slate-300">
-                      <td className="p-1 font-semibold">8. Şu anda herhangi bir tedavi görüyor musunuz?</td>
-                      <td className="p-1">
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_mevcut_tedavi" checked={formData.an_mevcut_tedavi === 'Hayır'} onChange={() => onUpdateField('an_mevcut_tedavi', 'Hayır')} />
-                            <span>Hayır</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_mevcut_tedavi" checked={formData.an_mevcut_tedavi === 'Evet'} onChange={() => onUpdateField('an_mevcut_tedavi', 'Evet')} />
-                            <span>Evet (Nedir:)</span>
-                          </label>
-                          {formData.an_mevcut_tedavi === 'Evet' && (
-                            <input type="text" value={formData.an_tedavi_detay || ''} onChange={(e) => onUpdateField('an_tedavi_detay', e.target.value)} placeholder="Tedavi..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    {renderSpecialAnamnezRow(
+                      '8. Şu anda herhangi bir tedavi görüyor musunuz?',
+                      'an_mevcut_tedavi',
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_mevcut_tedavi" checked={formData.an_mevcut_tedavi === 'Hayır'} onChange={() => onUpdateField('an_mevcut_tedavi', 'Hayır')} />
+                          <span>Hayır</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_mevcut_tedavi" checked={formData.an_mevcut_tedavi === 'Evet'} onChange={() => onUpdateField('an_mevcut_tedavi', 'Evet')} />
+                          <span>Evet (Nedir:)</span>
+                        </label>
+                        {formData.an_mevcut_tedavi === 'Evet' && (
+                          <input type="text" value={formData.an_tedavi_detay || ''} onChange={(e) => onUpdateField('an_tedavi_detay', e.target.value)} placeholder="Tedavi..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
+                        )}
+                      </div>
+                    )}
 
-                    <tr className="border-b border-slate-300">
-                      <td className="p-1 font-semibold">9. Sigara içiyor musunuz?</td>
-                      <td className="p-1">
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_sigara" checked={formData.an_sigara === 'Hayır'} onChange={() => onUpdateField('an_sigara', 'Hayır')} />
-                            <span>Hayır</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_sigara" checked={formData.an_sigara === 'Bırakmış'} onChange={() => onUpdateField('an_sigara', 'Bırakmış')} />
-                            <span>Bırakmış</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_sigara" checked={formData.an_sigara === 'Evet'} onChange={() => onUpdateField('an_sigara', 'Evet')} />
-                            <span>Evet</span>
-                          </label>
-                          {formData.an_sigara !== 'Hayır' && (
-                            <input type="text" value={formData.an_sigara_detay || ''} onChange={(e) => onUpdateField('an_sigara_detay', e.target.value)} placeholder="Örn: 5 yıldır 1 paket/gün" className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    {renderSpecialAnamnezRow(
+                      '9. Sigara içiyor musunuz?',
+                      'an_sigara',
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_sigara" checked={formData.an_sigara === 'Hayır'} onChange={() => onUpdateField('an_sigara', 'Hayır')} />
+                          <span>Hayır</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_sigara" checked={formData.an_sigara === 'Bırakmış'} onChange={() => onUpdateField('an_sigara', 'Bırakmış')} />
+                          <span>Bırakmış</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_sigara" checked={formData.an_sigara === 'Evet'} onChange={() => onUpdateField('an_sigara', 'Evet')} />
+                          <span>Evet</span>
+                        </label>
+                        {formData.an_sigara !== 'Hayır' && (
+                          <input type="text" value={formData.an_sigara_detay || ''} onChange={(e) => onUpdateField('an_sigara_detay', e.target.value)} placeholder="Örn: 5 yıldır 1 paket/gün" className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
+                        )}
+                      </div>
+                    )}
 
-                    <tr>
-                      <td className="p-1 font-semibold">10. Alkol alıyor musunuz?</td>
-                      <td className="p-1">
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_alkol" checked={formData.an_alkol === 'Hayır'} onChange={() => onUpdateField('an_alkol', 'Hayır')} />
-                            <span>Hayır</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_alkol" checked={formData.an_alkol === 'Bırakmış'} onChange={() => onUpdateField('an_alkol', 'Bırakmış')} />
-                            <span>Bırakmış</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="radio" name="an_alkol" checked={formData.an_alkol === 'Evet'} onChange={() => onUpdateField('an_alkol', 'Evet')} />
-                            <span>Evet</span>
-                          </label>
-                          {formData.an_alkol !== 'Hayır' && (
-                            <input type="text" value={formData.an_alkol_detay || ''} onChange={(e) => onUpdateField('an_alkol_detay', e.target.value)} placeholder="Sıklık..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    {renderSpecialAnamnezRow(
+                      '10. Alkol alıyor musunuz?',
+                      'an_alkol',
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_alkol" checked={formData.an_alkol === 'Hayır'} onChange={() => onUpdateField('an_alkol', 'Hayır')} />
+                          <span>Hayır</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_alkol" checked={formData.an_alkol === 'Bırakmış'} onChange={() => onUpdateField('an_alkol', 'Bırakmış')} />
+                          <span>Bırakmış</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="radio" name="an_alkol" checked={formData.an_alkol === 'Evet'} onChange={() => onUpdateField('an_alkol', 'Evet')} />
+                          <span>Evet</span>
+                        </label>
+                        {formData.an_alkol !== 'Hayır' && (
+                          <input type="text" value={formData.an_alkol_detay || ''} onChange={(e) => onUpdateField('an_alkol_detay', e.target.value)} placeholder="Sıklık..." className="border-b border-slate-400 text-xs px-1 flex-1 outline-none" />
+                        )}
+                      </div>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -870,43 +962,22 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
                   <tbody>
                     <tr className="border-b border-slate-900">
                       <td className="w-8 text-center font-bold bg-slate-100 border-r border-slate-900">1-</td>
-                      <td className="p-1">
-                        <div className="flex items-center gap-2">
-                          <input 
-                            type="text" 
-                            value={formData.dec_elverisli || 'İşinde bedenen ve ruhen çalışmaya elverişlidir.'}
-                            onChange={(e) => onUpdateField('dec_elverisli', e.target.value)}
-                            className="flex-1 px-1.5 py-0.5 font-bold text-slate-900 bg-amber-50/20 text-xs outline-none"
-                          />
-                        </div>
+                      <td className="p-0">
+                        {renderCellInput('dec_elverisli', 'İşinde bedenen ve ruhen çalışmaya elverişlidir.')}
                       </td>
                     </tr>
 
                     <tr className="border-b border-slate-900">
                       <td className="w-8 text-center font-bold bg-slate-100 border-r border-slate-900">2-</td>
-                      <td className="p-1">
-                        <div className="flex items-center gap-2">
-                          <input 
-                            type="text" 
-                            value={formData.dec_kosullar || 'Yüksekte / Gece / Vardiyalı çalışmaya elverişlidir.'}
-                            onChange={(e) => onUpdateField('dec_kosullar', e.target.value)}
-                            className="flex-1 px-1.5 py-0.5 font-bold text-slate-900 bg-amber-50/20 text-xs outline-none"
-                          />
-                        </div>
+                      <td className="p-0">
+                        {renderCellInput('dec_kosullar', 'Yüksekte / Gece / Vardiyalı çalışmaya elverişlidir.')}
                       </td>
                     </tr>
 
                     <tr className="border-b border-slate-900">
                       <td className="w-8 text-center font-bold bg-slate-100 border-r border-slate-900">3-</td>
-                      <td className="p-1">
-                        <div className="flex items-center gap-2">
-                          <input 
-                            type="text" 
-                            value={formData.dec_sart || 'Şartı: Yoktur.'}
-                            onChange={(e) => onUpdateField('dec_sart', e.target.value)}
-                            className="flex-1 px-1.5 py-0.5 font-bold text-slate-900 bg-amber-50/20 text-xs outline-none"
-                          />
-                        </div>
+                      <td className="p-0">
+                        {renderCellInput('dec_sart', 'Şartı: Yoktur.')}
                       </td>
                     </tr>
 
