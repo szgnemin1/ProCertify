@@ -21,10 +21,15 @@ import {
   ShieldCheck,
   Plus,
   RefreshCw,
-  FileCheck2
+  FileCheck2,
+  FileSpreadsheet,
+  Sliders,
+  LayoutGrid
 } from 'lucide-react';
-import { Company, Employee, Ek2FormRecord, AppUser } from '../types';
+import { Company, Employee, Ek2FormRecord, AppUser, Ek2FieldMappingConfig, Ek2FieldMappingItem } from '../types';
 import { FullScreenTabletSignature } from '../components/FullScreenTabletSignature';
+import { Ek2ExactExcelDocument } from '../components/Ek2ExactExcelDocument';
+import { Ek2QuestionSelectorModal } from '../components/Ek2QuestionSelectorModal';
 
 interface FieldHealthViewProps {
   onBackToApp?: () => void;
@@ -51,6 +56,11 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [companySearch, setCompanySearch] = useState('');
   const [loadingData, setLoadingData] = useState(false);
+
+  // --- LAYOUT AND QUESTION VISIBILITY STATES ---
+  const [formLayoutMode, setFormLayoutMode] = useState<'excel' | 'cards'>('excel');
+  const [showQuestionModal, setShowQuestionModal] = useState<boolean>(false);
+  const [mappingConfig, setMappingConfig] = useState<Ek2FieldMappingConfig | null>(null);
 
   // --- FORM FIELDS STATE ---
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('new');
@@ -187,16 +197,17 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
     }
   };
 
-  // Load companies and employees
+  // Load companies, employees and Ek-2 mapping question configuration
   const loadInitialData = async () => {
     try {
       setLoadingData(true);
       const token = getAuthToken();
       const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
 
-      const [resData, resEmp] = await Promise.all([
+      const [resData, resEmp, resMap] = await Promise.all([
         fetch('/api/data', { headers }),
-        fetch('/api/employees', { headers })
+        fetch('/api/employees', { headers }),
+        fetch('/api/health/ek2-mapping', { headers })
       ]);
 
       if (resData.ok) {
@@ -207,10 +218,39 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
         const emps = await resEmp.json();
         setEmployees(Array.isArray(emps) ? emps : []);
       }
+      if (resMap.ok) {
+        const m = await resMap.json();
+        setMappingConfig(m);
+      }
     } catch (e) {
       console.error("Error loading data:", e);
     } finally {
       setLoadingData(false);
+    }
+  };
+
+  const handleSaveQuestions = async (updatedItems: Ek2FieldMappingItem[]) => {
+    const token = getAuthToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const newConfig: Ek2FieldMappingConfig = {
+      version: (mappingConfig?.version || 1) + 1,
+      lastUpdated: Date.now(),
+      items: updatedItems
+    };
+
+    const res = await fetch('/api/health/ek2-mapping', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(newConfig)
+    });
+
+    if (res.ok) {
+      setMappingConfig(newConfig);
+    } else {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.error || 'Kayıt başarısız');
     }
   };
 
@@ -773,8 +813,8 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col pb-36 text-slate-900">
       {/* Form Top Navigation Bar */}
-      <div className="bg-slate-900 text-white px-6 py-4 sticky top-0 z-30 shadow-md">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+      <div className="bg-slate-900 text-white px-6 py-3.5 sticky top-0 z-30 shadow-md">
+        <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <button
             type="button"
             onClick={() => setStep('companies')}
@@ -814,7 +854,84 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 pt-6 w-full space-y-6">
+      {/* Mode Switcher and Question Visibility Ribbon */}
+      <div className="bg-white border-b border-slate-200 px-6 py-2.5 shadow-sm sticky top-[65px] z-20">
+        <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          {/* View Mode: Excel vs Cards */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setFormLayoutMode('excel')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition cursor-pointer ${
+                formLayoutMode === 'excel'
+                  ? 'bg-teal-700 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Birebir Resmi Excel Belge Modu
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormLayoutMode('cards')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition cursor-pointer ${
+                formLayoutMode === 'cards'
+                  ? 'bg-teal-700 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              Hızlı Kart Modu
+            </button>
+          </div>
+
+          {/* Soru Seçimi / Yönetimi Butonu */}
+          <button
+            type="button"
+            onClick={() => setShowQuestionModal(true)}
+            className="flex items-center gap-2 px-4 py-1.5 rounded-xl bg-teal-50 border border-teal-300 hover:bg-teal-100 text-teal-800 text-xs font-bold transition cursor-pointer shadow-sm"
+            title="Hangi soruların sorulacağını seçin"
+          >
+            <Sliders className="w-4 h-4 text-teal-600" />
+            <span>Soruları Seç / Yönet ({mappingConfig?.items?.filter(i => i.enabled !== false).length || 71} Aktif)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* MAIN CONTENT: EXCEL DOCUMENT OR CARDS */}
+      {formLayoutMode === 'excel' ? (
+        <div className="max-w-5xl mx-auto px-4 pt-4 w-full">
+          {/* Quick Employee Selector Ribbon */}
+          <div className="bg-white rounded-2xl p-4 border border-slate-300 shadow-sm mb-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-teal-600" />
+              <span className="text-xs font-bold text-slate-800">Kayıtlı Çalışan Seçimi:</span>
+            </div>
+            <select
+              value={selectedEmployeeId}
+              onChange={e => handleEmployeeChange(e.target.value)}
+              className="flex-1 max-w-md px-3 py-1.5 rounded-xl border border-slate-300 text-xs text-slate-900 bg-white font-medium"
+            >
+              <option value="new">+ Yeni Çalışan Olarak Doldur</option>
+              {companyEmployees.map(emp => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.name} (T.C.: {emp.tc})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 1-to-1 Exact Excel Document Twin */}
+          <Ek2ExactExcelDocument
+            formData={formData}
+            onUpdateField={(key, val) => setFormData(prev => ({ ...prev, [key]: val }))}
+            employeeSignature={employeeSignature}
+            onOpenSignaturePad={() => setShowSignaturePad(true)}
+            activeQuestions={mappingConfig?.items || []}
+          />
+        </div>
+      ) : (
+        <div className="max-w-5xl mx-auto px-6 pt-6 w-full space-y-6">
         {/* 1. ÇALIŞAN SEÇİMİ / HIZLI GİRİŞİ */}
         <div className="bg-white rounded-2xl p-6 border border-slate-300 shadow-sm">
           <h2 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
@@ -1240,6 +1357,7 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
           </div>
         </div>
       </div>
+    )}
 
       {/* Floating Bottom Sticky Action Bar: BİLGİLERİ KAYDET */}
       <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-slate-300 px-6 py-4 shadow-2xl z-30">
@@ -1310,6 +1428,14 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* SCREEN 6: QUESTION VISIBILITY AND CUSTOMIZER MODAL */}
+      <Ek2QuestionSelectorModal
+        isOpen={showQuestionModal}
+        onClose={() => setShowQuestionModal(false)}
+        questions={mappingConfig?.items || []}
+        onSaveQuestions={handleSaveQuestions}
+      />
     </div>
   );
 };

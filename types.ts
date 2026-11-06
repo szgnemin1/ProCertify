@@ -147,11 +147,14 @@ export interface Ek2FormRecord {
 
 export interface Ek2FieldMappingItem {
   id: string;
-  category: 'personal' | 'past_work' | 'anamnez_complaints' | 'anamnez_diseases' | 'anamnez_questions' | 'physical_exam' | 'lab_results' | 'decision';
+  category: string;
+  section?: string;
   label: string;
   fieldKey: string;
-  type: 'text' | 'choice' | 'yes_no_date' | 'textarea' | 'number';
-  targetCellOrLocation: string; // e.g. "Sayfa 1 - Satır 22", "Tıbbi Anamnez Tablosu"
+  type: string;
+  excelCell?: string;
+  targetCellOrLocation?: string;
+  enabled?: boolean;
   defaultValue?: string;
   options?: string[];
   helpText?: string;

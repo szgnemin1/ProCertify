@@ -20,7 +20,10 @@ import {
   Heart,
   ShieldCheck,
   Sparkles,
-  MousePointerClick
+  MousePointerClick,
+  Sliders,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import { Ek2FieldMappingConfig, Ek2FieldMappingItem } from '../types';
 
@@ -33,10 +36,38 @@ export const AdminEk2TemplateEditor: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [editingItem, setEditingItem] = useState<Ek2FieldMappingItem | null>(null);
 
-  // View modes: 'split' (Document + List), 'doc' (Full Visual Document), 'table' (Table only)
-  const [viewMode, setViewMode] = useState<'split' | 'doc' | 'table'>('split');
+  // View modes: 'split' (Document + List), 'doc' (Full Visual Document), 'table' (Table only), 'questions' (Question Selector)
+  const [viewMode, setViewMode] = useState<'split' | 'doc' | 'table' | 'questions'>('split');
   const [activeDocPage, setActiveDocPage] = useState<1 | 2>(1);
   const [selectedHighlightKey, setSelectedHighlightKey] = useState<string | null>(null);
+
+  const toggleQuestionEnabled = (id: string) => {
+    if (!config) return;
+    const updated = config.items.map(it => {
+      if (it.id === id) {
+        return { ...it, enabled: it.enabled === false ? true : false };
+      }
+      return it;
+    });
+    setConfig({ ...config, items: updated });
+  };
+
+  const applyPreset = (preset: 'all' | 'essential' | 'rapid') => {
+    if (!config) return;
+    let updated = config.items;
+    if (preset === 'all') {
+      updated = updated.map(q => ({ ...q, enabled: true }));
+    } else if (preset === 'essential') {
+      updated = updated.map(q => {
+        const isEss = ['employee', 'physical_exam', 'decision', 'anamnez_complaints', 'workplace'].includes(q.category);
+        return { ...q, enabled: isEss };
+      });
+    } else if (preset === 'rapid') {
+      const rapidIds = ['f_adSoyad', 'f_tckn', 'f_meslegi', 'f_vital_ta', 'f_vital_nb', 'f_vital_boy', 'f_vital_kilo', 'f_vital_vki', 'f_dec_elverisli', 'f_employeeSignature'];
+      updated = updated.map(q => ({ ...q, enabled: rapidIds.includes(q.id) }));
+    }
+    setConfig({ ...config, items: updated });
+  };
 
   const categories = [
     { id: 'all', label: 'Tüm Alanlar' },
@@ -245,6 +276,16 @@ export const AdminEk2TemplateEditor: React.FC = () => {
             >
               <LayoutGrid className="w-3.5 h-3.5" />
               Tablo Listesi
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('questions')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
+                viewMode === 'questions' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5 text-teal-600" />
+              Soru Seçimi & Görünürlük ({config?.items?.filter(i => i.enabled !== false).length || 0})
             </button>
           </div>
 
@@ -703,6 +744,98 @@ export const AdminEk2TemplateEditor: React.FC = () => {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* FULL SCREEN / TAB: QUESTION VISIBILITY AND CUSTOMIZER                     */}
+        {/* ========================================================================= */}
+        {viewMode === 'questions' && (
+          <div className="w-full flex-1 flex flex-col bg-slate-50 overflow-hidden">
+            {/* Ribbon */}
+            <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-teal-600" />
+                  Saha Soru Seçimi ve Görünürlük Yönetimi
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Tablet ekranında sağlık personelinin karşısına hangi soruların geleceğini buradan belirleyebilirsiniz. Pasif yapılan sorular formda gizlenir.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => applyPreset('all')}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition flex items-center gap-1.5"
+                >
+                  <CheckSquare className="w-4 h-4 text-teal-600" />
+                  Tümünü Aç
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPreset('essential')}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-600" />
+                  Standart Muayene
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPreset('rapid')}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition flex items-center gap-1.5"
+                >
+                  <Layers className="w-4 h-4 text-blue-600" />
+                  Hızlı Ön Muayene
+                </button>
+              </div>
+            </div>
+
+            {/* Questions Grid */}
+            <div className="flex-1 overflow-auto p-6 space-y-4">
+              <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-3">
+                {config?.items.map(item => {
+                  const isChecked = item.enabled !== false;
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => toggleQuestionEnabled(item.id)}
+                      className={`flex items-start gap-3 p-3 rounded-2xl border transition cursor-pointer select-none ${
+                        isChecked
+                          ? 'bg-white border-teal-200 shadow-sm hover:border-teal-400'
+                          : 'bg-slate-100/70 border-slate-200 opacity-60 hover:opacity-90'
+                      }`}
+                    >
+                      <div className="mt-0.5">
+                        {isChecked ? (
+                          <CheckSquare className="w-5 h-5 text-teal-600" />
+                        ) : (
+                          <Square className="w-5 h-5 text-slate-400" />
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-xs font-bold leading-tight ${isChecked ? 'text-slate-900' : 'text-slate-500 line-through'}`}>
+                            {item.label}
+                          </span>
+                          {(item.excelCell || item.targetCellOrLocation) && (
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                              {item.excelCell || item.targetCellOrLocation}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
+                          <span className="font-mono">{item.fieldKey}</span>
+                          <span className="capitalize">{item.section || item.category}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
