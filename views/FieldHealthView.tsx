@@ -19,7 +19,9 @@ import {
   ChevronRight,
   ClipboardList,
   ShieldCheck,
-  Plus
+  Plus,
+  RefreshCw,
+  FileCheck2
 } from 'lucide-react';
 import { Company, Employee, Ek2FormRecord, AppUser } from '../types';
 import { FullScreenTabletSignature } from '../components/FullScreenTabletSignature';
@@ -127,7 +129,7 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
     vital_nb: '76',
     vital_boy: '175',
     vital_kilo: '75',
-    vital_vki: '24.5',
+    vital_vki: '24.5 kg/m² (Normal)',
     fm_duyu_organlari: 'Göz, KBB ve Deri muayenesi doğal.',
     fm_kvs: 'S1, S2 ritmik, ek ses ve üfürüm yok.',
     fm_solunum: 'Solunum sesleri bilateral veziküler, ral-ronküs yok.',
@@ -366,15 +368,20 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
       alert("Lütfen çalışanın Adı Soyadı ve T.C. Kimlik Numarasını giriniz.");
       return;
     }
-    // Step: Open Full Screen Signature Pad
-    setShowSignaturePad(true);
+
+    if (!employeeSignature) {
+      // Prompt signature pad if not signed yet
+      setShowSignaturePad(true);
+      return;
+    }
+
+    // Next Step: Prompt "Tetkiki var mı?"
+    setShowTestModal(true);
   };
 
   const handleSignatureConfirmed = (signatureDataUrl: string) => {
     setEmployeeSignature(signatureDataUrl);
     setShowSignaturePad(false);
-    // Next Step: Prompt "Tetkiki var mı?"
-    setShowTestModal(true);
   };
 
   const finalizeSaveForm = async (hasTests: boolean) => {
@@ -447,6 +454,10 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
     );
   }, [employees, selectedCompany]);
 
+  // Input styling constant for 100% consistent high-contrast colors
+  const inputCls = "w-full text-xs font-semibold bg-white text-slate-900 border border-slate-300 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-600 placeholder-slate-400 shadow-sm transition";
+  const labelCls = "block text-xs font-bold text-slate-700 mb-1.5";
+
   // ==========================================
   // RENDER SCREEN 1: PIN NUMPAD (Tablet Auth)
   // ==========================================
@@ -454,7 +465,6 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 flex flex-col justify-center items-center p-6 text-white select-none">
         <div className="w-full max-w-md bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-3xl p-8 shadow-2xl flex flex-col items-center">
-          {/* Logo / Badge */}
           <div className="w-16 h-16 rounded-2xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center mb-4 shadow-lg shadow-teal-500/10">
             <Stethoscope className="w-8 h-8" />
           </div>
@@ -462,11 +472,10 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
           <h1 className="text-2xl font-bold tracking-tight text-white text-center">
             Saha Sağlık & Muayene Modülü
           </h1>
-          <p className="text-sm text-slate-400 text-center mt-1 mb-6">
+          <p className="text-xs text-slate-400 text-center mt-1 mb-6">
             Lütfen size tanımlanan tablet PIN şifrenizi giriniz
           </p>
 
-          {/* PIN Display Dots / Stars */}
           <div className="w-full flex items-center justify-center gap-3 py-4 mb-4 bg-slate-950/60 rounded-2xl border border-slate-800/80">
             {pinInput.length === 0 ? (
               <span className="text-slate-500 text-sm font-medium">Şifrenizi tuşlayınız</span>
@@ -484,7 +493,6 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
             </div>
           )}
 
-          {/* Big Tablet Numeric Touchpad */}
           <div className="grid grid-cols-3 gap-3 w-full mb-4">
             {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(num => (
               <button
@@ -540,7 +548,7 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
             <button
               type="button"
               onClick={onBackToApp}
-              className="mt-6 text-xs text-slate-500 hover:text-slate-300 transition"
+              className="mt-6 text-xs text-slate-400 hover:text-slate-200 transition"
             >
               Sertifika Yönetim Masasına Geri Dön &rarr;
             </button>
@@ -555,8 +563,7 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
   // ==========================================
   if (step === 'companies') {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col pb-32">
-        {/* Top Navbar */}
+      <div className="min-h-screen bg-slate-100 flex flex-col pb-32">
         <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm px-6 py-4">
           <div className="max-w-6xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -579,7 +586,7 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                 <button
                   type="button"
                   onClick={onBackToApp}
-                  className="px-3.5 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
                 >
                   Sertifika Masası
                 </button>
@@ -599,7 +606,6 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
           </div>
         </div>
 
-        {/* Content Container */}
         <div className="max-w-6xl mx-auto px-6 pt-8 w-full">
           {saveSuccessMessage && (
             <div className="mb-6 p-4 rounded-2xl bg-emerald-500 text-white shadow-xl flex items-center gap-3 animate-bounce">
@@ -608,7 +614,6 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
             </div>
           )}
 
-          {/* Search Bar (Üstte Arama Yeri) */}
           <div className="mb-8">
             <div className="relative">
               <Search className="w-6 h-6 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -617,23 +622,22 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                 value={companySearch}
                 onChange={e => setCompanySearch(e.target.value)}
                 placeholder="Firma Adı veya Ünvanı ile Arayınız..."
-                className="w-full pl-13 pr-4 py-4 text-base font-medium bg-white border-2 border-slate-200 focus:border-teal-600 rounded-2xl shadow-sm focus:outline-none transition"
+                className="w-full pl-13 pr-4 py-4 text-base font-semibold bg-white text-slate-900 border-2 border-slate-300 focus:border-teal-600 rounded-2xl shadow-sm focus:outline-none transition"
               />
               {companySearch && (
                 <button
                   onClick={() => setCompanySearch('')}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600 bg-slate-100 px-2 py-1 rounded-md"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500 hover:text-slate-800 bg-slate-100 px-2 py-1 rounded-md"
                 >
                   Temizle
                 </button>
               )}
             </div>
-            <p className="text-xs text-slate-500 mt-2 px-1">
+            <p className="text-xs text-slate-600 mt-2 px-1">
               Muayene yapacağınız firmayı aşağıdaki listeden seçiniz ({filteredCompanies.length} firma listeleniyor).
             </p>
           </div>
 
-          {/* Companies Grid (Altta Admin Tarafından Girilmiş Firmaların Listesi) */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredCompanies.map(comp => {
               const isSelected = selectedCompany?.id === comp.id;
@@ -643,7 +647,7 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                   onClick={() => handleSelectCompany(comp)}
                   className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative flex flex-col justify-between ${
                     isSelected
-                      ? 'bg-teal-50/70 border-teal-600 shadow-md ring-2 ring-teal-500/30'
+                      ? 'bg-teal-50/90 border-teal-600 shadow-md ring-2 ring-teal-500/30'
                       : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'
                   }`}
                 >
@@ -673,7 +677,7 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                     )}
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
                     <span>Geçerlilik: {comp.validityYears || 1} Yıl</span>
                     {isSelected && (
                       <span className="inline-flex items-center gap-1 font-bold text-teal-700">
@@ -684,14 +688,6 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                 </div>
               );
             })}
-
-            {filteredCompanies.length === 0 && (
-              <div className="col-span-full py-16 text-center text-slate-400 bg-white rounded-2xl border border-dashed border-slate-300">
-                <Building2 className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                <p className="font-semibold text-slate-600">Aramanıza uygun firma bulunamadı.</p>
-                <p className="text-xs mt-1">Admin panelinden yeni firma ekleyebilirsiniz.</p>
-              </div>
-            )}
           </div>
         </div>
 
@@ -705,7 +701,7 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                   <p className="text-base font-bold text-slate-900">{selectedCompany.name}</p>
                 </div>
               ) : (
-                <p className="text-sm font-medium text-slate-500">
+                <p className="text-sm font-medium text-slate-600">
                   Devam etmek için listeden bir firma seçiniz.
                 </p>
               )}
@@ -735,24 +731,24 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
   // RENDER SCREEN 3: EK-2 FORM DOLDURMA
   // ==========================================
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col pb-36">
+    <div className="min-h-screen bg-slate-100 flex flex-col pb-36 text-slate-900">
       {/* Form Top Navigation Bar */}
       <div className="bg-slate-900 text-white px-6 py-4 sticky top-0 z-30 shadow-md">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <button
             type="button"
             onClick={() => setStep('companies')}
-            className="flex items-center gap-2 text-sm font-semibold text-slate-300 hover:text-white transition"
+            className="flex items-center gap-2 text-xs font-bold text-slate-200 hover:text-white transition bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700"
           >
             <ArrowLeft className="w-4 h-4" />
             Firma Listesine Dön
           </button>
 
           <div className="text-center">
-            <h1 className="text-lg font-bold text-white tracking-wide">
+            <h1 className="text-base sm:text-lg font-bold text-white tracking-wide">
               İŞE GİRİŞ / PERİYODİK MUAYENE FORMU (EK-2)
             </h1>
-            <p className="text-xs text-teal-400 font-medium">
+            <p className="text-xs text-teal-300 font-medium">
               {selectedCompany?.name} &bull; Protokol No: {formData.protokolNo}
             </p>
           </div>
@@ -761,14 +757,16 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
             <button
               type="button"
               onClick={applyAllAnamnezNegative}
-              className="text-xs bg-slate-800 hover:bg-slate-700 text-teal-300 px-3 py-1.5 rounded-lg border border-teal-500/30 transition"
+              className="text-xs font-bold bg-teal-800/80 hover:bg-teal-700 text-teal-100 px-3 py-1.5 rounded-lg border border-teal-500/40 transition"
+              title="Tüm yakınma ve hastalıkları tek tıkla Hayır yapar"
             >
               Anamnez Normal
             </button>
             <button
               type="button"
               onClick={applyAllSystemsNormal}
-              className="text-xs bg-slate-800 hover:bg-slate-700 text-teal-300 px-3 py-1.5 rounded-lg border border-teal-500/30 transition"
+              className="text-xs font-bold bg-teal-800/80 hover:bg-teal-700 text-teal-100 px-3 py-1.5 rounded-lg border border-teal-500/40 transition"
+              title="Tüm sistem bulgularını tek tıkla doğal olarak doldurur"
             >
               Fizik Muayene Normal
             </button>
@@ -778,20 +776,20 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
 
       <div className="max-w-5xl mx-auto px-6 pt-6 w-full space-y-6">
         {/* 1. ÇALIŞAN SEÇİMİ / HIZLI GİRİŞİ */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-          <h2 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
+        <div className="bg-white rounded-2xl p-6 border border-slate-300 shadow-sm">
+          <h2 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
             <UserCheck className="w-5 h-5 text-teal-600" />
             Çalışan Bilgileri (Havuzdan Seç veya Yeni Gir)
           </h2>
 
           <div className="mb-4">
-            <label className="block text-xs font-semibold text-slate-600 mb-1">
+            <label className={labelCls}>
               Kayıtlı Çalışan Seçimi
             </label>
             <select
               value={selectedEmployeeId}
               onChange={e => handleEmployeeChange(e.target.value)}
-              className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2.5 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
+              className={inputCls}
             >
               <option value="new">+ Yeni Çalışan Olarak Doldur</option>
               {companyEmployees.map(emp => (
@@ -804,147 +802,178 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Adı ve Soyadı *
-              </label>
+              <label className={labelCls}>Adı ve Soyadı *</label>
               <input
                 type="text"
                 value={formData.adSoyad}
                 onChange={e => setFormData({ ...formData, adSoyad: e.target.value })}
                 placeholder="Ad Soyad"
-                className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 font-bold"
+                className={inputCls}
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                T.C. Kimlik No *
-              </label>
+              <label className={labelCls}>T.C. Kimlik No *</label>
               <input
                 type="text"
                 maxLength={11}
                 value={formData.tckn}
                 onChange={e => setFormData({ ...formData, tckn: e.target.value })}
                 placeholder="11 haneli TCKN"
-                className="w-full text-sm font-mono border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className={inputCls}
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Mesleği / Görevi
-              </label>
+              <label className={labelCls}>Mesleği / Görevi</label>
               <input
                 type="text"
                 value={formData.meslegi}
                 onChange={e => setFormData({ ...formData, meslegi: e.target.value })}
-                placeholder="örn: Kaynakçı, İk İkram vb."
-                className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                placeholder="örn: Kaynakçı, Torna vb."
+                className={inputCls}
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Çalıştığı Bölüm
-              </label>
+              <label className={labelCls}>Çalıştığı Bölüm</label>
               <input
                 type="text"
                 value={formData.calistigiBolum}
                 onChange={e => setFormData({ ...formData, calistigiBolum: e.target.value })}
                 placeholder="Bölüm"
-                className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className={inputCls}
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Doğum Yeri ve Tarihi
-              </label>
+              <label className={labelCls}>Doğum Yeri ve Tarihi</label>
               <input
                 type="text"
                 value={formData.dogumYeriTarihi}
                 onChange={e => setFormData({ ...formData, dogumYeriTarihi: e.target.value })}
                 placeholder="Bursa - 15.05.1990"
-                className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className={inputCls}
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Telefon No
-              </label>
+              <label className={labelCls}>Telefon No</label>
               <input
                 type="text"
                 value={formData.telefonNo}
                 onChange={e => setFormData({ ...formData, telefonNo: e.target.value })}
                 placeholder="05XX XXX XX XX"
-                className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className={inputCls}
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Cinsiyeti
-              </label>
+              <label className={labelCls}>Cinsiyeti</label>
               <select
                 value={formData.cinsiyet}
                 onChange={e => setFormData({ ...formData, cinsiyet: e.target.value })}
-                className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className={inputCls}
               >
                 <option value="Erkek">Erkek</option>
                 <option value="Kadın">Kadın</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Medeni Durumu
-              </label>
+              <label className={labelCls}>Medeni Durumu</label>
               <select
                 value={formData.medeniDurumu}
                 onChange={e => setFormData({ ...formData, medeniDurumu: e.target.value })}
-                className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className={inputCls}
               >
                 <option value="Evli">Evli</option>
                 <option value="Bekar">Bekar</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Çocuk Sayısı
-              </label>
+              <label className={labelCls}>Çocuk Sayısı</label>
               <input
                 type="number"
                 min={0}
                 value={formData.cocukSayisi}
                 onChange={e => setFormData({ ...formData, cocukSayisi: e.target.value })}
-                className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className={inputCls}
               />
             </div>
           </div>
 
           <div className="mt-4">
-            <label className="block text-xs font-semibold text-slate-600 mb-1">
-              Yaptığı İş (Ayrıntılı olarak tanımlanacaktır)
-            </label>
+            <label className={labelCls}>Yaptığı İş (Ayrıntılı Tanım)</label>
             <input
               type="text"
               value={formData.yaptigiIs}
               onChange={e => setFormData({ ...formData, yaptigiIs: e.target.value })}
               placeholder="Çalışanın vardiya, cihaz ve operasyonel iş detayları..."
-              className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className={inputCls}
             />
           </div>
         </div>
 
-        {/* 2. TIBBİ ANAMNEZ (YAKINMALAR VE HASTALIKLAR) */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+        {/* 2. ÇALIŞAN BEYANI & İMZA ALANI (RESMİ EK-2 SAYFA 1 BÖLÜMÜ) */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-300 shadow-sm">
+          <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-teal-600" />
-              Tıbbi Anamnez (1. Yakınmalar ve 2. Hastalıklar)
+              <PenTool className="w-5 h-5 text-teal-600" />
+              Çalışan Beyanı & İmzası (Mevzuat Zorunlu)
             </h2>
+            {employeeSignature ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                İmza Alındı
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                İmza Bekleniyor
+              </span>
+            )}
           </div>
+
+          <p className="text-xs text-slate-700 italic bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 leading-relaxed">
+            "İşe giriş/periyodik muayene olmayı kabul ettiğimi ve muayene sırasında verdiğim bilgilerin doğru ve eksiksiz olduğunu beyan ederim."
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-slate-200 bg-slate-50/50">
+            <div className="flex items-center gap-4">
+              {employeeSignature ? (
+                <div className="bg-white p-2.5 rounded-xl border border-slate-300 shadow-sm">
+                  <img src={employeeSignature} alt="Çalışan İmzası" className="h-14 max-w-[220px] object-contain" />
+                </div>
+              ) : (
+                <div className="h-14 w-48 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center text-xs text-slate-400 bg-white font-medium">
+                  İmza Atılmadı
+                </div>
+              )}
+              <div>
+                <p className="text-sm font-bold text-slate-900">{formData.adSoyad || 'Çalışan Adı Soyadı'}</p>
+                <p className="text-xs text-slate-500">
+                  {employeeSignature ? 'İmza Ek-2 belgesine tam ölçekli aktarılacak' : 'Lütfen butona basarak tabletten imza alınız'}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowSignaturePad(true)}
+              className="px-6 py-3 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-bold text-sm shadow-md transition flex items-center gap-2"
+            >
+              <PenTool className="w-4 h-4" />
+              {employeeSignature ? 'İmzayı Yenile / Değiştir' : '✍️ İmzayı Başlat (Tam Ekran Tuval)'}
+            </button>
+          </div>
+        </div>
+
+        {/* 3. TIBBİ ANAMNEZ (YAKINMALAR VE HASTALIKLAR) */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-300 shadow-sm">
+          <h2 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
+            <Activity className="w-5 h-5 text-teal-600" />
+            Tıbbi Anamnez (1. Yakınmalar ve 2. Teşhis Edilen Hastalıklar)
+          </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Sol Sütun: Yakınmalar */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200">
+            <div className="space-y-2.5">
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider pb-1 border-b border-slate-200">
                 1. Yakınmalardan Herhangi Birini Yaşadınız mı?
               </h3>
               {[
@@ -956,14 +985,16 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                 { key: 'an_ishal_kabizlik', label: 'İshal veya kabızlık' },
                 { key: 'an_eklem_agrisi', label: 'Eklemlerde ağrı' }
               ].map(item => (
-                <div key={item.key} className="flex items-center justify-between py-1.5 px-3 rounded-xl bg-slate-50 border border-slate-200/70">
-                  <span className="text-xs font-semibold text-slate-800">{item.label}</span>
-                  <div className="flex items-center gap-1">
+                <div key={item.key} className="flex items-center justify-between py-2 px-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-xs font-bold text-slate-800">{item.label}</span>
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, [item.key]: 'Hayır' })}
-                      className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
-                        formData[item.key] === 'Hayır' ? 'bg-slate-800 text-white shadow-sm' : 'bg-slate-200 text-slate-600'
+                      className={`px-3.5 py-1 text-xs font-bold rounded-lg transition ${
+                        formData[item.key] === 'Hayır'
+                          ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-700'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
                       }`}
                     >
                       Hayır
@@ -971,8 +1002,10 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, [item.key]: 'Evet' })}
-                      className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
-                        formData[item.key] === 'Evet' ? 'bg-rose-600 text-white shadow-sm' : 'bg-slate-200 text-slate-600'
+                      className={`px-3.5 py-1 text-xs font-bold rounded-lg transition ${
+                        formData[item.key] === 'Evet'
+                          ? 'bg-rose-600 text-white shadow-sm ring-1 ring-rose-700'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
                       }`}
                     >
                       Evet
@@ -983,8 +1016,8 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
             </div>
 
             {/* Sağ Sütun: Hastalıklar */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200">
+            <div className="space-y-2.5">
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider pb-1 border-b border-slate-200">
                 2. Hastalıklardan Herhangi Biri Teşhis Edildi mi?
               </h3>
               {[
@@ -996,14 +1029,16 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                 { key: 'an_isitme', label: 'İşitme kaybı' },
                 { key: 'an_gorme', label: 'Görme Bozukluğu' }
               ].map(item => (
-                <div key={item.key} className="flex items-center justify-between py-1.5 px-3 rounded-xl bg-slate-50 border border-slate-200/70">
-                  <span className="text-xs font-semibold text-slate-800">{item.label}</span>
-                  <div className="flex items-center gap-1">
+                <div key={item.key} className="flex items-center justify-between py-2 px-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-xs font-bold text-slate-800">{item.label}</span>
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, [item.key]: 'Hayır' })}
-                      className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
-                        formData[item.key] === 'Hayır' ? 'bg-slate-800 text-white shadow-sm' : 'bg-slate-200 text-slate-600'
+                      className={`px-3.5 py-1 text-xs font-bold rounded-lg transition ${
+                        formData[item.key] === 'Hayır'
+                          ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-700'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
                       }`}
                     >
                       Hayır
@@ -1011,8 +1046,10 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, [item.key]: 'Evet' })}
-                      className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
-                        formData[item.key] === 'Evet' ? 'bg-rose-600 text-white shadow-sm' : 'bg-slate-200 text-slate-600'
+                      className={`px-3.5 py-1 text-xs font-bold rounded-lg transition ${
+                        formData[item.key] === 'Evet'
+                          ? 'bg-rose-600 text-white shadow-sm ring-1 ring-rose-700'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
                       }`}
                     >
                       Evet
@@ -1024,16 +1061,16 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
           </div>
         </div>
 
-        {/* 3. FİZİK MUAYENE VE VİTAL BULGULAR (CANLI VKİ HESABI) */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-          <h2 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
+        {/* 4. FİZİK MUAYENE VE VİTAL BULGULAR (CANLI VKİ HESABI) */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-300 shadow-sm">
+          <h2 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
             <Heart className="w-5 h-5 text-teal-600" />
             Fizik Muayene & Vital Bulgular (Otomatik VKİ)
           </h2>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 bg-teal-50/50 rounded-2xl border border-teal-200/60 mb-5">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 bg-teal-50/70 rounded-2xl border border-teal-200 mb-5">
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+              <label className="block text-xs font-bold text-slate-800 mb-1">
                 Tansiyon (TA)
               </label>
               <input
@@ -1041,11 +1078,11 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                 value={formData.vital_ta}
                 onChange={e => setFormData({ ...formData, vital_ta: e.target.value })}
                 placeholder="120/80"
-                className="w-full text-sm font-bold border border-slate-300 rounded-xl px-3 py-2 bg-white"
+                className={inputCls}
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+              <label className="block text-xs font-bold text-slate-800 mb-1">
                 Nabız (/dk)
               </label>
               <input
@@ -1053,11 +1090,11 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                 value={formData.vital_nb}
                 onChange={e => setFormData({ ...formData, vital_nb: e.target.value })}
                 placeholder="76"
-                className="w-full text-sm font-bold border border-slate-300 rounded-xl px-3 py-2 bg-white"
+                className={inputCls}
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+              <label className="block text-xs font-bold text-slate-800 mb-1">
                 Boy (cm)
               </label>
               <input
@@ -1065,11 +1102,11 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                 value={formData.vital_boy}
                 onChange={e => setFormData({ ...formData, vital_boy: e.target.value })}
                 placeholder="175"
-                className="w-full text-sm font-bold border border-slate-300 rounded-xl px-3 py-2 bg-white"
+                className={inputCls}
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+              <label className="block text-xs font-bold text-slate-800 mb-1">
                 Kilo (kg)
               </label>
               <input
@@ -1077,64 +1114,58 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                 value={formData.vital_kilo}
                 onChange={e => setFormData({ ...formData, vital_kilo: e.target.value })}
                 placeholder="75"
-                className="w-full text-sm font-bold border border-slate-300 rounded-xl px-3 py-2 bg-white"
+                className={inputCls}
               />
             </div>
             <div className="col-span-2 md:col-span-1">
-              <label className="block text-[11px] font-bold text-teal-800 mb-1">
+              <label className="block text-xs font-bold text-teal-900 mb-1">
                 Vücut Kitle İndeksi (VKİ)
               </label>
               <input
                 type="text"
                 readOnly
                 value={formData.vital_vki}
-                className="w-full text-xs font-extrabold bg-teal-100 text-teal-900 border border-teal-300 rounded-xl px-3 py-2"
+                className="w-full text-xs font-extrabold bg-teal-100 text-teal-950 border border-teal-300 rounded-xl px-3 py-2.5 shadow-sm"
               />
             </div>
           </div>
 
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Kardiyovasküler & Solunum Sistemi
-              </label>
+              <label className={labelCls}>Kardiyovasküler & Solunum Sistemi</label>
               <input
                 type="text"
                 value={formData.fm_solunum}
                 onChange={e => setFormData({ ...formData, fm_solunum: e.target.value })}
-                className="w-full text-xs border border-slate-300 rounded-xl px-3 py-2"
+                className={inputCls}
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Kas-İskelet Sistemi ve Diğer Muayeneler
-              </label>
+              <label className={labelCls}>Kas-İskelet Sistemi ve Diğer Muayeneler</label>
               <input
                 type="text"
                 value={formData.fm_kas_iskelet}
                 onChange={e => setFormData({ ...formData, fm_kas_iskelet: e.target.value })}
-                className="w-full text-xs border border-slate-300 rounded-xl px-3 py-2"
+                className={inputCls}
               />
             </div>
           </div>
         </div>
 
-        {/* 4. KANAAT VE SONUÇ (HEKİM KARARI) */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-          <h2 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
+        {/* 5. KANAAT VE SONUÇ (HEKİM KARARI) */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-300 shadow-sm">
+          <h2 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
             <ShieldCheck className="w-5 h-5 text-teal-600" />
             Hekim Kanaat ve Sonuç Kararı
           </h2>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                1- Çalışmaya Elverişlilik Durumu
-              </label>
+              <label className={labelCls}>1- Çalışmaya Elverişlilik Durumu</label>
               <select
                 value={formData.dec_elverisli}
                 onChange={e => setFormData({ ...formData, dec_elverisli: e.target.value })}
-                className="w-full text-sm font-bold border border-slate-300 rounded-xl px-3 py-2.5 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500 text-teal-800"
+                className={inputCls}
               >
                 <option value="İşinde bedenen ve ruhen çalışmaya elverişlidir.">
                   İşinde bedenen ve ruhen çalışmaya elverişlidir.
@@ -1147,26 +1178,22 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  2- Yüksekte / Gece / Vardiyalı Çalışma
-                </label>
+                <label className={labelCls}>2- Yüksekte / Gece / Vardiyalı Çalışma</label>
                 <input
                   type="text"
                   value={formData.dec_kosullar}
                   onChange={e => setFormData({ ...formData, dec_kosullar: e.target.value })}
-                  className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2"
+                  className={inputCls}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  İşyeri Hekimi Kaşe / İsim
-                </label>
+                <label className={labelCls}>İşyeri Hekimi Kaşe / İsim</label>
                 <input
                   type="text"
                   value={formData.hekimAdi}
                   onChange={e => setFormData({ ...formData, hekimAdi: e.target.value })}
-                  className="w-full text-sm font-bold border border-slate-300 rounded-xl px-3 py-2"
+                  className={inputCls}
                 />
               </div>
             </div>
@@ -1175,10 +1202,10 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
       </div>
 
       {/* Floating Bottom Sticky Action Bar: BİLGİLERİ KAYDET */}
-      <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-slate-200 px-6 py-4 shadow-2xl z-30">
+      <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-slate-300 px-6 py-4 shadow-2xl z-30">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="text-xs text-slate-500">
-            Çalışan: <strong className="text-slate-800">{formData.adSoyad || 'Girilmedi'}</strong> &bull; TCKN: {formData.tckn || '-'}
+          <div className="text-xs text-slate-700">
+            Çalışan: <strong className="text-slate-900 font-bold">{formData.adSoyad || 'Girilmedi'}</strong> &bull; TCKN: <span className="font-mono">{formData.tckn || '-'}</span>
           </div>
 
           <button
@@ -1213,8 +1240,8 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
             <h2 className="text-2xl font-bold text-slate-900 mb-2">
               Tetkiki Var mı?
             </h2>
-            <p className="text-sm text-slate-500 mb-6">
-              <strong>{formData.adSoyad}</strong> için laboratuvar veya sağlık tetkiki talep edilecek mi?
+            <p className="text-sm text-slate-600 mb-6">
+              <strong className="text-slate-900">{formData.adSoyad}</strong> için laboratuvar veya sağlık tetkiki talep edilecek mi?
             </p>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
@@ -1222,7 +1249,7 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                 type="button"
                 disabled={savingForm}
                 onClick={() => finalizeSaveForm(false)}
-                className="py-4 px-6 rounded-2xl bg-slate-800 hover:bg-slate-900 active:scale-95 text-white font-bold text-lg shadow-lg transition flex items-center justify-center gap-2"
+                className="py-4 px-6 rounded-2xl bg-slate-800 hover:bg-slate-900 active:scale-95 text-white font-bold text-lg shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 HAYIR
               </button>
@@ -1231,13 +1258,13 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
                 type="button"
                 disabled={savingForm}
                 onClick={() => finalizeSaveForm(true)}
-                className="py-4 px-6 rounded-2xl bg-teal-600 hover:bg-teal-500 active:scale-95 text-white font-bold text-lg shadow-lg shadow-teal-600/30 transition flex items-center justify-center gap-2"
+                className="py-4 px-6 rounded-2xl bg-teal-600 hover:bg-teal-500 active:scale-95 text-white font-bold text-lg shadow-lg shadow-teal-600/30 transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 EVET
               </button>
             </div>
 
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500">
               * "HAYIR" seçildiğinde Ek-2 belgesi doğrudan kaydedilerek firma listesine geri dönülür.
             </p>
           </div>

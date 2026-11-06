@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { RotateCcw, Check, X, PenTool, ShieldCheck } from 'lucide-react';
+import { RotateCcw, Check, X, PenTool, ShieldCheck, Undo2, Palette } from 'lucide-react';
 
 interface FullScreenTabletSignatureProps {
   employeeName: string;
@@ -7,57 +7,112 @@ interface FullScreenTabletSignatureProps {
   onClose: () => void;
 }
 
+interface StrokePoint {
+  x: number;
+  y: number;
+}
+
+interface Stroke {
+  points: StrokePoint[];
+  color: string;
+  width: number;
+}
+
 export const FullScreenTabletSignature: React.FC<FullScreenTabletSignatureProps> = ({
   employeeName,
   onSave,
   onClose
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [hasDrawn, setHasDrawn] = useState(false);
-  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Resize canvas to full window while taking devicePixelRatio into account for crisp lines
-  const resizeCanvas = useCallback(() => {
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const currentStrokeRef = useRef<StrokePoint[]>([]);
+  const isDrawingRef = useRef(false);
+
+  const [penColor, setPenColor] = useState<string>('#0f172a'); // Default dark navy
+  const [penWidth, setPenWidth] = useState<number>(3.5);
+
+  // Redraw all strokes on canvas
+  const redrawCanvas = useCallback((allStrokes: Stroke[], inProgressPoints?: StrokePoint[]) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    
-    // Save previous drawing if needed, or just initialize clean
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-
     const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.scale(dpr, dpr);
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const drawSingleStroke = (pts: StrokePoint[], color: string, width: number) => {
+      if (pts.length === 0) return;
+      ctx.save();
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+
+      if (pts.length === 1) {
+        ctx.beginPath();
+        ctx.arc(pts[0].x, pts[0].y, width / 2, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+
+      for (let i = 1; i < pts.length; i++) {
+        const p1 = pts[i - 1];
+        const p2 = pts[i];
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        ctx.quadraticCurveTo(p1.x, p1.y, midX, midY);
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    allStrokes.forEach(s => drawSingleStroke(s.points, s.color, s.width));
+    if (inProgressPoints && inProgressPoints.length > 0) {
+      drawSingleStroke(inProgressPoints, penColor, penWidth);
     }
-  }, []);
+  }, [penColor, penWidth]);
+
+  // Canvas size setup
+  const updateCanvasSize = useCallback(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
+
+    const rect = container.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    canvas.width = Math.floor(rect.width);
+    canvas.height = Math.floor(rect.height);
+
+    redrawCanvas(strokes, currentStrokeRef.current);
+  }, [strokes, redrawCanvas]);
 
   useEffect(() => {
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
-  }, [resizeCanvas]);
+    // Immediate and delayed resize to guarantee rect is non-zero after mount animation
+    updateCanvasSize();
+    const t1 = setTimeout(updateCanvasSize, 50);
+    const t2 = setTimeout(updateCanvasSize, 250);
 
-  const getCoordinates = (e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent, canvas: HTMLCanvasElement) => {
+    window.addEventListener('resize', updateCanvasSize);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      window.removeEventListener('resize', updateCanvasSize);
+    };
+  }, [updateCanvasSize]);
+
+  // Pointer event coordinate extractor relative to canvas
+  const getCanvasCoords = (clientX: number, clientY: number): StrokePoint => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    let clientX = 0;
-    let clientY = 0;
-
-    if ('touches' in e && e.touches.length > 0) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else if ('clientX' in e) {
-      clientX = (e as MouseEvent).clientX;
-      clientY = (e as MouseEvent).clientY;
-    }
-
     return {
       x: clientX - rect.left,
       y: clientY - rect.top
@@ -65,121 +120,94 @@ export const FullScreenTabletSignature: React.FC<FullScreenTabletSignatureProps>
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    // Prevent default touch scrolling
     e.preventDefault();
-    canvas.setPointerCapture(e.pointerId);
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    setIsDrawing(true);
-    setHasDrawn(true);
-    lastPointRef.current = { x, y };
-
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.beginPath();
-      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#0f172a';
-      ctx.fill();
-    }
+    isDrawingRef.current = true;
+    const pt = getCanvasCoords(e.clientX, e.clientY);
+    currentStrokeRef.current = [pt];
+    redrawCanvas(strokes, currentStrokeRef.current);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
+    if (!isDrawingRef.current) return;
     e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const ctx = canvas.getContext('2d');
-    if (ctx && lastPointRef.current) {
-      ctx.beginPath();
-      ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
-      // Smooth quadratic curve midpoint
-      const midX = (lastPointRef.current.x + x) / 2;
-      const midY = (lastPointRef.current.y + y) / 2;
-      ctx.quadraticCurveTo(lastPointRef.current.x, lastPointRef.current.y, midX, midY);
-      ctx.stroke();
-    }
-
-    lastPointRef.current = { x, y };
+    const pt = getCanvasCoords(e.clientX, e.clientY);
+    currentStrokeRef.current.push(pt);
+    redrawCanvas(strokes, currentStrokeRef.current);
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    setIsDrawing(false);
-    lastPointRef.current = null;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch { /* ignore */ }
+    if (!isDrawingRef.current) return;
+    e.preventDefault();
+    isDrawingRef.current = false;
+
+    if (currentStrokeRef.current.length > 0) {
+      const newStroke: Stroke = {
+        points: [...currentStrokeRef.current],
+        color: penColor,
+        width: penWidth
+      };
+      const updated = [...strokes, newStroke];
+      setStrokes(updated);
+      currentStrokeRef.current = [];
+      redrawCanvas(updated);
+    }
   };
 
-  const clearCanvas = () => {
+  const handleUndo = () => {
+    if (strokes.length === 0) return;
+    const updated = strokes.slice(0, -1);
+    setStrokes(updated);
+    redrawCanvas(updated);
+  };
+
+  const handleClear = () => {
+    setStrokes([]);
+    currentStrokeRef.current = [];
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-    setHasDrawn(false);
+    ctx?.clearRect(0, 0, canvas.width, canvas.height);
   };
 
-  // Crop ink bounding box so signature is tightly framed and fits any target rectangle cleanly
+  // Safe ink bounding box crop
   const handleConfirm = () => {
     const canvas = canvasRef.current;
-    if (!canvas || !hasDrawn) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const w = canvas.width;
-    const h = canvas.height;
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const data = imgData.data;
-
-    let minX = w;
-    let minY = h;
-    let maxX = 0;
-    let maxY = 0;
-    let hasPixels = false;
-
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const alpha = data[(y * w + x) * 4 + 3];
-        if (alpha > 20) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-          hasPixels = true;
-        }
-      }
-    }
-
-    if (!hasPixels) {
+    if (!canvas || strokes.length === 0) {
       alert("Lütfen önce imzanızı atınız.");
       return;
     }
 
-    // Add safety margin around ink
-    const pad = 12;
-    minX = Math.max(0, minX - pad);
-    minY = Math.max(0, minY - pad);
-    maxX = Math.min(w, maxX + pad);
-    maxY = Math.min(h, maxY + pad);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    const cropW = Math.max(1, maxX - minX);
-    const cropH = Math.max(1, maxY - minY);
+    // Find actual ink bounds from strokes directly
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    strokes.forEach(s => {
+      s.points.forEach(p => {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      });
+    });
+
+    if (minX === Infinity) {
+      alert("Lütfen önce imzanızı atınız.");
+      return;
+    }
+
+    const pad = 16;
+    minX = Math.max(0, Math.floor(minX - pad));
+    minY = Math.max(0, Math.floor(minY - pad));
+    maxX = Math.min(canvas.width, Math.ceil(maxX + pad));
+    maxY = Math.min(canvas.height, Math.ceil(maxY + pad));
+
+    const cropW = Math.max(10, maxX - minX);
+    const cropH = Math.max(10, maxY - minY);
 
     const cropCanvas = document.createElement('canvas');
     cropCanvas.width = cropW;
@@ -193,9 +221,9 @@ export const FullScreenTabletSignature: React.FC<FullScreenTabletSignatureProps>
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-900 flex flex-col select-none touch-none animate-fadeIn">
-      {/* Top Banner Header */}
-      <div className="bg-slate-800 text-white px-6 py-4 flex items-center justify-between shadow-lg border-b border-slate-700">
+    <div className="fixed inset-0 z-[150] bg-slate-900 flex flex-col select-none touch-none">
+      {/* Top Header */}
+      <div className="bg-slate-800 text-white px-6 py-4 flex items-center justify-between border-b border-slate-700 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-400 flex items-center justify-center">
             <PenTool className="w-5 h-5" />
@@ -203,51 +231,107 @@ export const FullScreenTabletSignature: React.FC<FullScreenTabletSignatureProps>
           <div>
             <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
               Çalışan İmza Alanı
-              <span className="text-xs bg-teal-600/30 text-teal-300 font-semibold px-2.5 py-0.5 rounded-full border border-teal-500/30">
-                Tablet Stylus Uyumlu
+              <span className="text-xs bg-emerald-500/20 text-emerald-300 font-semibold px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                Tablet Kalem & Parmak Uyumlu
               </span>
             </h2>
             <p className="text-sm text-slate-300">
-              <strong className="text-white">{employeeName}</strong> &bull; Lütfen kalem veya parmağınızla ekranın ortasındaki alana imzanızı atınız.
+              <strong className="text-white">{employeeName}</strong> &bull; Lütfen aşağıdaki kutu içerisine imzanızı atınız.
             </p>
           </div>
         </div>
 
+        {/* Pen Controls & Actions */}
         <div className="flex items-center gap-3">
+          {/* Pen Color Selector */}
+          <div className="flex items-center bg-slate-700/80 rounded-xl p-1 border border-slate-600">
+            <button
+              type="button"
+              onClick={() => setPenColor('#0f172a')}
+              className={`w-7 h-7 rounded-lg transition flex items-center justify-center ${penColor === '#0f172a' ? 'ring-2 ring-teal-400 scale-105' : 'opacity-70'}`}
+              title="Siyah Mürekkep"
+            >
+              <div className="w-4 h-4 rounded-full bg-slate-950 border border-slate-400"></div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPenColor('#1e40af')}
+              className={`w-7 h-7 rounded-lg transition flex items-center justify-center ${penColor === '#1e40af' ? 'ring-2 ring-teal-400 scale-105' : 'opacity-70'}`}
+              title="Resmi Mavi Mürekkep"
+            >
+              <div className="w-4 h-4 rounded-full bg-blue-700 border border-blue-400"></div>
+            </button>
+          </div>
+
+          {/* Pen Width */}
+          <div className="flex items-center gap-1 bg-slate-700/80 rounded-xl px-2 py-1 border border-slate-600 text-xs font-semibold">
+            {[
+              { w: 2.5, label: 'İnce' },
+              { w: 3.5, label: 'Orta' },
+              { w: 5.0, label: 'Kalın' }
+            ].map(pw => (
+              <button
+                key={pw.w}
+                type="button"
+                onClick={() => setPenWidth(pw.w)}
+                className={`px-2 py-1 rounded-md transition ${penWidth === pw.w ? 'bg-teal-600 text-white' : 'text-slate-300 hover:text-white'}`}
+              >
+                {pw.label}
+              </button>
+            ))}
+          </div>
+
           <button
             type="button"
-            onClick={clearCanvas}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 active:scale-95 text-slate-200 font-semibold transition"
+            onClick={handleUndo}
+            disabled={strokes.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-200 font-semibold text-xs transition"
+          >
+            <Undo2 className="w-4 h-4" />
+            Geri Al
+          </button>
+
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={strokes.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-200 font-semibold text-xs transition"
           >
             <RotateCcw className="w-4 h-4" />
             Temizle
           </button>
+
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-700 hover:bg-rose-900/60 text-slate-300 hover:text-white active:scale-95 font-semibold transition"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-700 hover:bg-rose-900/60 text-slate-300 hover:text-white font-semibold text-xs transition"
           >
             <X className="w-4 h-4" />
-            İptal
+            Kapat
           </button>
         </div>
       </div>
 
-      {/* Fullscreen Drawing Canvas Area */}
-      <div className="relative flex-1 bg-white cursor-crosshair overflow-hidden">
-        {/* Subtle Watermark Guideline */}
+      {/* Canvas Area with Paper Guideline */}
+      <div 
+        ref={containerRef} 
+        className="relative flex-1 bg-white cursor-crosshair overflow-hidden touch-none"
+        style={{ touchAction: 'none' }}
+      >
+        {/* Subtle Watermark and Baseline */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-20">
-          <ShieldCheck className="w-32 h-32 text-slate-400 mb-4" />
-          <p className="text-2xl font-bold text-slate-500 tracking-wider uppercase">
+          <ShieldCheck className="w-24 h-24 text-slate-400 mb-2" />
+          <p className="text-xl font-bold text-slate-500 uppercase tracking-widest">
             {employeeName}
           </p>
-          <p className="text-sm text-slate-400 mt-1">İmzanızı bu alan içerisine atınız</p>
-          <div className="w-96 border-b-2 border-dashed border-slate-300 mt-8"></div>
+          <p className="text-xs text-slate-400 mt-1">Lütfen imzanızı bu çizginin üzerine atınız</p>
+          <div className="w-3/4 max-w-xl border-b-2 border-dashed border-slate-400 mt-6"></div>
         </div>
 
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 w-full h-full"
+          className="absolute inset-0 w-full h-full block"
+          style={{ touchAction: 'none' }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -259,21 +343,21 @@ export const FullScreenTabletSignature: React.FC<FullScreenTabletSignatureProps>
       <div className="bg-slate-800 text-white px-6 py-4 flex items-center justify-between border-t border-slate-700 shadow-2xl">
         <div className="flex items-center gap-2 text-sm text-slate-300">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          İmzanız resmi Ek-2 formuna otomatik ölçeklenerek ve orantısı korunarak işlenecektir.
+          İmza atıldıktan sonra resmi Ek-2 formuna otomatik ölçeklenerek orantılı şekilde yerleştirilecektir.
         </div>
 
         <button
           type="button"
           onClick={handleConfirm}
-          disabled={!hasDrawn}
-          className={`flex items-center gap-3 px-8 py-3.5 rounded-xl font-bold text-lg shadow-xl transition active:scale-95 ${
-            hasDrawn
+          disabled={strokes.length === 0}
+          className={`flex items-center gap-3 px-8 py-3.5 rounded-2xl font-bold text-lg shadow-xl transition active:scale-95 ${
+            strokes.length > 0
               ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/25 cursor-pointer'
               : 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-50'
           }`}
         >
           <Check className="w-6 h-6" />
-          İmzayı Onayla ve Devam Et
+          İmzayı Onayla ve Belgeye Aktar
         </button>
       </div>
     </div>
