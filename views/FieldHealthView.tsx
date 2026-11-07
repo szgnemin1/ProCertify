@@ -58,6 +58,7 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
 
   // --- QUESTION VISIBILITY AND MAPPING STATES ---
   const [showQuestionModal, setShowQuestionModal] = useState<boolean>(false);
+  const [editQuestionsMode, setEditQuestionsMode] = useState<boolean>(false);
   const [mappingConfig, setMappingConfig] = useState<Ek2FieldMappingConfig | null>(null);
   const [savedFormId, setSavedFormId] = useState<string | null>(null);
 
@@ -257,6 +258,104 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
       const err = await res.json().catch(() => null);
       throw new Error(err?.error || 'Kayıt başarısız');
     }
+  };
+
+  const handleToggleQuestion = async (fieldKey: string) => {
+    if (fieldKey === 'TOGGLE_MODE') {
+      setEditQuestionsMode(prev => !prev);
+      return;
+    }
+
+    const cleanKey = fieldKey.replace(/^f_/, '');
+    const currentItems = mappingConfig?.items || [];
+    let found = false;
+
+    // Check alias matching (e.g. phy_kvs <-> fm_kvs, etc.)
+    const aliasMap: Record<string, string[]> = {
+      'phy_goz': ['fm_duyu_organlari', 'phy_goz'],
+      'phy_kbb': ['fm_duyu_organlari', 'phy_kbb'],
+      'phy_deri': ['fm_duyu_organlari', 'phy_deri'],
+      'phy_kvs': ['fm_kvs', 'phy_kvs'],
+      'phy_solunum': ['fm_solunum', 'phy_solunum'],
+      'phy_sindirim': ['fm_sindirim', 'phy_sindirim'],
+      'phy_urogenital': ['fm_urogenital', 'phy_urogenital'],
+      'phy_kas_iskelet': ['fm_kas_iskelet', 'phy_kas_iskelet'],
+      'phy_norolojik': ['fm_norolojik', 'phy_norolojik'],
+      'phy_psikiyatri': ['fm_psikiyatrik', 'phy_psikiyatri'],
+      'phy_diger': ['fm_duyu_organlari', 'phy_diger'],
+      'lab_kan': ['lab_bulgulari', 'lab_kan'],
+      'lab_idrar': ['lab_bulgulari', 'lab_idrar'],
+      'lab_radyoloji': ['lab_bulgulari', 'lab_radyoloji'],
+      'lab_odyo': ['lab_bulgulari', 'lab_odyo'],
+      'lab_sft': ['lab_bulgulari', 'lab_sft'],
+      'lab_psikolojik': ['lab_bulgulari', 'lab_psikolojik'],
+    };
+    const targetKeys = aliasMap[cleanKey] || [cleanKey];
+
+    const updated = currentItems.map(it => {
+      const match = targetKeys.includes(it.fieldKey) || 
+                    targetKeys.includes(it.id.replace(/^f_/, '')) ||
+                    it.fieldKey === cleanKey || 
+                    it.id === fieldKey || 
+                    it.fieldKey === fieldKey || 
+                    it.id === `f_${cleanKey}`;
+      if (match) {
+        found = true;
+        return { ...it, enabled: it.enabled === false ? true : false };
+      }
+      return it;
+    });
+
+    if (!found) {
+      updated.push({
+        id: `f_${cleanKey}`,
+        fieldKey: cleanKey,
+        label: cleanKey,
+        category: 'other',
+        section: 'Genel',
+        enabled: false
+      });
+    }
+
+    const newConfig: Ek2FieldMappingConfig = {
+      version: (mappingConfig?.version || 1) + 1,
+      lastUpdated: Date.now(),
+      items: updated
+    };
+    setMappingConfig(newConfig);
+
+    try {
+      const token = getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await fetch('/api/health/ek2-mapping', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(newConfig)
+      });
+    } catch (e) {
+      console.warn("Auto save mapping error:", e);
+    }
+  };
+
+  const applyQuestionPreset = async (preset: 'all' | 'rapid') => {
+    if (!mappingConfig || !mappingConfig.items) return;
+    let updated = mappingConfig.items;
+    if (preset === 'all') {
+      updated = updated.map(q => ({ ...q, enabled: true }));
+    } else if (preset === 'rapid') {
+      const rapidKeys = [
+        'isyeriUnvani', 'sgkSicilNo', 'adSoyad', 'tckn', 'meslegi', 
+        'vital_ta', 'vital_nb', 'vital_boy', 'vital_kilo', 'vital_vki',
+        'an_balgamli_oksuruk', 'an_nefes_darligi', 'an_gogus_agrisi', 'an_kalp', 'an_seker',
+        'dec_elverisli', 'employeeSignature', 'hekimAdi'
+      ];
+      updated = updated.map(q => ({
+        ...q,
+        enabled: rapidKeys.includes(q.fieldKey) || rapidKeys.includes(q.id.replace('f_', ''))
+      }));
+    }
+    await handleSaveQuestions(updated);
   };
 
   useEffect(() => {
@@ -850,21 +949,70 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
               Resmi Çankaya OSGB Standart Ek-2 Şablonu
             </span>
             <span className="text-[11px] text-slate-500 hidden sm:inline">
-              (Hücrelere doğrudan tıklayarak doldurunuz &bull; PC ve tablette tam kaydırma)
+              (Hücrelere doğrudan tıklayarak doldurunuz)
             </span>
           </div>
 
-          {/* Soru Seçimi / Yönetimi Butonu */}
-          <button
-            type="button"
-            onClick={() => setShowQuestionModal(true)}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-xl bg-teal-50 border border-teal-300 hover:bg-teal-100 text-teal-800 text-xs font-bold transition cursor-pointer shadow-sm"
-            title="Hangi soruların sorulacağını seçin"
-          >
-            <Sliders className="w-4 h-4 text-teal-600" />
-            <span>Soruları Seç / Yönet ({mappingConfig?.items?.filter(i => i.enabled !== false).length || 71} Aktif)</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Soruları Kapat / Aç Modu Butonu */}
+            <button
+              type="button"
+              onClick={() => setEditQuestionsMode(!editQuestionsMode)}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-sm ${
+                editQuestionsMode 
+                  ? 'bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300 animate-pulse' 
+                  : 'bg-amber-500 hover:bg-amber-600 text-slate-950'
+              }`}
+              title="Formdaki soruları tek tıkla kapatmak veya açmak için tıklayın"
+            >
+              <Sliders className="w-4 h-4" />
+              <span>{editQuestionsMode ? '✕ Kapatma Modundan Çık' : '🛠️ Soruları Kapat / Aç'}</span>
+            </button>
+
+            {/* Soru Seçimi / Yönetimi Detaylı Modal Butonu */}
+            <button
+              type="button"
+              onClick={() => setShowQuestionModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-300 hover:bg-teal-100 text-teal-800 text-xs font-bold transition cursor-pointer shadow-sm"
+              title="Toplu soru listesi ve yönetimi"
+            >
+              <span>Tüm Liste ({mappingConfig?.items?.filter(i => i.enabled !== false).length || 71} Aktif)</span>
+            </button>
+          </div>
         </div>
+
+        {/* Banner shown when editQuestionsMode is active */}
+        {editQuestionsMode && (
+          <div className="max-w-5xl mx-auto mt-2 p-2.5 bg-amber-50 border border-amber-300 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 text-amber-900 font-bold">
+              <span>⚠️</span>
+              <span>SORU KAPATMA MODU AÇIK: Aşağıdaki belgede kapatmak istediğiniz sorunun veya hücrenin üzerine tıklayın (Kapat / Aç).</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => applyQuestionPreset('all')}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-900 rounded font-bold border border-slate-300 shadow-xs cursor-pointer"
+              >
+                Tümünü Aç
+              </button>
+              <button
+                type="button"
+                onClick={() => applyQuestionPreset('rapid')}
+                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded font-bold shadow-xs cursor-pointer"
+              >
+                Hızlı Ön Muayene (Zorunlular Hariç Kapat)
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditQuestionsMode(false)}
+                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold shadow-xs cursor-pointer"
+              >
+                ✓ Bitti (Doldurmaya Dön)
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MAIN CONTENT: 1-to-1 OFFICIAL EXCEL DOCUMENT */}
@@ -896,6 +1044,8 @@ export const FieldHealthView: React.FC<FieldHealthViewProps> = ({
           employeeSignature={employeeSignature}
           onOpenSignaturePad={() => setShowSignaturePad(true)}
           activeQuestions={mappingConfig?.items || []}
+          selectionMode={editQuestionsMode}
+          onToggleQuestion={handleToggleQuestion}
           initialPage="all"
         />
       </div>

@@ -734,6 +734,186 @@
       "excelCell": "E175:AC175",
       "type": "text",
       "enabled": true
+    },
+    {
+      "id": "f_phy_goz",
+      "category": "physical_exam",
+      "section": "Fizik Muayene",
+      "label": "Duyu Organları - Göz",
+      "fieldKey": "phy_goz",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_phy_kbb",
+      "category": "physical_exam",
+      "section": "Fizik Muayene",
+      "label": "Duyu Organları - Kulak Burun Boğaz",
+      "fieldKey": "phy_kbb",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_phy_deri",
+      "category": "physical_exam",
+      "section": "Fizik Muayene",
+      "label": "Duyu Organları - Deri",
+      "fieldKey": "phy_deri",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_phy_kvs",
+      "category": "physical_exam",
+      "section": "Fizik Muayene",
+      "label": "Kardiyovasküler Sistem Muayenesi",
+      "fieldKey": "phy_kvs",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_phy_solunum",
+      "category": "physical_exam",
+      "section": "Fizik Muayene",
+      "label": "Solunum Sistemi Muayenesi",
+      "fieldKey": "phy_solunum",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_phy_sindirim",
+      "category": "physical_exam",
+      "section": "Fizik Muayene",
+      "label": "Sindirim Sistemi Muayenesi",
+      "fieldKey": "phy_sindirim",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_phy_urogenital",
+      "category": "physical_exam",
+      "section": "Fizik Muayene",
+      "label": "Ürogenital Sistem Muayenesi",
+      "fieldKey": "phy_urogenital",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_phy_kas_iskelet",
+      "category": "physical_exam",
+      "section": "Fizik Muayene",
+      "label": "Kas-İskelet Sistemi Muayenesi",
+      "fieldKey": "phy_kas_iskelet",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_phy_norolojik",
+      "category": "physical_exam",
+      "section": "Fizik Muayene",
+      "label": "Nörolojik Muayene",
+      "fieldKey": "phy_norolojik",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_phy_psikiyatri",
+      "category": "physical_exam",
+      "section": "Fizik Muayene",
+      "label": "Psikiyatrik Muayene",
+      "fieldKey": "phy_psikiyatri",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_phy_diger",
+      "category": "physical_exam",
+      "section": "Fizik Muayene",
+      "label": "Fizik Muayene - Diğer",
+      "fieldKey": "phy_diger",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_lab_kan",
+      "category": "lab_results",
+      "section": "Laboratuvar Bulguları",
+      "label": "Biyolojik Analizler - Kan",
+      "fieldKey": "lab_kan",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_lab_idrar",
+      "category": "lab_results",
+      "section": "Laboratuvar Bulguları",
+      "label": "Biyolojik Analizler - İdrar",
+      "fieldKey": "lab_idrar",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_lab_radyoloji",
+      "category": "lab_results",
+      "section": "Laboratuvar Bulguları",
+      "label": "Radyolojik Analizler (Akciğer Grafisi)",
+      "fieldKey": "lab_radyoloji",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_lab_odyo",
+      "category": "lab_results",
+      "section": "Laboratuvar Bulguları",
+      "label": "Fizyolojik Analizler - Odyometre",
+      "fieldKey": "lab_odyo",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_lab_sft",
+      "category": "lab_results",
+      "section": "Laboratuvar Bulguları",
+      "label": "Fizyolojik Analizler - SFT",
+      "fieldKey": "lab_sft",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_lab_psikolojik",
+      "category": "lab_results",
+      "section": "Laboratuvar Bulguları",
+      "label": "Psikolojik Testler",
+      "fieldKey": "lab_psikolojik",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
+    },
+    {
+      "id": "f_asiDiger",
+      "category": "medical_history",
+      "section": "Özgeçmiş",
+      "label": "Bağışıklama - Diğer",
+      "fieldKey": "asiDiger",
+      "excelCell": "PAGE2",
+      "type": "text",
+      "enabled": true
     }
   ]
 }

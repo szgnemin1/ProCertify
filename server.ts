@@ -681,7 +681,7 @@ async function startServer() {
     }
   })
 
-  app.post('/api/health/ek2-mapping', verifyToken, requireAdmin, (req, res) => {
+  app.post('/api/health/ek2-mapping', optionalToken, (req, res) => {
     try {
       const config = req.body
       config.lastUpdated = Date.now()

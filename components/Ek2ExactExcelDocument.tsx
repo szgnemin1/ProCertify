@@ -7,7 +7,8 @@ import {
   ZoomIn, 
   ZoomOut, 
   Maximize2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  SlidersHorizontal
 } from 'lucide-react';
 import { Ek2FieldMappingItem } from '../types';
 
@@ -37,14 +38,49 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
   const [currentPage, setCurrentPage] = useState<1 | 2 | 'all'>(initialPage);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
 
+  // Alias mapping between granular codes and broad categories
+  const KEY_ALIASES: Record<string, string[]> = {
+    'phy_goz': ['fm_duyu_organlari', 'phy_goz'],
+    'phy_kbb': ['fm_duyu_organlari', 'phy_kbb'],
+    'phy_deri': ['fm_duyu_organlari', 'phy_deri'],
+    'phy_kvs': ['fm_kvs', 'phy_kvs'],
+    'phy_solunum': ['fm_solunum', 'phy_solunum'],
+    'phy_sindirim': ['fm_sindirim', 'phy_sindirim'],
+    'phy_urogenital': ['fm_urogenital', 'phy_urogenital'],
+    'phy_kas_iskelet': ['fm_kas_iskelet', 'phy_kas_iskelet'],
+    'phy_norolojik': ['fm_norolojik', 'phy_norolojik'],
+    'phy_psikiyatri': ['fm_psikiyatrik', 'phy_psikiyatri'],
+    'phy_diger': ['fm_duyu_organlari', 'phy_diger'],
+    'lab_kan': ['lab_bulgulari', 'lab_kan'],
+    'lab_idrar': ['lab_bulgulari', 'lab_idrar'],
+    'lab_radyoloji': ['lab_bulgulari', 'lab_radyoloji'],
+    'lab_odyo': ['lab_bulgulari', 'lab_odyo'],
+    'lab_sft': ['lab_bulgulari', 'lab_sft'],
+    'lab_psikolojik': ['lab_bulgulari', 'lab_psikolojik'],
+  };
+
   // Check if question is active
   const isEnabled = (fieldKey: string) => {
     if (!activeQuestions || activeQuestions.length === 0) return true;
-    const item = activeQuestions.find(q => q.fieldKey === fieldKey);
-    return item ? item.enabled !== false : true;
+    const clean = fieldKey.replace(/^f_/, '');
+    const aliases = KEY_ALIASES[clean] || [clean];
+
+    for (const key of aliases) {
+      const item = activeQuestions.find(q => 
+        q.fieldKey === key || 
+        q.fieldKey === fieldKey || 
+        q.id === key || 
+        q.id === `f_${key}` ||
+        q.fieldKey === clean ||
+        q.id === `f_${clean}`
+      );
+      if (item && item.enabled === false) return false;
+      if (item && item.enabled === true) return true;
+    }
+    return true;
   };
 
-  // Helper for cell input
+  // Helper for cell input with in-place toggle and hover close
   const cellInput = (
     fieldKey: string,
     placeholder: string = '',
@@ -54,14 +90,20 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
     const enabled = isEnabled(fieldKey);
     const val = formData[fieldKey] || '';
 
+    // Selection mode: click toggles
     if (selectionMode) {
       return (
         <span 
-          onClick={() => onToggleQuestion && onToggleQuestion(fieldKey)}
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded cursor-pointer select-none text-[10px] font-bold ${
-            enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500 line-through'
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleQuestion && onToggleQuestion(fieldKey);
+          }}
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded cursor-pointer select-none text-[10px] font-bold shadow-sm transition ${
+            enabled 
+              ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
+              : 'bg-rose-100 hover:bg-rose-200 text-rose-800 line-through border border-rose-300'
           }`}
-          title="Sahada sorulmasını aç/kapat"
+          title={enabled ? "Sahada kapatmak için tıklayın" : "Sahada açmak için tıklayın"}
         >
           {enabled ? '✓ Açık' : '✕ Kapalı'}
         </span>
@@ -69,7 +111,24 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
     }
 
     if (!enabled) {
-      return <span className="text-slate-400 italic text-[10px] select-none">(Muaf)</span>;
+      return (
+        <div className="flex items-center gap-1.5 py-0.5">
+          <span className="text-slate-400 italic text-[10px] select-none line-through">(Muaf)</span>
+          {!readOnly && onToggleQuestion && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleQuestion(fieldKey);
+              }}
+              className="text-[9px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-1.5 py-0.2 rounded border border-teal-200 transition cursor-pointer"
+              title="Bu soruyu aç"
+            >
+              + Aç
+            </button>
+          )}
+        </div>
+      );
     }
 
     if (readOnly) {
@@ -77,13 +136,28 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
     }
 
     return (
-      <input
-        type={type}
-        value={val}
-        onChange={e => onUpdateField(fieldKey, e.target.value)}
-        placeholder={placeholder}
-        className={`w-full bg-amber-50/20 focus:bg-white text-slate-900 font-semibold px-1 py-0.5 outline-none border-b border-transparent focus:border-teal-600 transition text-[11px] placeholder:text-slate-400 placeholder:font-normal ${className}`}
-      />
+      <div className="relative group w-full flex items-center">
+        <input
+          type={type}
+          value={val}
+          onChange={e => onUpdateField(fieldKey, e.target.value)}
+          placeholder={placeholder}
+          className={`w-full bg-amber-50/20 focus:bg-white text-slate-900 font-semibold px-1 py-0.5 outline-none border-b border-transparent focus:border-teal-600 transition text-[11px] placeholder:text-slate-400 placeholder:font-normal ${className}`}
+        />
+        {!readOnly && onToggleQuestion && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleQuestion(fieldKey);
+            }}
+            className="opacity-0 group-hover:opacity-100 transition absolute right-0 top-1/2 -translate-y-1/2 text-[9px] font-bold text-slate-400 hover:text-rose-600 px-1 py-0.2 rounded hover:bg-rose-50 cursor-pointer"
+            title="Bu soruyu kapat (Muaf yap)"
+          >
+            ✕ Kapat
+          </button>
+        )}
+      </div>
     );
   };
 
@@ -102,17 +176,17 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
         <tr 
           onClick={() => onToggleQuestion && onToggleQuestion(fieldKey)}
           className={`border border-black cursor-pointer transition select-none ${
-            enabled ? 'bg-emerald-50/50 hover:bg-emerald-100/70' : 'bg-slate-100 opacity-60'
+            enabled ? 'bg-emerald-50/70 hover:bg-emerald-100' : 'bg-slate-100 opacity-60 hover:opacity-80'
           }`}
         >
           <td className="border border-black px-1.5 py-0.5 text-[11px] font-medium text-slate-900">
             <span className={enabled ? 'text-black' : 'line-through text-slate-400'}>{label}</span>
           </td>
           <td colSpan={3} className="border border-black text-center p-0.5">
-            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
-              enabled ? 'bg-emerald-600 text-white' : 'bg-slate-400 text-white'
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded shadow-sm ${
+              enabled ? 'bg-emerald-600 text-white' : 'bg-rose-100 text-rose-800 line-through border border-rose-300'
             }`}>
-              {enabled ? '✓ Açık' : '✕ Kapalı'}
+              {enabled ? '✓ Açık' : '✕ Kapalı (Muaf)'}
             </span>
           </td>
         </tr>
@@ -121,17 +195,43 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
 
     if (!enabled) {
       return (
-        <tr className="border border-black bg-slate-50 opacity-50">
+        <tr className="border border-black bg-slate-50/80">
           <td className="border border-black px-1.5 py-0.5 text-[10px] text-slate-400 line-through">{label}</td>
-          <td colSpan={3} className="border border-black text-center text-[9px] text-slate-400 italic">Muaf</td>
+          <td colSpan={3} className="border border-black text-center text-[9px] text-slate-400 italic p-0.5">
+            <div className="flex items-center justify-center gap-1.5">
+              <span>(Muaf / Kapalı)</span>
+              {!readOnly && onToggleQuestion && (
+                <button
+                  type="button"
+                  onClick={() => onToggleQuestion(fieldKey)}
+                  className="text-[9px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-1.5 py-0.2 rounded border border-teal-200 transition cursor-pointer"
+                  title="Bu soruyu aç"
+                >
+                  + Aç
+                </button>
+              )}
+            </div>
+          </td>
         </tr>
       );
     }
 
     return (
-      <tr className="border border-black hover:bg-teal-50/30 transition">
+      <tr className="border border-black hover:bg-teal-50/30 transition group">
         <td className="border border-black px-1.5 py-0.5 text-[11px] text-slate-900 font-medium">
-          {label}
+          <div className="flex items-center justify-between">
+            <span>{label}</span>
+            {!readOnly && onToggleQuestion && (
+              <button
+                type="button"
+                onClick={() => onToggleQuestion(fieldKey)}
+                className="opacity-0 group-hover:opacity-100 transition text-[9px] text-slate-400 hover:text-rose-600 px-1 cursor-pointer rounded hover:bg-rose-50"
+                title="Bu soruyu kapat (Muaf yap)"
+              >
+                ✕ Kapat
+              </button>
+            )}
+          </div>
         </td>
         <td 
           onClick={() => !readOnly && onUpdateField(fieldKey, 'Evet')}
@@ -163,6 +263,328 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
             <span className="text-center block text-[10px] text-slate-400">-</span>
           )}
         </td>
+      </tr>
+    );
+  };
+
+  // Helper for questions 3-10
+  const renderSpecialQuestionRow = (
+    num: string,
+    title: string,
+    fieldKey: string,
+    detailKey: string,
+    detailPlaceholder: string,
+    optionsType: 'hayir_evet' | 'sigara_alkol' = 'hayir_evet'
+  ) => {
+    const enabled = isEnabled(fieldKey);
+    const currentVal = formData[fieldKey] || 'Hayır';
+    const detailVal = formData[detailKey] || '';
+
+    if (selectionMode) {
+      return (
+        <tr 
+          onClick={() => onToggleQuestion && onToggleQuestion(fieldKey)}
+          className={`border border-black cursor-pointer transition select-none ${
+            enabled ? 'bg-emerald-50/70 hover:bg-emerald-100' : 'bg-slate-100 opacity-60 hover:opacity-80'
+          }`}
+        >
+          <td className={`${tdCls} w-80 font-medium`}>
+            <span className={enabled ? 'text-black font-semibold' : 'line-through text-slate-400'}>
+              {num}. {title}
+            </span>
+          </td>
+          <td className={tdCls}>
+            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold shadow-sm ${
+              enabled ? 'bg-emerald-600 text-white' : 'bg-rose-100 text-rose-800 line-through border border-rose-300'
+            }`}>
+              {enabled ? '✓ Açık' : '✕ Kapalı (Muaf)'}
+            </span>
+          </td>
+        </tr>
+      );
+    }
+
+    if (!enabled) {
+      return (
+        <tr className="border border-black bg-slate-50/80">
+          <td className={`${tdCls} w-80 font-medium text-slate-400 line-through`}>
+            {num}. {title}
+          </td>
+          <td className={tdCls}>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-400 italic">(Bu soru sahada kapatıldı / Muaf)</span>
+              {!readOnly && onToggleQuestion && (
+                <button
+                  type="button"
+                  onClick={() => onToggleQuestion(fieldKey)}
+                  className="text-[10px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded border border-teal-200 transition cursor-pointer"
+                  title="Bu soruyu aç"
+                >
+                  + Soruyu Aç
+                </button>
+              )}
+            </div>
+          </td>
+        </tr>
+      );
+    }
+
+    return (
+      <tr className="border border-black hover:bg-teal-50/20 transition group">
+        <td className={`${tdCls} w-80 font-medium`}>
+          <div className="flex items-center justify-between">
+            <span>{num}. {title}</span>
+            {!readOnly && onToggleQuestion && (
+              <button
+                type="button"
+                onClick={() => onToggleQuestion(fieldKey)}
+                className="opacity-0 group-hover:opacity-100 transition text-[9px] text-slate-400 hover:text-rose-600 px-1 rounded hover:bg-rose-50 cursor-pointer"
+                title="Bu soruyu kapat (Muaf yap)"
+              >
+                ✕ Kapat
+              </button>
+            )}
+          </div>
+        </td>
+        <td className={tdCls}>
+          {optionsType === 'hayir_evet' ? (
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name={fieldKey} 
+                  disabled={readOnly}
+                  checked={currentVal !== 'Evet'} 
+                  onChange={() => onUpdateField(fieldKey, 'Hayır')} 
+                />
+                <span className="font-bold">Hayır</span>
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name={fieldKey} 
+                  disabled={readOnly}
+                  checked={currentVal === 'Evet'} 
+                  onChange={() => onUpdateField(fieldKey, 'Evet')} 
+                />
+                <span>Evet (ise açıklama?):</span>
+              </label>
+              {currentVal === 'Evet' && (
+                <input 
+                  type="text" 
+                  value={detailVal} 
+                  disabled={readOnly}
+                  onChange={e => onUpdateField(detailKey, e.target.value)} 
+                  placeholder={detailPlaceholder} 
+                  className="border-b border-black text-[11px] px-1 flex-1 outline-none bg-amber-50/30 focus:bg-white" 
+                />
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name={fieldKey} 
+                  disabled={readOnly}
+                  checked={currentVal === 'Hayır' || !currentVal} 
+                  onChange={() => onUpdateField(fieldKey, 'Hayır')} 
+                />
+                <span className="font-bold">Hayır</span>
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name={fieldKey} 
+                  disabled={readOnly}
+                  checked={currentVal === 'Bırakmış'} 
+                  onChange={() => onUpdateField(fieldKey, 'Bırakmış')} 
+                />
+                <span>Bırakmış:</span>
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name={fieldKey} 
+                  disabled={readOnly}
+                  checked={currentVal === 'Evet'} 
+                  onChange={() => onUpdateField(fieldKey, 'Evet')} 
+                />
+                <span>Evet:</span>
+              </label>
+              {currentVal !== 'Hayır' && currentVal && (
+                <input 
+                  type="text" 
+                  value={detailVal} 
+                  disabled={readOnly}
+                  onChange={e => onUpdateField(detailKey, e.target.value)} 
+                  placeholder={detailPlaceholder} 
+                  className="border-b border-black text-[11px] px-1 flex-1 outline-none bg-amber-50/30 focus:bg-white" 
+                />
+              )}
+            </div>
+          )}
+        </td>
+      </tr>
+    );
+  };
+
+  // Helper for Physical Exam systems (Page 2)
+  const renderSystemExamRow = (
+    letterCode: string,
+    title: string,
+    fieldKey: string,
+    placeholder: string
+  ) => {
+    const enabled = isEnabled(fieldKey);
+
+    if (selectionMode) {
+      return (
+        <tr 
+          onClick={() => onToggleQuestion && onToggleQuestion(fieldKey)}
+          className={`border border-black cursor-pointer transition select-none ${
+            enabled ? 'bg-emerald-50/70 hover:bg-emerald-100' : 'bg-slate-100 opacity-60 hover:opacity-80'
+          }`}
+        >
+          <td className={thCls} colSpan={2}>
+            <span className={enabled ? 'text-black' : 'line-through text-slate-400'}>
+              {letterCode}) {title}
+            </span>
+          </td>
+          <td className={tdCls}>
+            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold shadow-sm ${
+              enabled ? 'bg-emerald-600 text-white' : 'bg-rose-100 text-rose-800 line-through border border-rose-300'
+            }`}>
+              {enabled ? '✓ Açık' : '✕ Kapalı (Muaf)'}
+            </span>
+          </td>
+        </tr>
+      );
+    }
+
+    if (!enabled) {
+      return (
+        <tr className="border border-black bg-slate-50/80">
+          <td className={thCls} colSpan={2}>
+            <span className="line-through text-slate-400">{letterCode}) {title}</span>
+          </td>
+          <td className={tdCls}>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-400 italic">(Muaf / Bakılmadı)</span>
+              {!readOnly && onToggleQuestion && (
+                <button
+                  type="button"
+                  onClick={() => onToggleQuestion(fieldKey)}
+                  className="text-[10px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded border border-teal-200 transition cursor-pointer"
+                  title="Bu muayeneyi aç"
+                >
+                  + Aç
+                </button>
+              )}
+            </div>
+          </td>
+        </tr>
+      );
+    }
+
+    return (
+      <tr className="border border-black hover:bg-teal-50/20 transition group">
+        <td className={thCls} colSpan={2}>
+          <div className="flex items-center justify-between">
+            <span>{letterCode}) {title}</span>
+            {!readOnly && onToggleQuestion && (
+              <button
+                type="button"
+                onClick={() => onToggleQuestion(fieldKey)}
+                className="opacity-0 group-hover:opacity-100 transition text-[9px] text-slate-400 hover:text-rose-600 px-1 rounded hover:bg-rose-50 cursor-pointer"
+                title="Bu muayeneyi kapat"
+              >
+                ✕ Kapat
+              </button>
+            )}
+          </div>
+        </td>
+        <td className={tdCls}>{cellInput(fieldKey, placeholder)}</td>
+      </tr>
+    );
+  };
+
+  // Helper for Lab exam rows (Page 2)
+  const renderLabExamRow = (
+    code: string,
+    title: string,
+    fieldKey: string,
+    placeholder: string
+  ) => {
+    const enabled = isEnabled(fieldKey);
+
+    if (selectionMode) {
+      return (
+        <tr 
+          onClick={() => onToggleQuestion && onToggleQuestion(fieldKey)}
+          className={`border border-black cursor-pointer transition select-none ${
+            enabled ? 'bg-emerald-50/70 hover:bg-emerald-100' : 'bg-slate-100 opacity-60 hover:opacity-80'
+          }`}
+        >
+          <td className={thCls} colSpan={2}>
+            <span className={enabled ? 'text-black' : 'line-through text-slate-400'}>
+              {code ? `${code}) ` : ''}{title}
+            </span>
+          </td>
+          <td className={tdCls}>
+            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold shadow-sm ${
+              enabled ? 'bg-emerald-600 text-white' : 'bg-rose-100 text-rose-800 line-through border border-rose-300'
+            }`}>
+              {enabled ? '✓ Açık' : '✕ Kapalı (Muaf)'}
+            </span>
+          </td>
+        </tr>
+      );
+    }
+
+    if (!enabled) {
+      return (
+        <tr className="border border-black bg-slate-50/80">
+          <td className={thCls} colSpan={2}>
+            <span className="line-through text-slate-400">{code ? `${code}) ` : ''}{title}</span>
+          </td>
+          <td className={tdCls}>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-400 italic">(Muaf / İstenmedi)</span>
+              {!readOnly && onToggleQuestion && (
+                <button
+                  type="button"
+                  onClick={() => onToggleQuestion(fieldKey)}
+                  className="text-[10px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded border border-teal-200 transition cursor-pointer"
+                  title="Bu tetkiki aç"
+                >
+                  + Aç
+                </button>
+              )}
+            </div>
+          </td>
+        </tr>
+      );
+    }
+
+    return (
+      <tr className="border border-black hover:bg-teal-50/20 transition group">
+        <td className={thCls} colSpan={2}>
+          <div className="flex items-center justify-between">
+            <span>{code ? `${code}) ` : ''}{title}</span>
+            {!readOnly && onToggleQuestion && (
+              <button
+                type="button"
+                onClick={() => onToggleQuestion(fieldKey)}
+                className="opacity-0 group-hover:opacity-100 transition text-[9px] text-slate-400 hover:text-rose-600 px-1 rounded hover:bg-rose-50 cursor-pointer"
+                title="Bu tetkiki kapat"
+              >
+                ✕ Kapat
+              </button>
+            )}
+          </div>
+        </td>
+        <td className={tdCls}>{cellInput(fieldKey, placeholder)}</td>
       </tr>
     );
   };
@@ -226,6 +648,23 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
           </button>
         </div>
 
+        {/* Soru Kapatma / Açma Modu Butonu */}
+        {onToggleQuestion && (
+          <button
+            type="button"
+            onClick={() => onToggleQuestion('TOGGLE_MODE')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-md cursor-pointer ${
+              selectionMode 
+                ? 'bg-amber-400 hover:bg-amber-500 text-slate-950 ring-2 ring-amber-300 animate-pulse' 
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            }`}
+            title="Soruları form üzerinden tek tek kapatıp açma modunu etkinleştir"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            {selectionMode ? '✕ Kapatma Modunu Bitir' : '🛠️ Soruları Kapat / Aç'}
+          </button>
+        )}
+
         {/* Zoom Controls */}
         <div className="flex items-center gap-1.5">
           <button
@@ -266,6 +705,28 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Active Selection Mode Notice Banner */}
+      {selectionMode && (
+        <div className="w-full max-w-[850px] bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-slate-950 px-4 py-2.5 rounded-2xl shadow-xl mb-3 flex items-center justify-between text-xs font-bold border border-amber-300 print:hidden animate-fade-in">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🛠️</span>
+            <div>
+              <p className="font-extrabold text-sm">SORULARI SEÇME & KAPATMA MODU AKTİF</p>
+              <p className="text-[11px] font-medium text-amber-950">
+                Kapatmak istediğiniz sorunun (veya [✓ Açık] butonunun) üzerine tıklayın. Kapalı sorular sahada sorulmaz / (Muaf) sayılır.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onToggleQuestion && onToggleQuestion('TOGGLE_MODE')}
+            className="bg-slate-950 text-white hover:bg-slate-800 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-md"
+          >
+            Doldurmaya Dön &rarr;
+          </button>
+        </div>
+      )}
 
       {/* Sheets Container with native scroll and zoom */}
       <div 
@@ -560,173 +1021,14 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
               {/* ANAMNEZ 3-10 ÖZEL SORULAR TABLOSU */}
               <table className={`${tbCls} -mt-[1px]`}>
                 <tbody>
-                  {/* 3 */}
-                  <tr>
-                    <td className={`${tdCls} w-80 font-medium`}>3. Hastanede yattınız mı?</td>
-                    <td className={tdCls}>
-                      <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_hastane" checked={formData.an_hastane !== 'Evet'} onChange={() => onUpdateField('an_hastane', 'Hayır')} />
-                          <span className="font-bold">Hayır</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_hastane" checked={formData.an_hastane === 'Evet'} onChange={() => onUpdateField('an_hastane', 'Evet')} />
-                          <span>Evet (ise tanı?):</span>
-                        </label>
-                        {formData.an_hastane === 'Evet' && (
-                          <input type="text" value={formData.an_hastane_detay || ''} onChange={e => onUpdateField('an_hastane_detay', e.target.value)} placeholder="Tanı..." className="border-b border-black text-[11px] px-1 flex-1 outline-none" />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* 4 */}
-                  <tr>
-                    <td className={`${tdCls} font-medium`}>4. Ameliyat oldunuz mu?</td>
-                    <td className={tdCls}>
-                      <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_ameliyat" checked={formData.an_ameliyat !== 'Evet'} onChange={() => onUpdateField('an_ameliyat', 'Hayır')} />
-                          <span className="font-bold">Hayır</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_ameliyat" checked={formData.an_ameliyat === 'Evet'} onChange={() => onUpdateField('an_ameliyat', 'Evet')} />
-                          <span>Evet (ise neden?):</span>
-                        </label>
-                        {formData.an_ameliyat === 'Evet' && (
-                          <input type="text" value={formData.an_ameliyat_detay || ''} onChange={e => onUpdateField('an_ameliyat_detay', e.target.value)} placeholder="Ameliyat nedeni..." className="border-b border-black text-[11px] px-1 flex-1 outline-none" />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* 5 */}
-                  <tr>
-                    <td className={`${tdCls} font-medium`}>5. İş kazası geçirdiniz mi?</td>
-                    <td className={tdCls}>
-                      <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_is_kazasi" checked={formData.an_is_kazasi !== 'Evet'} onChange={() => onUpdateField('an_is_kazasi', 'Hayır')} />
-                          <span className="font-bold">Hayır</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_is_kazasi" checked={formData.an_is_kazasi === 'Evet'} onChange={() => onUpdateField('an_is_kazasi', 'Evet')} />
-                          <span>Evet (ise ne oldu?):</span>
-                        </label>
-                        {formData.an_is_kazasi === 'Evet' && (
-                          <input type="text" value={formData.an_is_kazasi_detay || ''} onChange={e => onUpdateField('an_is_kazasi_detay', e.target.value)} placeholder="Kaza açıklaması..." className="border-b border-black text-[11px] px-1 flex-1 outline-none" />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* 6 */}
-                  <tr>
-                    <td className={`${tdCls} font-medium`}>6. Meslek hastalıkları şüphesi ile ilgili tetkik veya muayeneye tabi tutuldunuz mu?</td>
-                    <td className={tdCls}>
-                      <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_meslek_hastaligi" checked={formData.an_meslek_hastaligi !== 'Evet'} onChange={() => onUpdateField('an_meslek_hastaligi', 'Hayır')} />
-                          <span className="font-bold">Hayır</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_meslek_hastaligi" checked={formData.an_meslek_hastaligi === 'Evet'} onChange={() => onUpdateField('an_meslek_hastaligi', 'Evet')} />
-                          <span>Evet (ise sonuç):</span>
-                        </label>
-                        {formData.an_meslek_hastaligi === 'Evet' && (
-                          <input type="text" value={formData.an_meslek_detay || ''} onChange={e => onUpdateField('an_meslek_detay', e.target.value)} placeholder="Sonuç..." className="border-b border-black text-[11px] px-1 flex-1 outline-none" />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* 7 */}
-                  <tr>
-                    <td className={`${tdCls} font-medium`}>7. Maluliyet aldınız mı?</td>
-                    <td className={tdCls}>
-                      <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_maluliyet" checked={formData.an_maluliyet !== 'Evet'} onChange={() => onUpdateField('an_maluliyet', 'Hayır')} />
-                          <span className="font-bold">Hayır</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_maluliyet" checked={formData.an_maluliyet === 'Evet'} onChange={() => onUpdateField('an_maluliyet', 'Evet')} />
-                          <span>Evet (ise nedeni ve oranı?):</span>
-                        </label>
-                        {formData.an_maluliyet === 'Evet' && (
-                          <input type="text" value={formData.an_maluliyet_detay || ''} onChange={e => onUpdateField('an_maluliyet_detay', e.target.value)} placeholder="Neden ve oran..." className="border-b border-black text-[11px] px-1 flex-1 outline-none" />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* 8 */}
-                  <tr>
-                    <td className={`${tdCls} font-medium`}>8. Şu anda herhangi bir tedavi görüyor musunuz?</td>
-                    <td className={tdCls}>
-                      <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_mevcut_tedavi" checked={formData.an_mevcut_tedavi !== 'Evet'} onChange={() => onUpdateField('an_mevcut_tedavi', 'Hayır')} />
-                          <span className="font-bold">Hayır</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_mevcut_tedavi" checked={formData.an_mevcut_tedavi === 'Evet'} onChange={() => onUpdateField('an_mevcut_tedavi', 'Evet')} />
-                          <span>Evet (ise nedir?):</span>
-                        </label>
-                        {formData.an_mevcut_tedavi === 'Evet' && (
-                          <input type="text" value={formData.an_tedavi_detay || ''} onChange={e => onUpdateField('an_tedavi_detay', e.target.value)} placeholder="Nedir..." className="border-b border-black text-[11px] px-1 flex-1 outline-none" />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* 9. Sigara */}
-                  <tr>
-                    <td className={`${tdCls} font-medium`}>9. Sigara içiyor musunuz?</td>
-                    <td className={tdCls}>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_sigara" checked={formData.an_sigara === 'Hayır' || !formData.an_sigara} onChange={() => onUpdateField('an_sigara', 'Hayır')} />
-                          <span className="font-bold">Hayır</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_sigara" checked={formData.an_sigara === 'Bırakmış'} onChange={() => onUpdateField('an_sigara', 'Bırakmış')} />
-                          <span>Bırakmış:</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_sigara" checked={formData.an_sigara === 'Evet'} onChange={() => onUpdateField('an_sigara', 'Evet')} />
-                          <span>Evet:</span>
-                        </label>
-                        {formData.an_sigara !== 'Hayır' && formData.an_sigara && (
-                          <input type="text" value={formData.an_sigara_detay || ''} onChange={e => onUpdateField('an_sigara_detay', e.target.value)} placeholder="Örn: 5 yıldır 1 paket/gün" className="border-b border-black text-[11px] px-1 flex-1 outline-none" />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* 10. Alkol */}
-                  <tr>
-                    <td className={`${tdCls} font-medium`}>10. Alkol alıyor musunuz?</td>
-                    <td className={tdCls}>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_alkol" checked={formData.an_alkol === 'Hayır' || !formData.an_alkol} onChange={() => onUpdateField('an_alkol', 'Hayır')} />
-                          <span className="font-bold">Hayır</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_alkol" checked={formData.an_alkol === 'Bırakmış'} onChange={() => onUpdateField('an_alkol', 'Bırakmış')} />
-                          <span>Bırakmış:</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="radio" name="an_alkol" checked={formData.an_alkol === 'Evet'} onChange={() => onUpdateField('an_alkol', 'Evet')} />
-                          <span>Evet:</span>
-                        </label>
-                        {formData.an_alkol !== 'Hayır' && formData.an_alkol && (
-                          <input type="text" value={formData.an_alkol_detay || ''} onChange={e => onUpdateField('an_alkol_detay', e.target.value)} placeholder="Örn: Haftada 1-2 / Sosyal" className="border-b border-black text-[11px] px-1 flex-1 outline-none" />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                  {renderSpecialQuestionRow('3', 'Hastanede yattınız mı?', 'an_hastane', 'an_hastane_detay', 'Tanı...')}
+                  {renderSpecialQuestionRow('4', 'Ameliyat oldunuz mu?', 'an_ameliyat', 'an_ameliyat_detay', 'Ameliyat nedeni...')}
+                  {renderSpecialQuestionRow('5', 'İş kazası geçirdiniz mi?', 'an_is_kazasi', 'an_is_kazasi_detay', 'Kaza açıklaması...')}
+                  {renderSpecialQuestionRow('6', 'Meslek hastalıkları şüphesi ile ilgili tetkik veya muayeneye tabi tutuldunuz mu?', 'an_meslek_hastaligi', 'an_meslek_detay', 'Tetkik sonucu...')}
+                  {renderSpecialQuestionRow('7', 'Maluliyet aldınız mı?', 'an_maluliyet', 'an_maluliyet_detay', 'Neden ve oran...')}
+                  {renderSpecialQuestionRow('8', 'Şu anda herhangi bir tedavi görüyor musunuz?', 'an_mevcut_tedavi', 'an_tedavi_detay', 'Mevcut tedavi nedir...')}
+                  {renderSpecialQuestionRow('9', 'Sigara içiyor musunuz?', 'an_sigara', 'an_sigara_detay', 'Örn: 5 yıldır 1 paket/gün', 'sigara_alkol')}
+                  {renderSpecialQuestionRow('10', 'Alkol alıyor musunuz?', 'an_alkol', 'an_alkol_detay', 'Örn: Haftada 1-2 / Sosyal', 'sigara_alkol')}
                 </tbody>
               </table>
             </div>
@@ -849,38 +1151,14 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
                     <td className={tdCls}>{cellInput('phy_deri', 'Doğal / Normal')}</td>
                   </tr>
 
-                  <tr>
-                    <td className={thCls} colSpan={2}>b) Kardiyovasküler sistem muayenesi.</td>
-                    <td className={tdCls}>{cellInput('phy_kvs', 'S1, S2 ritmik, ek ses yok')}</td>
-                  </tr>
-                  <tr>
-                    <td className={thCls} colSpan={2}>c) Solunum sistemi muayenesi.</td>
-                    <td className={tdCls}>{cellInput('phy_solunum', 'Bilateral veziküler')}</td>
-                  </tr>
-                  <tr>
-                    <td className={thCls} colSpan={2}>ç) Sindirim sistemi muayenesi.</td>
-                    <td className={tdCls}>{cellInput('phy_sindirim', 'Batın rahat, defans yok')}</td>
-                  </tr>
-                  <tr>
-                    <td className={thCls} colSpan={2}>d) Ürogenital sistem muayenesi.</td>
-                    <td className={tdCls}>{cellInput('phy_urogenital', 'Doğal')}</td>
-                  </tr>
-                  <tr>
-                    <td className={thCls} colSpan={2}>e) Kas-iskelet sistemi muayenesi.</td>
-                    <td className={tdCls}>{cellInput('phy_kas_iskelet', 'Eklem hareketleri tam')}</td>
-                  </tr>
-                  <tr>
-                    <td className={thCls} colSpan={2}>f) Nörolojik muayene.</td>
-                    <td className={tdCls}>{cellInput('phy_norolojik', 'Bilinç açık, oryante')}</td>
-                  </tr>
-                  <tr>
-                    <td className={thCls} colSpan={2}>g) Psikiyatrik muayene.</td>
-                    <td className={tdCls}>{cellInput('phy_psikiyatri', 'Duygulanım doğal')}</td>
-                  </tr>
-                  <tr>
-                    <td className={thCls} colSpan={2}>ğ) Diğer:</td>
-                    <td className={tdCls}>{cellInput('phy_diger', 'Özellik yok')}</td>
-                  </tr>
+                  {renderSystemExamRow('b', 'Kardiyovasküler sistem muayenesi.', 'phy_kvs', 'S1, S2 ritmik, ek ses yok')}
+                  {renderSystemExamRow('c', 'Solunum sistemi muayenesi.', 'phy_solunum', 'Bilateral veziküler')}
+                  {renderSystemExamRow('ç', 'Sindirim sistemi muayenesi.', 'phy_sindirim', 'Batın rahat, defans yok')}
+                  {renderSystemExamRow('d', 'Ürogenital sistem muayenesi.', 'phy_urogenital', 'Doğal')}
+                  {renderSystemExamRow('e', 'Kas-iskelet sistemi muayenesi.', 'phy_kas_iskelet', 'Eklem hareketleri tam')}
+                  {renderSystemExamRow('f', 'Nörolojik muayene.', 'phy_norolojik', 'Bilinç açık, oryante')}
+                  {renderSystemExamRow('g', 'Psikiyatrik muayene.', 'phy_psikiyatri', 'Duygulanım doğal')}
+                  {renderSystemExamRow('ğ', 'Diğer:', 'phy_diger', 'Özellik yok')}
 
                   {/* VİTAL DEĞERLER (TA, NB, BOY, KİLO, VKİ) */}
                   <tr>
@@ -931,27 +1209,11 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
                     <td className={`${tdCls} font-semibold`}>-İdrar</td>
                     <td className={tdCls}>{cellInput('lab_idrar', 'Tam idrar tetkiki normal')}</td>
                   </tr>
-                  <tr>
-                    <td className={thCls} colSpan={2}>b) Radyolojik analizler.</td>
-                    <td className={tdCls}>{cellInput('lab_radyoloji', 'Akciğer Grafisi: Aktif lezyon izlenmedi')}</td>
-                  </tr>
-                  <tr>
-                    <td className={thCls} rowSpan={2}>c) Fizyolojik analizler.</td>
-                    <td className={`${tdCls} font-semibold`}>-Odyometre</td>
-                    <td className={tdCls}>{cellInput('lab_odyo', 'Odyometri: İki taraflı işitme doğal')}</td>
-                  </tr>
-                  <tr>
-                    <td className={`${tdCls} font-semibold`}>-SFT</td>
-                    <td className={tdCls}>{cellInput('lab_sft', 'SFT: Solunum fonksiyonları normal')}</td>
-                  </tr>
-                  <tr>
-                    <td className={thCls} colSpan={2}>ç) Psikolojik testler.</td>
-                    <td className={tdCls}>{cellInput('lab_psikolojik', 'Normal')}</td>
-                  </tr>
-                  <tr>
-                    <td className={thCls} colSpan={2}>d) Diğer.</td>
-                    <td className={tdCls}>{cellInput('lab_bulgulari', 'Rutin tetkikler normal sınırlardadır.')}</td>
-                  </tr>
+                  {renderLabExamRow('b', 'Radyolojik analizler.', 'lab_radyoloji', 'Akciğer Grafisi: Aktif lezyon izlenmedi')}
+                  {renderLabExamRow('c', 'Fizyolojik analizler - Odyometre', 'lab_odyo', 'Odyometri: İki taraflı işitme doğal')}
+                  {renderLabExamRow('c', 'Fizyolojik analizler - SFT', 'lab_sft', 'SFT: Solunum fonksiyonları normal')}
+                  {renderLabExamRow('ç', 'Psikolojik testler.', 'lab_psikolojik', 'Normal')}
+                  {renderLabExamRow('d', 'Diğer.', 'lab_bulgulari', 'Rutin tetkikler normal sınırlardadır.')}
                 </tbody>
               </table>
 
