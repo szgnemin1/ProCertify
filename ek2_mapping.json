@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "lastUpdated": 1793996500000,
+  "lastUpdated": 1794032478479,
   "items": [
     {
       "id": "f_isyeriUnvani",
@@ -193,7 +193,7 @@
       "fieldKey": "gecmisIsler",
       "excelCell": "A36:AC43",
       "type": "textarea",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_an_balgamli_oksuruk",
@@ -383,7 +383,7 @@
       "fieldKey": "an_diger_hastalik",
       "excelCell": "U58:AC58",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_an_hastane",
@@ -563,7 +563,7 @@
       "fieldKey": "fm_duyu_organlari",
       "excelCell": "A105:AC112",
       "type": "textarea",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_fm_kvs",
@@ -573,7 +573,7 @@
       "fieldKey": "fm_kvs",
       "excelCell": "A113:AC114",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_fm_solunum",
@@ -583,7 +583,7 @@
       "fieldKey": "fm_solunum",
       "excelCell": "A115:AC116",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_fm_sindirim",
@@ -593,7 +593,7 @@
       "fieldKey": "fm_sindirim",
       "excelCell": "A117:AC118",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_fm_urogenital",
@@ -603,7 +603,7 @@
       "fieldKey": "fm_urogenital",
       "excelCell": "A119:AC120",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_fm_kas_iskelet",
@@ -613,7 +613,7 @@
       "fieldKey": "fm_kas_iskelet",
       "excelCell": "A121:AC122",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_fm_norolojik",
@@ -623,7 +623,7 @@
       "fieldKey": "fm_norolojik",
       "excelCell": "A123:AC124",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_fm_psikiyatrik",
@@ -633,7 +633,7 @@
       "fieldKey": "fm_psikiyatrik",
       "excelCell": "A125:AC126",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_vital_ta",
@@ -643,7 +643,7 @@
       "fieldKey": "vital_ta",
       "excelCell": "B129:AC130",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_vital_nb",
@@ -653,7 +653,7 @@
       "fieldKey": "vital_nb",
       "excelCell": "B131:AC132",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_vital_boy",
@@ -693,7 +693,7 @@
       "fieldKey": "lab_bulgulari",
       "excelCell": "A137:AC158",
       "type": "textarea",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_dec_elverisli",
@@ -703,7 +703,7 @@
       "fieldKey": "dec_elverisli",
       "excelCell": "D161:AC162",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_dec_kosullar",
@@ -713,7 +713,7 @@
       "fieldKey": "dec_kosullar",
       "excelCell": "D163:AC164",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_dec_sart",
@@ -723,7 +723,7 @@
       "fieldKey": "dec_sart",
       "excelCell": "D165:AC166",
       "type": "text",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "f_hekimAdi",

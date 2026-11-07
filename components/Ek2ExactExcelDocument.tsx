@@ -23,6 +23,7 @@ interface Ek2ExactExcelDocumentProps {
   readOnly?: boolean;
   selectionMode?: boolean;
   onToggleQuestion?: (fieldKey: string) => void;
+  initialPage?: 1 | 2 | 'all';
 }
 
 export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
@@ -33,9 +34,10 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
   activeQuestions = [],
   readOnly = false,
   selectionMode = false,
-  onToggleQuestion
+  onToggleQuestion,
+  initialPage = 'all'
 }) => {
-  const [currentPage, setCurrentPage] = useState<1 | 2>(1);
+  const [currentPage, setCurrentPage] = useState<1 | 2 | 'all'>(initialPage);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
 
   // Check if a question is enabled
@@ -280,11 +282,22 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
         </div>
 
         {/* Page Switcher */}
-        <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
+        <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => setCurrentPage('all')}
+            className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+              currentPage === 'all' 
+                ? 'bg-teal-600 text-white shadow-md' 
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            Tüm Belge (Alt Alta)
+          </button>
           <button
             type="button"
             onClick={() => setCurrentPage(1)}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
               currentPage === 1 
                 ? 'bg-teal-600 text-white shadow-md' 
                 : 'text-slate-300 hover:text-white'
@@ -295,7 +308,7 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
           <button
             type="button"
             onClick={() => setCurrentPage(2)}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
               currentPage === 2 
                 ? 'bg-teal-600 text-white shadow-md' 
                 : 'text-slate-300 hover:text-white'
@@ -348,13 +361,12 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
 
       {/* Scaled Printable Document Sheet Container */}
       <div 
-        className="w-full flex justify-center transition-all duration-200"
-        style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
+        className="w-full flex flex-col items-center justify-center transition-all duration-200 overflow-x-auto pb-16"
+        style={{ transform: zoomLevel !== 100 ? `scale(${zoomLevel / 100})` : undefined, transformOrigin: 'top center' }}
       >
-        <div className="w-[850px] bg-white text-slate-900 border-2 border-slate-400 shadow-2xl p-7 font-sans print:border-none print:shadow-none print:p-0 my-4 min-h-[1100px] flex flex-col justify-between">
-          
-          {/* ================= PAGE 1 ================= */}
-          {currentPage === 1 && (
+        {/* ================= PAGE 1 ================= */}
+        {(currentPage === 1 || currentPage === 'all') && (
+          <div className="w-[850px] bg-white text-slate-900 border-2 border-slate-400 shadow-2xl p-7 font-sans print:border-none print:shadow-none print:p-0 my-4 min-h-[1100px] flex flex-col justify-between">
             <div className="flex-1 flex flex-col justify-between">
               <div>
                 {/* 1. HEADER SECTION (Çankaya OSGB Logo + Title + Photo Box) */}
@@ -777,10 +789,23 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* ================= PAGE 2 ================= */}
-          {currentPage === 2 && (
+        {/* Separator between Page 1 and Page 2 when in 'all' view */}
+        {currentPage === 'all' && (
+          <div className="w-full max-w-[850px] my-6 flex items-center justify-center gap-3 select-none text-xs text-slate-600 font-bold">
+            <div className="h-[2px] bg-slate-400/60 flex-1"></div>
+            <span className="bg-slate-300 text-slate-800 px-4 py-1.5 rounded-full shadow-sm text-xs font-bold flex items-center gap-2">
+              <span>📄</span> SAYFA 2: FİZİK MUAYENE & KANAAT VE SONUÇ <span>⬇️</span>
+            </span>
+            <div className="h-[2px] bg-slate-400/60 flex-1"></div>
+          </div>
+        )}
+
+        {/* ================= PAGE 2 ================= */}
+        {(currentPage === 2 || currentPage === 'all') && (
+          <div className="w-[850px] bg-white text-slate-900 border-2 border-slate-400 shadow-2xl p-7 font-sans print:border-none print:shadow-none print:p-0 my-4 min-h-[1100px] flex flex-col justify-between">
             <div className="flex-1 flex flex-col justify-between">
               <div>
                 {/* Page 2 Small Header */}
@@ -1023,9 +1048,8 @@ export const Ek2ExactExcelDocument: React.FC<Ek2ExactExcelDocumentProps> = ({
                 </div>
               </div>
             </div>
-          )}
-
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
