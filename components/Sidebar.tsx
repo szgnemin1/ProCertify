@@ -6,13 +6,11 @@ import {
   Palette, 
   FolderKanban, 
   Settings, 
-  LogOut,
-  HeartPulse,
-  FileSpreadsheet
+  LogOut
 } from 'lucide-react';
 import { UserRole } from '../types';
 
-export type ActiveNavTab = 'fill' | 'dashboard' | 'companies' | 'company-detail' | 'template' | 'projects' | 'settings' | 'field-health' | 'ek2-mapping';
+export type ActiveNavTab = 'fill' | 'dashboard' | 'companies' | 'company-detail' | 'template' | 'projects' | 'settings';
 
 interface SidebarProps {
   currentTab: ActiveNavTab;
@@ -65,15 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       requiresAdmin: false,
       section: 'main'
     },
-    {
-      id: 'field-health' as ActiveNavTab,
-      label: 'Saha Sağlık / Ek-2 Formu',
-      shortLabel: 'Saha Sağlık',
-      icon: HeartPulse,
-      requiresAdmin: false,
-      section: 'main'
-    },
-    // Admin section
+        // Admin section
     {
       id: 'template' as ActiveNavTab,
       label: 'Şablon Tasarım Stüdyosu',
@@ -90,15 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       requiresAdmin: true,
       section: 'admin'
     },
-    {
-      id: 'ek2-mapping' as ActiveNavTab,
-      label: 'Ek-2 Evrak & Alan Eşleme',
-      shortLabel: 'Evrak Eşleme',
-      icon: FileSpreadsheet,
-      requiresAdmin: true,
-      section: 'admin'
-    },
-    {
+        {
       id: 'settings' as ActiveNavTab,
       label: 'Sistem & Firma Yönetimi',
       shortLabel: 'Ayarlar',

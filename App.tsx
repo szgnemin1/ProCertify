@@ -119,8 +119,6 @@ import { LayersModal } from './components/LayersModal';
 import { ColorPaletteModal, ColorTheme } from './components/ColorPaletteModal';
 import { CompanyDetailView } from './views/CompanyDetailView';
 import { LoginView } from './views/LoginView';
-import { FieldHealthView } from './views/FieldHealthView';
-import { AdminEk2TemplateEditor } from './views/AdminEk2TemplateEditor';
 import { UserManagementModal } from './components/UserManagementModal';
 import { EmployeeModal } from './components/EmployeeModal';
 import { MultiDayDateModal } from './components/MultiDayDateModal';
@@ -862,18 +860,7 @@ const App = () => {
   // UI State
   const [activeSide, setActiveSide] = useState<Side>('front');
   const [currentView, setCurrentView] = useState<ViewMode>(() => {
-    try {
-      const searchParams = new URLSearchParams(window.location.search);
-      if (
-        searchParams.get('mode') === 'saha' ||
-        searchParams.get('mode') === 'saglik' ||
-        window.location.pathname.includes('/saha') ||
-        window.location.pathname.includes('/saglik')
-      ) {
-        return 'field-health';
-      }
-    } catch { /* ignore */ }
-    return 'fill';
+        return 'fill';
   });
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [showSigPermissions, setShowSigPermissions] = useState(false); 
@@ -2527,15 +2514,7 @@ const App = () => {
     setChatOptionSearch('');
   };
 
-  if (currentView === 'field-health') {
-    return (
-      <FieldHealthView 
-        onBackToApp={() => setCurrentView('fill')} 
-        currentUser={sessionUser}
-      />
-    );
-  }
-
+  
   if (!isAuthenticated) {
     return (
       <LoginView 
@@ -3528,11 +3507,7 @@ const App = () => {
           />
         )}
 
-        {/* VIEW: EK-2 EVRAK & ALAN EŞLEME (ADMIN) */}
-        {currentView === 'ek2-mapping' && (
-          <AdminEk2TemplateEditor />
-        )}
-
+        
         {/* VIEW: PROJECTS LIST */}
         {currentView === 'projects' && (
              <div className="flex-1 bg-slate-900 p-4 md:p-10 overflow-y-auto">

@@ -124,47 +124,6 @@ export interface AppUser {
   createdAt: number;
 }
 
-export interface Ek2FormRecord {
-  id: string;
-  protocolNo: string;
-  companyId: string;
-  companyName: string;
-  employeeTc: string;
-  employeeName: string;
-  photoUrl?: string;
-  fields: Record<string, any>;
-  employeeSignature: string; // Base64 data URL
-  doctorSignature?: string;
-  doctorName?: string;
-  hasMedicalTests: boolean;
-  medicalTestNotes?: string;
-  selectedTests?: string[];
-  createdAt: number;
-  createdById: string;
-  createdByName: string;
-  pdfUrl?: string;
-}
-
-export interface Ek2FieldMappingItem {
-  id: string;
-  category: string;
-  section?: string;
-  label: string;
-  fieldKey: string;
-  type: string;
-  excelCell?: string;
-  targetCellOrLocation?: string;
-  enabled?: boolean;
-  defaultValue?: string;
-  options?: string[];
-  helpText?: string;
-}
-
-export interface Ek2FieldMappingConfig {
-  version: number;
-  lastUpdated: number;
-  items: Ek2FieldMappingItem[];
-}
 
 export interface IssuedCertificate {
   serialNo: string;
